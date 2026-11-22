@@ -21,8 +21,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # No setup-android step: the ubuntu runner already ships a working SDK
+      # (cmdline-tools 20.0). The setup-android action downgrades it to an
+      # old sdkmanager whose --licenses fails (run 45055903877).
 
       - name: Install Android platform 36
         run: |
