@@ -1,0 +1,52 @@
+name: iOS IPA (unsigned)
+
+# Builds the iPhone app WITHOUT signing, so it can be sideloaded with
+# AltStore (which re-signs it with the user's free Apple ID). The project
+# supports this: an empty TETHER_TEAM_ID builds unsigned
+# (CODE_SIGNING_ALLOWED=NO), and the default build has no entitlements
+# (the Communication Notifications entitlement is only for paid accounts).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set bundle id for the unsigned build
+        run: |
+          cat > ios/Config/Local.xcconfig <<'EOF'
+          TETHER_TEAM_ID =
+          TETHER_BUNDLE_ID = com.eblis67.tether
+          TETHER_DISPLAY_NAME = Cellular
+          EOF
+
+      - name: Generate Xcode project
+        run: cd ios && (xcodegen generate || echo "xcodegen not available, using committed project")
+
+      - name: Build unsigned app
+        run: |
+          cd ios && xcodebuild -project Tether.xcodeproj -scheme Tether \
+            -configuration Release -sdk iphoneos -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R ios/build/Build/Products/Release-iphoneos/Tether.app Payload/
+          zip -r Tether-unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: tether-ios-ipa-unsigned
+          path: Tether-unsigned.ipa
+          if-no-files-found: error
