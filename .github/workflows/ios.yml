@@ -23,11 +23,12 @@ on:
 
 jobs:
   build:
-    # macos-15: on 2026-11-23 the macos-latest (arm64) pool repeatedly
-    # failed to acquire a runner ("not acquired by Runner ... even after
-    # multiple attempts"), and macos-14 is no longer supported
-    # ("configuration 'macos-14-arm64-us-default' is not supported").
-    runs-on: macos-15
+    # macos-latest: upstream's release workflow builds the Release IPA here.
+    # macos-15 failed the Release build (exit 65, 2026-11-23) — its older
+    # Xcode is the likely cause; macos-14 is not supported at all.
+    # (The arm64 pool can also be congested; a "not acquired by Runner"
+    # cancellation means retry, not a code problem.)
+    runs-on: macos-latest
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -45,9 +46,17 @@ jobs:
 
       - name: Build unsigned app
         run: |
-          cd ios && xcodebuild -project Tether.xcodeproj -scheme Tether \
+          cd ios && set -o pipefail && xcodebuild -project Tether.xcodeproj -scheme Tether \
             -configuration Release -destination 'generic/platform=iOS' -derivedDataPath build \
-            -skipMacroValidation CODE_SIGNING_ALLOWED=NO build
+            -skipMacroValidation CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tether-ios-build-log
+          path: ios/build.log
+          if-no-files-found: warn
 
       - name: Package IPA
         run: |
