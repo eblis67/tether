@@ -1,5 +1,8 @@
 name: iOS IPA (unsigned)
 
+# retry: 1 — the tether-ios-retry cron increments this on each capacity retry.
+# The PAT cannot re-run jobs or dispatch workflows, so a push is the only trigger.
+
 # Builds the iPhone app WITHOUT signing, so it can be sideloaded with
 # AltStore (which re-signs it with the user's free Apple ID). The project
 # supports this: an empty TETHER_TEAM_ID builds unsigned
