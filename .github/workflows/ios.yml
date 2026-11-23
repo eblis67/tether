@@ -23,7 +23,11 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    # macos-14 (Intel) instead of macos-latest: on 2026-11-23 the arm64 pool
+    # repeatedly failed to acquire a runner ("not acquired by Runner ...
+    # even after multiple attempts"). An Intel runner still builds the
+    # arm64 iPhone app fine (cross-compile).
+    runs-on: macos-14
     steps:
       - name: Check out
         uses: actions/checkout@v4
