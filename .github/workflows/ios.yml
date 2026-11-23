@@ -10,6 +10,8 @@ name: iOS IPA (unsigned)
 # "iPhone app build (unsigned)"): the app uses swift-perception macros
 # (@Perceptible), so xcodebuild needs -skipMacroValidation or the build
 # fails with exit code 65. Keep the two in sync.
+# 2026-11-23: re-triggered after a macOS runner capacity cancellation
+# ("job was not acquired by Runner ... even after multiple attempts").
 
 on:
   push:
