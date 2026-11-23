@@ -5,6 +5,11 @@ name: iOS IPA (unsigned)
 # supports this: an empty TETHER_TEAM_ID builds unsigned
 # (CODE_SIGNING_ALLOWED=NO), and the default build has no entitlements
 # (the Communication Notifications entitlement is only for paid accounts).
+#
+# NOTE: the build invocation mirrors upstream CI (.github/workflows/ci.yml,
+# "iPhone app build (unsigned)"): the app uses swift-perception macros
+# (@Perceptible), so xcodebuild needs -skipMacroValidation or the build
+# fails with exit code 65. Keep the two in sync.
 
 on:
   push:
@@ -30,13 +35,13 @@ jobs:
           EOF
 
       - name: Generate Xcode project
-        run: cd ios && (xcodegen generate || echo "xcodegen not available, using committed project")
+        run: brew install xcodegen && cd ios && xcodegen generate --quiet
 
       - name: Build unsigned app
         run: |
           cd ios && xcodebuild -project Tether.xcodeproj -scheme Tether \
-            -configuration Release -sdk iphoneos -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO build
+            -destination 'generic/platform=iOS' -derivedDataPath build \
+            -skipMacroValidation CODE_SIGNING_ALLOWED=NO build
 
       - name: Package IPA
         run: |
