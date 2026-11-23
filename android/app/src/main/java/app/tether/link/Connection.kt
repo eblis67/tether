@@ -38,6 +38,8 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     private val queue = LinkedBlockingDeque<Item>()
     private val prio = LinkedBlockingDeque<Item>()
     @Volatile var lastRx = SystemClock.elapsedRealtime(); private set
+    /** When the hub last woke this client for being silent (see LinkPolicy.idle); 0: never. */
+    @Volatile var wokeAt = 0L
     /** Since when a record has been half received (0: none). A live stream completes records within milliseconds. */
     @Volatile private var partialSince = 0L
     @Volatile private var upAt = 0L
@@ -45,7 +47,7 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     fun stalledMs(now: Long = SystemClock.elapsedRealtime()) = partialSince.let { if (it == 0L) 0L else now - it }
     /** The client's static key once the handshake is done: identifies iPhone vs Mac across reconnects. */
     @Volatile var peerKey: ByteArray? = null; private set
-    /** From the client's sync: "iphone" / "mac", its name, and the codecs it can decode. */
+    /** From the client's sync: "iphone" / "android" (the Android client), its name, and the codecs it can decode. */
     @Volatile var kind = "iphone"
     @Volatile var name = "iPhone"
     @Volatile var codecs: List<String> = listOf("pcmu")
@@ -53,7 +55,10 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     @Volatile var lastAction = 0L
 
     private class Item(val channel: Int, val payload: ByteArray, val audio: Boolean,
-                       val raw: Record? = null, val at: Long = SystemClock.elapsedRealtime())
+                       val raw: Record? = null, val at: Long = SystemClock.elapsedRealtime(), val atNs: Long = System.nanoTime())
+
+    /** Audio records: queue → written delay, and frames dropped late or for overflow (call statistics). */
+    val audioDelay = app.tether.audio.QueueDelay()
 
     val isUp get() = state == State.UP
 
@@ -91,7 +96,7 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     fun sendAudio(frame: ByteArray) {
         if (state != State.UP) return
         // Never let audio pile up: drop the oldest audio frame (it is the stalest), never a call event or record.
-        if (prio.size > 25) prio.firstOrNull { it.audio }?.let { prio.remove(it) }
+        if (prio.size > 25) prio.firstOrNull { it.audio }?.let { if (prio.remove(it)) audioDelay.droppedOverflow() }
         prio.put(Item(Proto.CH_AUDIO, frame, true))
     }
 
@@ -102,9 +107,10 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
             while (state != State.CLOSED) {
                 val it = prio.poll() ?: queue.poll() ?: prio.poll(20, TimeUnit.MILLISECONDS) ?: continue
                 if (it.raw != null) { transport.write(it.raw.encoded()); continue }
-                if (it.audio && SystemClock.elapsedRealtime() - it.at > 60) continue
+                if (it.audio && SystemClock.elapsedRealtime() - it.at > 60) { audioDelay.droppedLate(); continue }
                 val s = session ?: continue
                 transport.write(s.seal(it.channel, it.payload).encoded())
+                if (it.audio) audioDelay.written((System.nanoTime() - it.atNs) / 1e6)
             }
         } catch (e: Exception) {
             close("write failed: ${e.message}")

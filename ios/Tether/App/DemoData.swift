@@ -1,7 +1,7 @@
 #if DEBUG
 import AVFoundation
 import Foundation
-import TetherCore
+@_spi(TetherApp) import TetherCore
 
 /// Debug builds only: `-TetherDemo` fills the UI with made-up data and `-TetherDemoCall` opens the call
 /// screen, so the interface can be checked in the Simulator (which has no Bluetooth).
@@ -47,13 +47,19 @@ extension AppModel {
             id += 1
         }
         let contacts = [Contact(id: 50, name: "Bank Mellat", phones: [Phone(n: "+15550105")])] + people.enumerated().map { Contact(id: Int64($0.offset), name: $0.element.0, phones: [Phone(n: $0.element.1)], starred: $0.offset < 2) }
+        // Unknown numbers (not in contacts) show grouped: a test number, a short code, a USSD code.
+        let unknown = ["+10000000001", "+10000000002", "*140#"]
         let recents = people.enumerated().map { CallEntry(id: Int64($0.offset), num: $0.element.1, date: now - Int64($0.offset) * 3_600_000, dur: 95, type: [1, 2, 3, 1][$0.offset], sub: $0.offset % 2 == 0 ? 3 : 2) }
+            + unknown.enumerated().map { CallEntry(id: Int64(10 + $0.offset), num: $0.element, date: now - Int64(5 + $0.offset) * 3_600_000, dur: 30, type: 2, sub: 3) }
+        sms.append(Sms(id: id, thread: 6, addr: "+10000000003", body: "Demo message from an unknown number", date: now - 30 * 60_000, box: 1, read: true, sub: 3))
+        id += 1
         injectDemo(sms: sms, contacts: contacts, recents: recents,
                    status: StatusBody(device: "Android phone", battery: 82, charging: false,
                                       sims: [SimInfo(slot: 0, sub: 3, name: "Personal", carrier: "Carrier A", signal: 4, net: "LTE", service: "in"),
                                              SimInfo(slot: 1, sub: 2, name: "Work", carrier: "Carrier B", signal: 2, net: "LTE+", service: "in")],
                                       defaultSub: 3, dialer: true, helper: HelperInfo(state: "running", method: "intercept", up: true, down: true),
-                                      wifi: true, adbWifi: true),
+                                      wifi: true, adbWifi: true,
+                                      tools: .init(ussd: true, find: true, ringer: true), ringer: "vibrate", dnd: false),
                    lists: BlockLists(blocked: ["7000", "+15550199"], muted: [3], system: true))
         // -TetherDemoMessages opens the Messages tab, -TetherDemoThread the first conversation,
         // -TetherDemoNotify posts a sample SMS notification.
@@ -62,8 +68,22 @@ extension AppModel {
             else if args.contains("-TetherDemoThread") { Router.shared.open(thread: 1) }
             else if args.contains("-TetherDemoMessages") { Router.shared.tab = .messages }
             else if args.contains("-TetherDemoContacts") { Router.shared.tab = .contacts }
+            else if args.contains("-TetherDemoKeypad") { Router.shared.tab = .keypad }
             else if args.contains("-TetherDemoRecents") { Router.shared.tab = .recents }
-            else if args.contains("-TetherDemoPair") || args.contains("-TetherDemoPairManual") { Router.shared.tab = .link }
+            else if args.contains("-TetherDemoPair") || args.contains("-TetherDemoPairManual") || args.contains("-TetherDemoPhoneTools") { Router.shared.tab = .link }
+        }
+        // -TetherDemoOpen <url> opens a link as if another app had (tel:, tether://dial?number=…); with
+        // -TetherDemoOpenCancel the question is cancelled after 3 s, which leaves the number in the Keypad.
+        if let i = args.firstIndex(of: "-TetherDemoOpen"), i + 1 < args.count, let url = URL(string: args[i + 1]) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                Router.shared.open(url: url)
+                if args.contains("-TetherDemoOpenCancel") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        Router.shared.keypadNumber = Router.shared.dialRequest?.number
+                        Router.shared.dialRequest = nil
+                    }
+                }
+            }
         }
         if args.contains("-TetherDemoNotify") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -76,11 +96,21 @@ extension AppModel {
         net = NetState(data: true, hotspot: true, bt: false, vpn: true, share: true,
                        proxy: ShareProxyInfo(port: 8118, addrs: [.init(iface: "swlan0", ip: "10.123.181.251", kind: "hotspot",
                                                                       pac: "http://10.123.181.251:8118/proxy.pac")]))
+        if args.contains("-TetherDemoPhoneTools") {
+            ussdResult = UssdResult(ok: true, text: "Your balance is 12.40. Valid until 30 Dec.", err: nil)
+        }
         if args.contains("-TetherDemoCall") {
             let dialing = args.contains("-TetherDemoDialing")
             callScreen = CallScreen(uuid: UUID(), number: "+15550101", name: "Sara Ahmadi", state: dialing ? "dialing" : "active",
                                     incoming: !dialing, connectedAt: dialing ? nil : Date().addingTimeInterval(-42), sub: 3)
             showCallScreen = !args.contains("-TetherDemoBanner")
+            if args.contains("-TetherDemoRoutes") {   // the audio menu with a headset and a car (no Bluetooth in the simulator)
+                callScreen?.routes = AudioRoutes.options(inputs: [
+                    RoutePort(type: "BluetoothHFP", uid: "00:11:22:33:44:55-tsco", name: "Headset"),
+                    RoutePort(type: "CarAudio", uid: "00:11:22:33:44:66-car", name: "Car")])
+                callScreen?.route = .bluetooth
+                callScreen?.selectedRoute = "00:11:22:33:44:55-tsco"
+            }
         }
     }
 }

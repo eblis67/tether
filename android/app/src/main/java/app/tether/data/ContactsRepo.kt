@@ -72,21 +72,7 @@ class ContactsRepo(private val ctx: Context) {
         val emails = ArrayList<String>()
     }
 
-    private fun phoneType(t: Int) = when (t) {
-        Phone.TYPE_MOBILE -> "mobile"
-        Phone.TYPE_HOME -> "home"
-        Phone.TYPE_WORK, Phone.TYPE_WORK_MOBILE -> "work"
-        Phone.TYPE_MAIN -> "main"
-        else -> "other"
-    }
-
-    private fun typeCode(t: String) = when (t) {
-        "home" -> Phone.TYPE_HOME
-        "work" -> Phone.TYPE_WORK
-        "main" -> Phone.TYPE_MAIN
-        "other" -> Phone.TYPE_OTHER
-        else -> Phone.TYPE_MOBILE
-    }
+    private fun phoneType(t: Int) = PhoneLabels.typeName(t)
 
     /** Down-scaled JPEG (≤ 96 px), base64. */
     private fun thumbnail(uri: String): String? = try {
@@ -131,8 +117,10 @@ class ContactsRepo(private val ctx: Context) {
             .withValue(RawContacts.ACCOUNT_TYPE, null).withValue(RawContacts.ACCOUNT_NAME, null).build())
         ops.add(ContentProviderOperation.newInsert(Data.CONTENT_URI).withValueBackReference(Data.RAW_CONTACT_ID, 0)
             .withValue(Data.MIMETYPE, StructuredName.CONTENT_ITEM_TYPE).withValue(StructuredName.DISPLAY_NAME, name).build())
-        for (p in phones) ops.add(ContentProviderOperation.newInsert(Data.CONTENT_URI).withValueBackReference(Data.RAW_CONTACT_ID, 0)
-            .withValue(Data.MIMETYPE, Phone.CONTENT_ITEM_TYPE).withValue(Phone.NUMBER, p.n).withValue(Phone.TYPE, typeCode(p.type)).build())
+        for (p in phones) { val k = PhoneLabels.forNew(p.type, p.label)
+            ops.add(ContentProviderOperation.newInsert(Data.CONTENT_URI).withValueBackReference(Data.RAW_CONTACT_ID, 0)
+                .withValue(Data.MIMETYPE, Phone.CONTENT_ITEM_TYPE).withValue(Phone.NUMBER, p.n).withValue(Phone.TYPE, k.type)
+                .withValue(Phone.LABEL, k.label).build()) }
         for (e in emails) ops.add(ContentProviderOperation.newInsert(Data.CONTENT_URI).withValueBackReference(Data.RAW_CONTACT_ID, 0)
             .withValue(Data.MIMETYPE, Email.CONTENT_ITEM_TYPE).withValue(Email.ADDRESS, e).withValue(Email.TYPE, Email.TYPE_HOME).build())
         if (dryRun) return -ops.size.toLong()
@@ -166,26 +154,31 @@ class ContactsRepo(private val ctx: Context) {
             .withValue(Data.MIMETYPE, StructuredName.CONTENT_ITEM_TYPE).withValue(StructuredName.DISPLAY_NAME, name).build())
         // Phones and e-mails: touch only what changed. A row that stays keeps its raw contact (Google, phone…), its
         // type and its custom label; a removed one is deleted where it lives; a new one goes into the primary.
-        data class Row(val id: Long, val mime: String, val value: String, val type: Int)
+        data class Row(val id: Long, val mime: String, val value: String, val type: Int, val label: String?)
         val existing = ArrayList<Row>()
-        cr.query(Data.CONTENT_URI, arrayOf(Data._ID, Data.MIMETYPE, Data.DATA1, Data.DATA2), "$inRaws AND ${Data.MIMETYPE} IN (?, ?)",
+        cr.query(Data.CONTENT_URI, arrayOf(Data._ID, Data.MIMETYPE, Data.DATA1, Data.DATA2, Data.DATA3), "$inRaws AND ${Data.MIMETYPE} IN (?, ?)",
             arrayOf(Phone.CONTENT_ITEM_TYPE, Email.CONTENT_ITEM_TYPE), null)?.use { c ->
-            while (c.moveToNext()) existing.add(Row(c.getLong(0), c.getString(1) ?: "", c.getString(2) ?: "", c.getInt(3)))
+            while (c.moveToNext()) existing.add(Row(c.getLong(0), c.getString(1) ?: "", c.getString(2) ?: "", c.getInt(3), c.getString(4)))
         }
         val keep = HashSet<Long>()
         for (p in phones) {
             val match = existing.firstOrNull { it.mime == Phone.CONTENT_ITEM_TYPE && it.id !in keep && numberKey(it.value) == numberKey(p.n) && numberKey(p.n).isNotEmpty() }
             if (match != null) {
                 keep.add(match.id)
-                // Same number: update the text if it was retyped, and the type only when the user changed it.
+                // Same number: update the text if it was retyped, and the kind only when the user changed it
+                // (a custom label stays unless one is sent: PhoneLabels).
                 val v = android.content.ContentValues()
                 if (match.value != p.n) v.put(Phone.NUMBER, p.n)
-                if (phoneType(match.type) != p.type) { v.put(Phone.TYPE, typeCode(p.type)); v.putNull(Phone.LABEL) }
+                PhoneLabels.forExisting(match.type, match.label, p.type, p.label)?.let { k ->
+                    v.put(Phone.TYPE, k.type); if (k.label != null) v.put(Phone.LABEL, k.label) else v.putNull(Phone.LABEL)
+                }
                 if (v.size() > 0) ops.add(ContentProviderOperation.newUpdate(Data.CONTENT_URI)
                     .withSelection("${Data._ID} = ?", arrayOf(match.id.toString())).withValues(v).build())
             } else {
+                val k = PhoneLabels.forNew(p.type, p.label)
                 ops.add(ContentProviderOperation.newInsert(Data.CONTENT_URI).withValue(Data.RAW_CONTACT_ID, primary)
-                    .withValue(Data.MIMETYPE, Phone.CONTENT_ITEM_TYPE).withValue(Phone.NUMBER, p.n).withValue(Phone.TYPE, typeCode(p.type)).build())
+                    .withValue(Data.MIMETYPE, Phone.CONTENT_ITEM_TYPE).withValue(Phone.NUMBER, p.n).withValue(Phone.TYPE, k.type)
+                    .withValue(Phone.LABEL, k.label).build())
             }
         }
         for (e in emails) {

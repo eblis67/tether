@@ -9,9 +9,6 @@ import java.io.FileOutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.security.MessageDigest
-import java.util.concurrent.ArrayBlockingQueue
-import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
 /**
@@ -20,7 +17,7 @@ import kotlin.system.exitProcess
  *   CLASSPATH=$(pm path app.tether.android | cut -d: -f2) app_process / app.tether.helper.HelperMain <cmd>
  *
  * Commands: `serve <port> <token>` (talks to the app over 127.0.0.1), `probe`, `selftest`,
- * `record <method> <seconds> <file.pcm>`, `tone <method> <seconds>`.
+ * `record <method> <seconds> <file.pcm>`, `tone <method> <seconds>`, `silence [on|off]`.
  */
 object HelperMain {
     const val VERSION = 3   // 3: mutual challenge-response instead of a token on the wire
@@ -46,6 +43,10 @@ object HelperMain {
                         val k = kv.substringBefore('=')
                         println("$k -> '${ShellEnv.audioManager.getParameters(k)}'")
                     }
+                }
+                "silence" -> { // silence [on|off] : the phone's own call silencing (CallAudio.Silence) without a call, for testing
+                    println("silence mode: ${CallAudio.silence.name.lowercase()}")
+                    if (args.size >= 2) println(CallAudio.localCallAudio(args[1] == "on", JSONArray()))
                 }
                 "net" -> { // net [data|hotspot|bt on|off] : flip a network switch, then print the state
                     if (args.size >= 3 && args[1] == "datasub") println("data SIM ${args[2]}: ${Net.setDataSub(args[2].toInt()) ?: "ok"}")
@@ -97,7 +98,8 @@ object HelperMain {
      */
     class Server(private val port: Int, private val token: String) {
         @Volatile private lateinit var out: DataOutputStream
-        private val upQueue = ArrayBlockingQueue<ShortArray>(8)   // room for a BLE burst; the up thread trims the standing level
+        /** The iPhone's voice on its way to the inject track (see UplinkBuffer); a new one per call. */
+        @Volatile private var up = UplinkBuffer()
         @Volatile private var capture: Capture? = null
         @Volatile private var inject: Inject? = null
         @Volatile private var running = false
@@ -111,7 +113,7 @@ object HelperMain {
             val ss = ServerSocket().apply { reuseAddress = true; bind(java.net.InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 8) }
             ShellEnv.log("listening on 127.0.0.1:$port")
             // A helper that died mid-call would leave the phone muted for its next call: always start clean.
-            if (CallAudio.hasSamsungCallMute) CallAudio.localCallAudio(muted = false, errors = JSONArray())
+            CallAudio.restoreLocalCallAudio()
             // At most a few connections authenticating at once, each with one 2 s deadline for the whole exchange
             // (not per read). When all are taken the oldest is dropped, so a local app holding them open cannot lock
             // the real app out; it can only slow its connect a little.
@@ -148,27 +150,15 @@ object HelperMain {
             }
         }
 
-        private fun hmac(label: String, a: ByteArray, b: ByteArray): ByteArray =
-            javax.crypto.Mac.getInstance("HmacSHA256").run {
-                init(javax.crypto.spec.SecretKeySpec(token.toByteArray(), "HmacSHA256"))
-                update(label.toByteArray()); update(a); update(b); doFinal()
-            }
-
         /** Returns true when the app asked us to quit. */
         private fun session(s: Socket, authDone: () -> Unit): Boolean {
             val input = DataInputStream(s.getInputStream().buffered())
             val o = DataOutputStream(s.getOutputStream().buffered())
             s.soTimeout = 2000
             val ours = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
-            o.writeByte(F.CHALLENGE); o.writeInt(ours.size); o.write(ours); o.flush()
-            if (input.readUnsignedByte() != F.AUTH) return false
-            if (input.readInt() != 48) return false
-            val theirs = ByteArray(16).also { input.readFully(it) }
-            val mac = ByteArray(32).also { input.readFully(it) }
-            if (!MessageDigest.isEqual(mac, hmac("tether-helper app", ours, theirs))) { ShellEnv.log("bad proof"); return false }
-            val proof = hmac("tether-helper helper", theirs, ours)
+            val proof = HelperAuth.helperVerify(input, o, token, ours) ?: run { ShellEnv.log("bad proof"); return false }
             authDone()   // before PROOF: the deadline or an eviction must never close an authenticated connection
-            o.writeByte(F.PROOF); o.writeInt(proof.size); o.write(proof); o.flush()
+            HelperAuth.writeProof(o, proof)
             s.soTimeout = 0
             // Authenticated: this connection takes over (an older one is closed and stops nothing of ours).
             synchronized(this) { current?.let { old -> if (old !== s) runCatching { old.close() } }; current = s; stop() }
@@ -186,11 +176,9 @@ object HelperMain {
                     F.STOP -> stop()
                     F.UP -> {
                         val sh = ShortArray(len / 2) { (payload[2 * it].toInt() and 0xff or (payload[2 * it + 1].toInt() shl 8)).toShort() }
-                        // Jitter buffer: frames arrive in bursts (BLE connection events every 15–30 ms carry 0–2
-                        // frames). Hold up to 5 (100 ms) so a burst is not thrown away; the writer trims the standing
-                        // level back to one frame when it stays higher (see the up thread).
-                        // Full: drop the oldest frame (keeps the delay low), never silently the newest.
-                        while (!upQueue.offer(sh)) { upQueue.poll(); stats.upDropped++ }
+                        // Frames arrive in bursts (Bluetooth connection events carry 0-3, more after a hold-up): the
+                        // buffer keeps them and steers the delay ahead of each frame (queue + track) in quiet frames.
+                        up.push(sh, System.nanoTime(), inject?.pendingFrames() ?: 0)
                     }
                     F.PROBE -> { stop(); info(JSONObject().put("probe", CallAudio.probe())) }
                     F.SELFTEST -> { stop(); info(JSONObject().put("selftest", CallAudio.selfTest())) }
@@ -226,6 +214,7 @@ object HelperMain {
             val rate = cfg.optInt("rate", 16000)
             this.rate = rate
             val errors = JSONArray()
+            if (android.os.Build.VERSION.SDK_INT < CallAudio.MIN_SDK_AUDIO) errors.put("call audio is not available: it needs Android 11 or later")
             val capOrder = cfg.optString("capture", "auto").let { if (it == "auto") CallAudio.captureMethods else listOf(it) }
             val injOrder = cfg.optString("inject", "auto").let { if (it == "auto") CallAudio.injectMethods else listOf(it) }
             // Right at answer/dial the audio mode may still be NORMAL; the interception API refuses until
@@ -236,8 +225,10 @@ object HelperMain {
                     while (true) {
                         try { return f(m) } catch (t: Throwable) {
                             val msg = CallAudio.describe(t)
+                            // Polled often: every ms here delays both directions' first audio (the iPhone's first
+                            // words wait in the uplink meanwhile).
                             if (m == "intercept" && msg.contains("not available in mode") && System.currentTimeMillis() < deadline) {
-                                Thread.sleep(150); continue
+                                Thread.sleep(30); continue
                             }
                             errors.put("$kind:$m $msg"); break
                         }
@@ -246,84 +237,135 @@ object HelperMain {
                 return null
             }
             capture = open(capOrder, "capture") { CallAudio.openCapture(it, rate) }
-            inject = open(injOrder, "inject") { CallAudio.openInject(it, rate) }
+            val injectMs = cfg.optInt("injectMs", 40)
+            inject = open(injOrder, "inject") { CallAudio.openInject(it, rate, injectMs) }
+            up = UplinkBuffer(frame = rate / 50, rate = rate)
             running = true
             localMuted = true
-            upQueue.clear()
             // The call is bridged to the iPhone: silence the Android phone's own earpiece and microphone where the
-            // phone has a way to (Samsung; see CallAudio.localCallAudio). The downlink is still captured and the
+            // phone has a way to (per vendor; see CallAudio.Silence). The downlink is still captured and the
             // injected uplink still goes out.
-            val earpiece = CallAudio.localCallAudio(muted = true, errors = errors)
+            val local = CallAudio.localCallAudio(muted = true, errors = errors)
             stats.reset()
             capture?.let { c ->
                 threads.add(Thread({
                     audioPriority("down")
                     val buf = ShortArray(rate / 50)
                     val bytes = ByteArray(buf.size * 2)
-                    var over = 0
+                    // Standing delay guard: the smallest backlog over a 1 s window is delay that never drains (a slow
+                    // start, a GC pause); when it is over one frame, drop down to half a frame. The minimum, not the
+                    // instant value: some capture paths deliver in bursts of 100+ ms (remote submix on the test line),
+                    // and right after a burst the backlog is high without any lasting delay — trimming then threw away
+                    // far-end voice (1.3 s of a 6.5 s call, 2026-11-23). Only audio already buffered is discarded
+                    // (non-blocking reads), since the estimate comes from timestamps and can be wrong.
+                    var windowMin = Int.MAX_VALUE
+                    var windowReads = 0
                     while (running) {
                         val n = c.read(buf)
-                        if (n <= 0) { if (n < 0) break else continue }
-                        // Standing delay guard, every read: when more than one frame has stayed unread for 5 reads
-                        // (a slow start, a GC pause), drop down to one frame instead of staying late for good.
+                        if (n <= 0) { if (n < 0) break; Thread.sleep(2); continue }   // a stuck record: no busy spin
+                        stats.captureClock.mark(System.nanoTime(), c.capturedFrames())
                         val b = c.backlogFrames()
                         if (b >= 0) {
                             stats.backlog(b * 1000 / rate)
-                            if (b > rate / 50) { if (++over >= 5) { stats.capDropped += b - rate / 100; skip(c, b - rate / 100, buf.size); over = 0; continue } }
-                            else over = 0
+                            windowMin = minOf(windowMin, b)
+                            if (++windowReads >= 50) {
+                                if (windowMin > rate / 50) stats.trim(windowMin - rate / 100, c.drain(windowMin - rate / 100))
+                                windowMin = Int.MAX_VALUE; windowReads = 0
+                            }
                         }
                         for (i in 0 until n) { bytes[2 * i] = buf[i].toInt().toByte(); bytes[2 * i + 1] = (buf[i].toInt() shr 8).toByte() }
                         try { send(F.DOWN, bytes.copyOf(n * 2)) } catch (e: Exception) { break }
                     }
                 }, "down").apply { start() })
             }
+            // Tether's test line has no network behind it: on its VoIP path nothing reads the injected uplink, and an
+            // unread remote submix takes it ~10 % slower than real time (14.4 kHz for 16 kHz on the reference phone,
+            // 2026-11-23), which no real call does. Read it as the far end would, so test calls run at the call's clock.
+            val farEnd = cfg.optBoolean("testLine") && inject?.name == "intercept" && ShellEnv.audioManager.mode == android.media.AudioManager.MODE_IN_COMMUNICATION
+            // Opened on its own thread: start() does not wait for it.
+            if (farEnd) threads.add(Thread({
+                runCatching { CallAudio.openCapture("voice_communication", rate) }
+                    .onFailure { ShellEnv.log("test line far end: ${CallAudio.describe(it)}") }.getOrNull()?.let { far ->
+                        val b = ShortArray(rate / 50)
+                        while (running) { val n = far.read(b); if (n < 0) break; if (n == 0) Thread.sleep(2) }
+                        far.stop()
+                    }
+            }, "far-end").apply { start() })
             inject?.let { inj ->
                 threads.add(Thread({
                     // No silence padding: an underrunning AudioTrack plays silence by itself, while padded
-                    // silence would sit in the buffer and push every later frame back.
+                    // silence would sit in the buffer and push every later frame back. The buffer corrects the delay
+                    // in quiet frames instead (see UplinkBuffer).
                     audioPriority("up")
+                    val buf = up
                     var writes = 0
-                    var highSince = 0
                     while (running) {
-                        val s = upQueue.poll(100, TimeUnit.MILLISECONDS) ?: continue
-                        // Standing delay guard: if ≥ 2 frames have stayed queued for a second, drop one (20 ms).
-                        if (upQueue.size >= 2) { if (++highSince >= 50) { upQueue.poll(); stats.upTrimmed++; highSince = 0 } } else highSince = 0
+                        val s = buf.take(100) ?: continue
+                        if (s.isEmpty()) continue   // a quiet frame cut whole
                         try { inj.write(s) } catch (e: Exception) { break }
+                        stats.injectClock.mark(System.nanoTime(), inj.playedFrames())
                         if (++writes % 10 == 0) inj.queuedFrames().takeIf { it >= 0 }?.let { stats.queued(it * 1000 / rate) }
+                        if (writes == 50) stats.startUnderruns = inj.underruns()   // the first second: the path starting up
+                        if (writes >= 50) buf.noteUnderruns(inj.underruns())
                     }
                 }, "up").apply { start() })
             }
-            info(JSONObject().put("capture", capture?.name ?: JSONObject.NULL).put("inject", inject?.name ?: JSONObject.NULL)
-                .put("routed", inject?.routedTo() ?: JSONObject.NULL).put("earpiece", earpiece).put("errors", errors)
+            info(JSONObject().put("capture", capture?.name ?: JSONObject.NULL).put("inject", inject?.name ?: JSONObject.NULL).put("testLineFarEnd", farEnd)
+                .put("routed", inject?.routedTo() ?: JSONObject.NULL).put("earpiece", local.note).put("silent", local.silent)
+                .put("silence", CallAudio.silence.name.lowercase()).put("telecomMicMute", local.telecomMicMute).put("errors", errors)
                 .put("buffers", JSONObject().put("captureFrames", capture?.bufferFrames() ?: 0)
                     .put("injectFrames", inject?.bufferFrames() ?: 0).put("injectLatencyMs", inject?.latencyMs() ?: -1)))
-        }
-
-        /** Reads and discards [frames] of captured audio. */
-        private fun skip(c: Capture, frames: Int, chunk: Int) {
-            val b = ShortArray(chunk)
-            var left = frames
-            while (left > 0) { val n = c.read(if (left >= chunk) b else ShortArray(left)); if (n <= 0) break; left -= n }
         }
 
         /** Standing-delay figures for one call (sent with INFO every 5 s and at stop). */
         private class Stats {
             var backlogSum = 0L; var backlogN = 0; var backlogMax = 0
             var queuedSum = 0L; var queuedN = 0; var queuedMax = 0
-            @Volatile var capDropped = 0; @Volatile var upDropped = 0; @Volatile var upTrimmed = 0
-            fun reset() { backlogSum = 0; backlogN = 0; backlogMax = 0; queuedSum = 0; queuedN = 0; queuedMax = 0; capDropped = 0; upDropped = 0; upTrimmed = 0 }
+            @Volatile var capDropped = 0
+            /** Capture trims: how often the guard fired, and how often its estimate found nothing buffered to drop. */
+            var trims = 0; var trimMisses = 0
+            /** The capture's and the track's sample clocks against the monotonic clock (a real call: the modem's). */
+            val captureClock = ClockRate(); val injectClock = ClockRate()
+            @Volatile var startUnderruns = -1
+            fun reset() { backlogSum = 0; backlogN = 0; backlogMax = 0; queuedSum = 0; queuedN = 0; queuedMax = 0; capDropped = 0; trims = 0; trimMisses = 0; captureClock.reset(); injectClock.reset(); startUnderruns = -1 }
+            fun trim(estimated: Int, dropped: Int) {
+                trims++; capDropped += dropped
+                if (dropped * 2 < estimated) trimMisses++
+            }
             fun backlog(ms: Int) { backlogSum += ms; backlogN++; backlogMax = maxOf(backlogMax, ms) }
             fun queued(ms: Int) { queuedSum += ms; queuedN++; queuedMax = maxOf(queuedMax, ms) }
-            fun json(rate: Int): JSONObject = JSONObject()
-                .put("captureBacklogMs", if (backlogN > 0) backlogSum / backlogN else -1).put("captureBacklogMaxMs", backlogMax)
-                .put("injectQueuedMs", if (queuedN > 0) queuedSum / queuedN else -1).put("injectQueuedMaxMs", queuedMax)
-                .put("captureDroppedMs", capDropped * 1000L / rate).put("uplinkDroppedFrames", upDropped).put("uplinkTrimmedFrames", upTrimmed)
+            fun json(rate: Int, up: UplinkBuffer): JSONObject {
+                val ms = { samples: Int -> samples * 1000 / rate }
+                return JSONObject()
+                    .put("captureBacklogMs", if (backlogN > 0) backlogSum / backlogN else -1).put("captureBacklogMaxMs", backlogMax)
+                    .put("injectQueuedMs", if (queuedN > 0) queuedSum / queuedN else -1).put("injectQueuedMaxMs", queuedMax)
+                    .put("captureDroppedMs", capDropped * 1000L / rate).put("captureTrims", trims).put("captureTrimMisses", trimMisses)
+                    // Uplink: frames lost to a full buffer (voice), and what the delay steering did (quiet frames cut /
+                    // repeated, speech sped up / slowed down), the delay ahead of an arriving frame and its target.
+                    .put("uplinkFrames", up.arrived).put("uplinkDroppedFrames", up.overflowFrames)
+                    .put("uplinkQuietCutMs", ms(up.quietCut)).put("uplinkQuietAddedMs", ms(up.inserted))
+                    .put("uplinkSpedUpMs", ms(up.compressed)).put("uplinkSlowedMs", ms(up.stretched))
+                    .put("uplinkAheadMs", ms(up.levelAvg)).put("uplinkAheadMaxMs", ms(up.levelMax)).put("uplinkTargetMs", ms(up.target)).put("uplinkSinkExtraMs", ms(up.sinkExtra))
+                    .put("captureClockHz", captureClock.hz()).put("injectClockHz", injectClock.hz()).put("injectUnderrunsFirstSecond", startUnderruns)
+            }
+        }
+        /** Samples per second of a sample clock, from its first and latest position after a short settling time. */
+        class ClockRate {
+            private var n = 0; private var t0 = 0L; private var f0 = 0L; private var t1 = 0L; private var f1 = 0L
+            fun reset() { n = 0 }
+            fun mark(nowNs: Long, frames: Long) {
+                if (frames < 0) return
+                if (++n == 25) { t0 = nowNs; f0 = frames } else if (n > 25) { t1 = nowNs; f1 = frames }
+            }
+            /** Rounded to 0.1 Hz; -1 until ~1 s was seen. */
+            fun hz(): Double = if (n > 75 && t1 > t0) Math.round((f1 - f0) * 1e10 / (t1 - t0)) / 10.0 else -1.0
         }
         private val stats = Stats()
         @Volatile private var rate = 16000
 
         private fun stop() {
-            if (running) info(JSONObject().put("stats", stats.json(rate)))
+            if (running) info(JSONObject().put("stats", stats.json(rate, up).put("injectUnderruns", inject?.underruns() ?: -1)
+                .put("injectBufferFrames", inject?.bufferFrames() ?: -1)))
             running = false
             threads.forEach { it.join(500) }
             threads.clear()

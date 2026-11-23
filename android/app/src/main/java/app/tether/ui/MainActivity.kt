@@ -23,9 +23,11 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import app.tether.R
 import app.tether.TetherApp
 import app.tether.adb.Adb
+import app.tether.adb.ConnectOrder
 import app.tether.link.LinkService
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -39,13 +41,15 @@ class MainActivity : Activity() {
     private var qrBitmap: Bitmap? = null
     private val listener: () -> Unit = { main.post { render() } }
 
-    private val perms = arrayOf(
-        Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.POST_NOTIFICATIONS,
+    /** Runtime permissions this Android version knows: Bluetooth ones from 12, notifications from 13. */
+    private val perms = (
+        (if (android.os.Build.VERSION.SDK_INT >= 31) listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE) else emptyList()) +
+        (if (android.os.Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()) + listOf(
         Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS, Manifest.permission.SEND_SMS,
         Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS, Manifest.permission.READ_CALL_LOG,
         Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS, Manifest.permission.CALL_PHONE,
         Manifest.permission.ANSWER_PHONE_CALLS,
-    )
+    )).toTypedArray()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -148,11 +152,23 @@ class MainActivity : Activity() {
             runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
         })
 
+        // Legacy TCP adb: opt-in, for Android 10 (no Wireless debugging) or a phone without a trusted Wi-Fi network.
+        val tcpOn = app.prefs.getBoolean(Adb.PREF_LEGACY, false)
+        val tcpPort = app.prefs.getInt(Adb.PREF_LEGACY_PORT, ConnectOrder.DEFAULT_LEGACY_PORT)
+        setup.addView(step(getString(R.string.step_adb_tcp), tcpOn && Adb.hasSecureSettings(this), getString(R.string.action_enable),
+            if (tcpOn) getString(R.string.adb_tcp_on, tcpPort) else getString(R.string.adb_tcp_off)) { enableTcpAdb(tcpPort) })
+        if (tcpOn) setup.addView(button(getString(R.string.action_turn_off), secondary = true) {
+            app.prefs.edit().putBoolean(Adb.PREF_LEGACY, false).apply(); Adb.reset(); render()
+        })
+
         // Audio
         val audio = card(getString(R.string.section_audio))
-        // Call audio needs the call-audio interception API (Android 13+) and a build that grants it to the shell.
-        if (android.os.Build.VERSION.SDK_INT < 33) audio.addView(label(getString(R.string.audio_needs_android13), R.color.warn, 13f))
-        else if (!android.os.Build.MANUFACTURER.equals("samsung", ignoreCase = true)) audio.addView(label(getString(R.string.audio_local_stays_on), R.color.muted, 13f))
+        // Call audio: interception API on Android 13+, voice-call capture on 11-12, nothing on 10.
+        when (app.hub.helper.audioLevel()) {
+            "unavailable" -> audio.addView(label(getString(R.string.audio_needs_android11), R.color.warn, 13f))
+            "fallback" -> audio.addView(label(getString(R.string.audio_android11_12), R.color.muted, 13f))
+        }
+        if (app.hub.helper.audioLevel() != "unavailable" && !android.os.Build.MANUFACTURER.equals("samsung", ignoreCase = true)) audio.addView(label(getString(R.string.audio_local_stays_on), R.color.muted, 13f))
         val h = app.hub.helper.state()
         val running = h.optString("state") == "running"
         audio.addView(step(getString(R.string.step_helper), running, getString(R.string.action_start),
@@ -169,6 +185,29 @@ class MainActivity : Activity() {
         audio.addView(button(getString(R.string.action_selftest), secondary = true) {
             Thread { app.hub.selftest() }.start()
         })
+    }
+
+    /** Explains the steps, then (on Enable) connects to adbd's TCP mode, grants what the app needs and starts the helper. */
+    private fun enableTcpAdb(port: Int) {
+        AlertDialog.Builder(this).setMessage(getString(R.string.adb_tcp_howto))
+            .setPositiveButton(R.string.action_enable) { _, _ ->
+                app.prefs.edit().putBoolean(Adb.PREF_LEGACY, true).apply()
+                Toast.makeText(this, R.string.adb_tcp_connecting, Toast.LENGTH_SHORT).show()
+                Thread {
+                    Adb.reset()
+                    val ok = try { Adb.get(this).ensureConnected() } catch (_: Throwable) { false }
+                    if (ok) {
+                        runCatching { Adb.bootstrap(this) }
+                        app.prefs.edit().putBoolean("adb_paired", true).apply()
+                        app.hub.helper.ensureRunning(); app.hub.refresh()
+                    }
+                    main.post {
+                        Toast.makeText(this, if (ok) getString(R.string.adb_tcp_connected) else getString(R.string.adb_tcp_failed, port), Toast.LENGTH_LONG).show()
+                        render()
+                    }
+                }.start()
+            }
+            .setNegativeButton(android.R.string.cancel, null).show()
     }
 
     private fun showQr() {

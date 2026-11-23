@@ -69,6 +69,7 @@ object ShellEnv {
     private class ShellContext(base: Context) : ContextWrapper(base) {
         override fun getPackageName() = SHELL_PACKAGE
         override fun getOpPackageName() = SHELL_PACKAGE
+        @SuppressLint("NewApi") // only called by Android 12+, which has the method
         override fun getAttributionSource(): AttributionSource =
             AttributionSource.Builder(2000).setPackageName(SHELL_PACKAGE).build()
         override fun getApplicationContext(): Context = this

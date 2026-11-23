@@ -26,6 +26,13 @@ class HelperBridge(private val ctx: Context) {
         const val NET = 11; const val CHALLENGE = 12; const val PROOF = 14
         /** Largest frame we accept from the helper (a 20 ms PCM frame is 640 bytes; JSON infos are small). */
         const val MAX_FRAME = 1 shl 20
+
+        /** Call-audio level by Android version, see [audioLevel]. */
+        fun audioLevelFor(sdk: Int) = when {
+            sdk >= 33 -> "full"
+            sdk >= 30 -> "fallback"
+            else -> "unavailable"
+        }
     }
 
     private val prefs = ctx.getSharedPreferences("helper", Context.MODE_PRIVATE)
@@ -39,12 +46,6 @@ class HelperBridge(private val ctx: Context) {
 
     private fun newToken(): String = ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
         .also { prefs.edit().putString("token", it).apply() }
-
-    private fun hmac(label: String, a: ByteArray, b: ByteArray): ByteArray =
-        javax.crypto.Mac.getInstance("HmacSHA256").run {
-            init(javax.crypto.spec.SecretKeySpec(token.toByteArray(), "HmacSHA256"))
-            update(label.toByteArray()); update(a); update(b); doFinal()
-        }
 
     @Volatile private var sock: Socket? = null
     @Volatile private var out: DataOutputStream? = null
@@ -74,13 +75,8 @@ class HelperBridge(private val ctx: Context) {
             val o = DataOutputStream(s.getOutputStream().buffered())
             // Whoever listens must first send a challenge and then prove it knows the token: nothing is sent to an
             // impostor that took the port, and the token never goes on the wire.
-            if (input.readUnsignedByte() != CHALLENGE || input.readInt() != 16) { s.close(); return false }
-            val theirs = ByteArray(16).also { input.readFully(it) }
             val ours = ByteArray(16).also { SecureRandom().nextBytes(it) }
-            o.writeByte(AUTH); o.writeInt(48); o.write(ours); o.write(hmac("tether-helper app", theirs, ours)); o.flush()
-            if (input.readUnsignedByte() != PROOF || input.readInt() != 32) { s.close(); return false }
-            val proof = ByteArray(32).also { input.readFully(it) }
-            if (!java.security.MessageDigest.isEqual(proof, hmac("tether-helper helper", ours, theirs))) {
+            if (!app.tether.helper.HelperAuth.appAuthenticate(input, o, token, ours)) {
                 Log.w(TAG, "the listener on the helper port could not prove itself: not using it"); s.close(); return false
             }
             s.soTimeout = 0
@@ -152,8 +148,10 @@ class HelperBridge(private val ctx: Context) {
         }
     }
 
-    fun start(rate: Int, capture: String = "auto", inject: String = "auto") =
-        send(START, JSONObject().put("rate", rate).put("capture", capture).put("inject", inject).toString().toByteArray())
+    /** [testLine]: the call is Tether's own test line (no network behind it): the helper plays the far end's listener. */
+    fun start(rate: Int, capture: String = "auto", inject: String = "auto", injectMs: Int = 40, testLine: Boolean = false) =
+        send(START, JSONObject().put("rate", rate).put("capture", capture).put("inject", inject).put("injectMs", injectMs)
+            .put("testLine", testLine).toString().toByteArray())
 
     fun stop() = send(STOP)
 
@@ -296,5 +294,10 @@ class HelperBridge(private val ctx: Context) {
             .apply { info?.optString("inject")?.takeIf { it.isNotEmpty() && it != "null" }?.let { put("method", it) } }
             .put("up", info?.optString("inject")?.let { it.isNotEmpty() && it != "null" } ?: false)
             .put("down", info?.optString("capture")?.let { it.isNotEmpty() && it != "null" } ?: false)
+            .put("audio", audioLevel())
+            .apply { info?.optString("silent")?.takeIf { it.isNotEmpty() }?.let { put("silent", it) } }
     }
+
+    /** "full" on Android 13+ (interception API), "fallback" on 11-12 (voice-call capture, incall-music inject), "unavailable" on 10. */
+    fun audioLevel(): String = audioLevelFor(android.os.Build.VERSION.SDK_INT)
 }

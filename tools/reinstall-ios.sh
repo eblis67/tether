@@ -74,7 +74,16 @@ BUNDLE=$(cd "$ROOT/ios" && xcodebuild -project Tether.xcodeproj -scheme Tether -
   | awk -F' = ' '/ PRODUCT_BUNDLE_IDENTIFIER = / { print $2; exit }')
 left=-999
 [[ -f "$APP/embedded.mobileprovision" ]] && left=$(days_left "$APP/embedded.mobileprovision")
-log "installed build's profile has $left day(s) left"
+# No previous build (its folder was cleaned up): judge by this app's newest saved profile instead of renewing,
+# since renewing needs the Apple account in Xcode and the saved profile usually still has days left.
+if [[ ! -f "$APP/embedded.mobileprovision" ]]; then
+  for p in "$PROFILES"/*.mobileprovision(N); do
+    appid=$(security cms -D -i "$p" 2>/dev/null | plutil -extract Entitlements.application-identifier raw - 2>/dev/null)
+    [[ -n "$BUNDLE" && "$appid" == *".$BUNDLE" ]] || continue
+    d=$(days_left "$p"); (( d > left )) && left=$d
+  done
+fi
+log "this app's signing profile has $left day(s) left"
 moved=()
 if (( force || left < RENEW_WHEN_DAYS_LEFT )); then
   mkdir -p "$PROFILES/old"
@@ -87,14 +96,15 @@ if (( force || left < RENEW_WHEN_DAYS_LEFT )); then
 fi
 restore_profiles() { for p in $moved; do [[ -f "$PROFILES/old/$p" ]] && mv "$PROFILES/old/$p" "$PROFILES/"; done; }
 
-# 3. Build and sign. First with the Communication Notifications entitlement (sender's picture in message
-#    notifications); a free Apple account cannot have it, so the build is repeated without it.
+# 3. Build and sign. First with the paid-team entitlements in Tether.entitlements (Communication Notifications:
+#    sender's picture in message notifications; Default Calling App: tel: links open this app); a free Apple account
+#    can have neither, so the build is repeated without them.
 build() {   # $1 = comm | plain
   local -a extra
   [[ "$1" == comm ]] && extra=(TETHER_ENTITLEMENTS=Tether/Resources/Tether.entitlements TETHER_COMM_NOTIFICATIONS=YES)
   [[ "$1" == plain ]] && extra=(TETHER_ENTITLEMENTS= TETHER_COMM_NOTIFICATIONS=NO)
   out=$(cd "$ROOT/ios" && xcodebuild -project Tether.xcodeproj -scheme Tether -configuration Debug \
-    -destination "id=$DEVICE" -destination-timeout 60 -derivedDataPath build -allowProvisioningUpdates \
+    -destination "id=$DEVICE" -destination-timeout 60 -derivedDataPath build -allowProvisioningUpdates -skipMacroValidation \
     "${extra[@]}" build 2>&1)
   [[ "$out" == *"BUILD SUCCEEDED"* ]]
 }
@@ -104,7 +114,7 @@ variant=comm
 if ! build comm; then
   print -r -- "$out" | grep -E "error:|403|Unable to log in" | head -8 >> "$LOG"
   if network_refused; then restore_profiles; fail "Apple's signing service could not be reached or refused the request (network or account)."; fi
-  log "build with the Communication Notifications entitlement failed: building without it"
+  log "build with the paid-team entitlements (notifications, default calling app) failed: building without them"
   variant=plain
   if ! build plain; then
     print -r -- "$out" | grep -E "error:|403|Unable to log in" | head -8 >> "$LOG"
@@ -123,9 +133,9 @@ left=$(days_left "$APP/embedded.mobileprovision")
 print -r -- "$(date +%F)" > "$STAMP"
 print -r -- "$variant" > "$STAMP.variant"
 if [[ "$variant" == comm ]]; then
-  summary="Installed with sender pictures in notifications. Valid $left day(s)."
+  summary="Installed with sender pictures in notifications and as a possible default calling app. Valid $left day(s)."
 else
-  summary="Installed without sender pictures in notifications (needs a paid Apple developer account). Valid $left day(s)."
+  summary="Installed without sender pictures in notifications or the default calling app (both need a paid Apple developer account). Valid $left day(s)."
 fi
 log "OK: $summary"
 print -r -- "$summary"

@@ -1,3 +1,5 @@
+// The CoreBluetooth central exists on Apple platforms only; everything else in TetherCore builds everywhere.
+#if canImport(CoreBluetooth)
 import CoreBluetooth
 import CryptoKit
 import Foundation
@@ -54,7 +56,9 @@ public final class TetherLink: NSObject {
     private var handshake: CentralHandshake?
     private var session: SecureSession?
     private var keys: SessionKeys?
-    private var nextId = 1
+    /// Request ids, taken from any thread without waiting for the link queue (`send` is called from the main thread,
+    /// and a `queue.sync` there waited behind whatever the link queue was doing, e.g. a big sync page).
+    private let ids = RequestIds()
     private var keepalive: DispatchSourceTimer?
     private var l2capTimer: DispatchWorkItem?
     private var audioBacklog = 0
@@ -63,7 +67,10 @@ public final class TetherLink: NSObject {
     /// Measures the round trip now (call start), without waiting for the 25 s keep-alive.
     public func measureRoundTrip() { queue.async { if self.session != nil { self.sendNow(MsgType.ping, PingBody(ts: Int64(Date().timeIntervalSince1970 * 1000))) } } }
 
-    /// - Parameter restoreID: CoreBluetooth state-restoration identifier (iOS background relaunch).
+    /// - Parameters:
+    ///   - store: Where the link keeps its identity and the paired phone.
+    ///   - restoreID: CoreBluetooth state-restoration identifier (iOS background relaunch).
+    ///   - queue: The queue all link work and every delegate call runs on.
     public init(store: IdentityStore, restoreID: String? = nil, queue: DispatchQueue = DispatchQueue(label: "tether.link")) {
         self.store = store
         self.queue = queue
@@ -106,11 +113,12 @@ public final class TetherLink: NSObject {
         }
     }
 
-    /// Sends a control message; returns the request id (use it to match `re` in replies).
+    /// Sends a control message; returns the request id (use it to match `re` in replies). `re`: this answers the
+    /// Android phone's request with that id (extensions, protocol §7).
     @discardableResult
-    public func send<B: Encodable>(_ type: String, _ body: B, expectReply: Bool = false) -> Int {
-        let id = queue.sync { () -> Int in nextId += 1; return nextId }
-        queue.async { self.sendNow(type, body, id: expectReply ? id : nil) }
+    public func send<B: Encodable>(_ type: String, _ body: B, expectReply: Bool = false, re: Int? = nil) -> Int {
+        let id = ids.next()
+        queue.async { self.sendNow(type, body, id: expectReply ? id : nil, re: re) }
         return id
     }
 
@@ -277,8 +285,9 @@ public final class TetherLink: NSObject {
     /// next wake-up). After repeated failures a short timer adds a pause before the next attempt.
     private func reconnectSoon() {
         let now = Date()
-        failures = failures.filter { now.timeIntervalSince($0) < 60 } + [now]
-        if failures.count <= 3 {
+        let step = ReconnectPolicy.next(failures: failures, now: now)
+        failures = step.failures
+        if case .atOnce = step.action {
             if let id = store.peripheralID, central.state == .poweredOn, isPaired,
                let p = central.retrievePeripherals(withIdentifiers: [id]).first {
                 log("reconnecting at once")
@@ -289,7 +298,7 @@ public final class TetherLink: NSObject {
             // Backing off: no pending connect, but a scan, which iOS keeps running while we are suspended and
             // which wakes us when the Android phone advertises (a timer alone would not run until the app is opened).
             if central.state == .poweredOn, isPaired { central.scanForPeripherals(withServices: [TetherUUID.service], options: nil) }
-            scheduleRetry(after: Double(min(30, 2 * failures.count)))
+            if case .backOff(let seconds) = step.action { scheduleRetry(after: seconds) }
         }
     }
 
@@ -653,3 +662,5 @@ extension TetherLink: StreamDelegate {
         }
     }
 }
+
+#endif

@@ -10,16 +10,26 @@ val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
+// One version for every app: the VERSION file at the repository root (tools/release.sh writes it). versionCode grows
+// with every release: major*1000000 + minor*10000 + patch*100 + 99, a pre-release (1.2.0-rc.3) takes its number
+// (03) in place of 99 so it sorts before the release.
+val tetherVersion = rootProject.file("../VERSION").readText().trim()
+val tetherVersionCode = Regex("""(\d+)\.(\d+)\.(\d+)(?:-[A-Za-z]+\.?(\d+)?)?""").matchEntire(tetherVersion)
+    ?.destructured?.let { (ma, mi, pa, pre) ->
+        ma.toInt() * 1_000_000 + mi.toInt() * 10_000 + pa.toInt() * 100 +
+            (if (tetherVersion.contains('-')) (pre.toIntOrNull() ?: 0).coerceAtMost(98) else 99)
+    } ?: error("VERSION must look like 1.2.3 or 1.2.3-rc.1, not '$tetherVersion'")
+
 android {
     namespace = "app.tether"
     compileSdk = 36
 
     defaultConfig {
         applicationId = "app.tether.android"
-        minSdk = 31
+        minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = tetherVersionCode
+        versionName = tetherVersion
     }
 
     signingConfigs {
@@ -47,7 +57,10 @@ android {
         resources.excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/DEPENDENCIES")
     }
     testOptions { unitTests.isReturnDefaultValues = true }
-    lint { abortOnError = false }
+    lint {
+        abortOnError = false
+        error += "NewApi"
+    }
     sourceSets["test"].resources.srcDir("../../protocol")
 }
 
@@ -55,7 +68,7 @@ kotlin { jvmToolchain(17) }
 
 dependencies {
     implementation(project(":helper"))
-    implementation("io.github.jaredmdobson:concentus:1.0.2") // pure-Java libopus port: synchronous, full encoder control
+    implementation(project(":core")) { exclude(group = "org.json") } // protocol and codecs, shared with the Android client
     implementation("com.google.zxing:core:3.5.4")
     implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
     implementation("org.conscrypt:conscrypt-android:2.5.3")

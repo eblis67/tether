@@ -1,13 +1,16 @@
+import Perception
 import SwiftUI
 import TetherCore
 
 struct RootView: View {
-    @Environment(AppModel.self) private var model
-    @Environment(Router.self) private var router
+    @Environment(\.appModel) private var model
+    @Environment(\.router) private var router
 
-    var body: some View {
-        @Bindable var router = router
-        @Bindable var model = model
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
+        @Perception.Bindable var router = router
+        @Perception.Bindable var model = model
         VStack(spacing: 0) {
             ReturnToCallBanner()
             RemoteCallBanner()
@@ -53,12 +56,25 @@ struct RootView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .alert(item: $router.dialRequest) { req in
+            let linked = model.linkState.isConnected
+            let who = model.name(for: req.number)
+            return Alert(
+                title: Text("Call \(who ?? model.formatted(req.number))?"),
+                message: Text(linked
+                    ? (who == nil ? "The call goes through your Android phone." : "\(model.formatted(req.number)) · through your Android phone.")
+                    : "The Android phone is not connected. Keep it nearby and open the Link tab, then call from the Keypad."),
+                primaryButton: .default(Text(linked ? "Call" : "Show in Keypad")) {
+                    if linked { model.dial(req.number, sub: nil) } else { router.keypadNumber = req.number }
+                },
+                secondaryButton: .cancel { router.keypadNumber = req.number })
+        }
         .animation(.default, value: model.lastError)
         .animation(.default, value: model.notice)
         .fullScreenCover(isPresented: Binding(get: { model.showCallScreen && model.callScreen != nil },
                                               set: { model.showCallScreen = $0 })) {
             // Presented content does not always inherit environment objects: pass them explicitly.
-            InCallView().environment(AppModel.shared).environment(Router.shared)
+            InCallView().environment(\.appModel, AppModel.shared).environment(\.router, Router.shared)
         }
         .preferredColorScheme(.dark)
         .tint(Color("AccentColor"))
@@ -70,9 +86,11 @@ struct RootView: View {
 
 /// A call whose audio is on the other device (answered or dialed there): one tap moves it here.
 struct RemoteCallBanner: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         ForEach(model.remoteCalls, id: \.cid) { c in
             HStack(spacing: 8) {
                 Image(systemName: "arrow.left.arrow.right")
@@ -99,9 +117,11 @@ struct RemoteCallBanner: View {
 
 /// Thin strip at the top: link state, battery and carrier of the Android phone.
 struct StatusStrip: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         HStack(spacing: 10) {
             Circle().fill(dotColor).frame(width: 8, height: 8)
             Text(stateText).font(.caption.weight(.semibold))
@@ -217,10 +237,12 @@ struct Avatar: View {
 
 /// SIM choice for a call or a conversation.
 struct SimPicker: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     @Binding var sub: Int?
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         if model.sims.count > 1 {
             Menu {
                 ForEach(model.sims) { sim in

@@ -1,4 +1,8 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
 import Testing
 @testable import TetherCore
@@ -168,6 +172,12 @@ private func hex(_ v: Any?) -> Data { Data(hex: v as! String)! }
         let json = #"{"t":"call.state","b":{"cid":"c1","num":"123","state":"ringing","dir":"in","hold":false,"extra":1}}"#
         let c = try Control.body(CallInfo.self, from: Data(json.utf8))
         #expect(c.cid == "c1" && c.state == "ringing" && c.name == nil)
+    }
+
+    @Test func audioStatsFromAndroid() throws {
+        let json = #"{"t":"audio.stats","b":{"summary":"down 250 frames","helper":{"captureDroppedMs":72}}}"#
+        #expect(try Control.header(Data(json.utf8)).t == MsgType.audioStats)
+        #expect(try Control.body(AudioStats.self, from: Data(json.utf8)).summary == "down 250 frames")
     }
 
     @Test func audioFrame() {

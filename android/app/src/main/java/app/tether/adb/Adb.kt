@@ -68,15 +68,32 @@ class Adb private constructor(private val ctx: Context) : AbsAdbConnectionManage
 
     /** Pairs with the 6-digit code shown in Settings › Wireless debugging › Pair device with pairing code. */
     fun pairWithCode(code: String): Boolean {
-        val (host, port) = discover(AdbMdns.SERVICE_TYPE_TLS_PAIRING, 15)
+        val (host, port) = findPairingService()
             ?: throw IllegalStateException("pairing service not found; keep the pairing dialog open")
-        Log.i(TAG, "pairing with $host:$port")
+        if (!pairAt(host, port, code)) throw IllegalStateException("wrong or expired pairing code")
+        return true
+    }
+
+    /** The pairing service Settings announces while "Pair device with pairing code" is open (mDNS, up to 15 s). */
+    fun findPairingService(): Pair<String, Int>? = discover(AdbMdns.SERVICE_TYPE_TLS_PAIRING, 15)
+
+    /** False when adbd refused the code (wrong, or the dialog was closed and it expired). */
+    fun pairAt(host: String, port: Int, code: String): Boolean {
+        Log.i(TAG, "pairing with the pairing service on port $port")
         return pair(host, port, code.trim())
     }
 
     @Synchronized fun ensureConnected(): Boolean {
         if (isConnected) return true
-        return autoConnect(ctx, 10_000)
+        val prefs = (ctx as? TetherApp)?.prefs
+        val legacy = prefs?.getBoolean(PREF_LEGACY, false) ?: false
+        val port = prefs?.getInt(PREF_LEGACY_PORT, ConnectOrder.DEFAULT_LEGACY_PORT) ?: ConnectOrder.DEFAULT_LEGACY_PORT
+        val how = connectInOrder(object : AdbEndpoints {
+            override fun connectTls() = autoConnect(ctx, 10_000)
+            override fun connectLegacy(port: Int) = connect("127.0.0.1", port)
+        }, ConnectOrder.tlsSupported(Build.VERSION.SDK_INT), legacy, port) { Log.i(TAG, it) }
+        if (how == "legacy") Log.i(TAG, "adb connected over TCP mode on port $port")
+        return how != null
     }
 
     /** Runs a shell command and returns its output (stdout + stderr). */
@@ -110,6 +127,9 @@ class Adb private constructor(private val ctx: Context) : AbsAdbConnectionManage
 
     companion object {
         const val TAG = "Tether"
+        /** Opt-in legacy TCP adb (`adb tcpip`): the setting and its port (default 5555). */
+        const val PREF_LEGACY = "adb_legacy"
+        const val PREF_LEGACY_PORT = "adb_legacy_port"
         @Volatile private var instance: Adb? = null
         fun get(ctx: Context): Adb = instance ?: synchronized(this) {
             instance ?: Adb(ctx.applicationContext).also { instance = it }
@@ -138,8 +158,9 @@ class Adb private constructor(private val ctx: Context) : AbsAdbConnectionManage
             val sb = StringBuilder()
             sb.append(adb.shell("pm grant $pkg android.permission.WRITE_SECURE_SETTINGS 2>&1"))
             for (p in listOf("READ_SMS", "RECEIVE_SMS", "SEND_SMS", "READ_CONTACTS", "WRITE_CONTACTS", "READ_CALL_LOG", "WRITE_CALL_LOG",
-                "READ_PHONE_STATE", "READ_PHONE_NUMBERS", "CALL_PHONE", "ANSWER_PHONE_CALLS", "BLUETOOTH_CONNECT",
-                "BLUETOOTH_ADVERTISE", "POST_NOTIFICATIONS")) {
+                "READ_PHONE_STATE", "READ_PHONE_NUMBERS", "CALL_PHONE", "ANSWER_PHONE_CALLS") +
+                (if (Build.VERSION.SDK_INT >= 31) listOf("BLUETOOTH_CONNECT", "BLUETOOTH_ADVERTISE") else emptyList()) +
+                (if (Build.VERSION.SDK_INT >= 33) listOf("POST_NOTIFICATIONS") else emptyList())) {
                 sb.append(adb.shell("pm grant $pkg android.permission.$p 2>&1"))
             }
             sb.append(adb.shell("cmd deviceidle whitelist +$pkg 2>&1"))
@@ -188,27 +209,13 @@ class Adb private constructor(private val ctx: Context) : AbsAdbConnectionManage
     }
 }
 
+/** The notification's code field. Only checks the code and hands the work to [AdbPairing] (never blocks the broadcast). */
 class AdbPairingReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val code = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(Adb.KEY_CODE)?.toString()?.filter { it.isDigit() }
-        if (code.isNullOrEmpty()) return
-        val app = context.applicationContext as TetherApp
-        Adb.updateNotification(context, context.getString(R.string.adb_pairing), false)
-        val pending = goAsync()
-        Thread {
-            try {
-                Adb.get(context).pairWithCode(code)
-                app.prefs.edit().putBoolean("adb_paired", true).apply()
-                Adb.bootstrap(context)
-                Adb.updateNotification(context, context.getString(R.string.adb_paired), true)
-                app.hub.helper.ensureRunning()
-                app.hub.refresh()
-            } catch (t: Throwable) {
-                Log.w(Adb.TAG, "pairing failed", t)
-                Adb.updateNotification(context, context.getString(R.string.adb_failed, t.message ?: t.javaClass.simpleName), false)
-            } finally {
-                pending.finish()
-            }
-        }.start()
+        val typed = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(Adb.KEY_CODE)?.toString()
+        val code = AdbPairing.normalizeCode(typed)
+        // Always answer the reply: a notification that is not posted again keeps its spinner forever.
+        if (code == null) { AdbPairing.show(context, AdbPairing.Result.BAD_CODE, null); return }
+        AdbPairing.start(context, code)
     }
 }

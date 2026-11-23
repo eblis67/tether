@@ -1,5 +1,5 @@
 import Foundation
-import Observation
+import Perception
 import TetherCore
 
 struct Conversation: Identifiable, Hashable {
@@ -16,6 +16,19 @@ struct SyncBodyV1: Encodable {
     var contacts: String
     var codecs: [String]
     var client: ClientHello
+    /// The extensions this app speaks (protocol §7.2); left out when there are none.
+    var caps: [String]?
+}
+
+/// The link as the extensions see it. AppModel keeps `isUp`, `transport` and `inCall` current (main thread).
+final class LinkExtensionPort: ExtensionPort {
+    let link: TetherLink
+    var isUp = false, transport = "none", inCall = false
+    init(link: TetherLink) { self.link = link }
+    func send(_ type: String, _ body: any Encodable, expectReply: Bool, re: Int?) -> Int? {
+        guard isUp else { return nil }
+        return link.send(type, body, expectReply: expectReply, re: re)
+    }
 }
 
 /// How this client introduces itself to the Android phone (the protocol allows several clients).
@@ -25,12 +38,16 @@ enum Platform {
 }
 
 /// The app's state and the glue between the BLE link, CallKit, audio and the UI.
-@MainActor @Observable
+@MainActor @Perceptible
 final class AppModel {
     static let shared = AppModel()
 
     /// Link identity in the Keychain (a throw-away one in demo mode).
-    let identity: IdentityStore = AppModel.demoMode ? MemoryIdentityStore() : KeychainIdentityStore()
+    let identity: IdentityStore = AppModel.demoMode || AppModel.runningTests ? MemoryIdentityStore() : KeychainIdentityStore()
+
+    /// The app is the host of the unit tests (TetherTests): no Keychain, no saved data read or written, no
+    /// notification permission prompt; the tests drive the model through `received` and `resetForTests`.
+    static let runningTests: Bool = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     /// Debug demo mode (-TetherDemo…): made-up data, never connects and never saves, so it cannot touch the
     /// real pairing or the real synced data on a device that is also used for real.
@@ -42,10 +59,17 @@ final class AppModel {
         return false
         #endif
     }()
-    @ObservationIgnored let link: TetherLink
-    @ObservationIgnored private let store = SnapshotStore()
-    @ObservationIgnored lazy var calls = CallController(model: self)
-    @ObservationIgnored lazy var audio = CallAudio(model: self, link: link)
+    @PerceptionIgnored let link: TetherLink
+    @PerceptionIgnored private let store = SnapshotStore()
+    /// Extensions (protocol §7, docs/EXTENDING.md): registered in `registerExtensions`; messages reach them only from
+    /// the fallback of `received`, after every core type.
+    @PerceptionIgnored let extensions = ExtensionRegistry(log: { LinkJournal.shared.add("ext: \($0)") })
+    @PerceptionIgnored let extensionPort: LinkExtensionPort
+    @PerceptionIgnored let echo = EchoExtension()
+    /// The last result of the Debug developer row's echo test (Link tab).
+    var extensionLine: String?
+    @PerceptionIgnored lazy var calls = CallController(model: self)
+    @PerceptionIgnored lazy var audio = CallAudio(model: self, link: link)
 
     private(set) var linkState: TetherLink.State = .unpaired
     private(set) var data: Snapshot
@@ -53,7 +77,7 @@ final class AppModel {
     var lastError: String?
     /// Short confirmation ("Copied") shown for a moment at the bottom.
     var notice: String?
-    @ObservationIgnored private var noticeTask: Task<Void, Never>?
+    @PerceptionIgnored private var noticeTask: Task<Void, Never>?
     func flash(_ text: String) {
         notice = text
         noticeTask?.cancel()
@@ -65,18 +89,23 @@ final class AppModel {
     var lastSync: Date?
     var selftest: SelftestResult?
     /// Conversations read while the link was down: thread → newest id read, sent on reconnect.
-    @ObservationIgnored private var pendingRead: [Int64: Int64] = [:]
+    @PerceptionIgnored private var pendingRead: [Int64: Int64] = [:]
     /// Mobile data / hotspot / Bluetooth tethering on the Android phone; nil until first asked.
     var net: NetState?
     /// The switch that was just flipped and has not been confirmed yet ("data", "hotspot", "bt").
     var netPending: String?
+    /// Phone section (Link tab): the last carrier-code answer, whether the Android phone is ringing for "find my phone", errors.
+    var ussdResult: UssdResult?
+    var ussdPending = false
+    var finding = false
+    var phoneToolError: String?
     var syncing = false
     var openThread: Int64?
     /// Scene is in the foreground (an open thread in a backgrounded app must still notify).
     var appActive = true { didSet { if appActive && !oldValue { link.appBecameActive() } } }
     #if DEBUG
     /// Calls the -TetherAutoHangup debug option already scheduled to end.
-    @ObservationIgnored var autoHangupArmed = Set<String>()
+    @PerceptionIgnored var autoHangupArmed = Set<String>()
     #endif
     var activeCalls: [String: CallInfo] = [:]
     /// The in-app call screen (CallKit shows system UI only for incoming calls).
@@ -92,11 +121,13 @@ final class AppModel {
     private(set) var photoIndex: [String: String] = [:]
 
     private init() {
-        data = AppModel.demoMode ? Snapshot() : store.load()
+        data = AppModel.demoMode || AppModel.runningTests ? Snapshot() : store.load()
         link = TetherLink(store: identity, restoreID: "app.tether.central")
+        extensionPort = LinkExtensionPort(link: link)
         link.delegate = LinkBridge.shared
         link.log = { msg in NSLog("[link] %@", msg); LinkJournal.shared.add(msg) }
         rebuildIndex()
+        registerExtensions()
         #if DEBUG
         loadDemoIfRequested()
         applyDebugLaunchOptions()
@@ -110,6 +141,27 @@ final class AppModel {
         rebuildIndex()
     }
     #endif
+
+    /// Add your extension here (one line), see docs/EXTENDING.md.
+    private func registerExtensions() {
+        for e in [echo] as [TetherExtension] {
+            do { try extensions.register(e) } catch { NSLog("[ext] not registered: %@", "\(error)") }
+        }
+        // An extension switched off after repeated failures: the Android phone learns it with a new sync.
+        extensions.onCapsChanged = { [weak self] in self?.requestSync() }
+        extensions.start()
+    }
+
+    /// Debug builds (Link › Developer): one x.tether.echo round trip to the Android phone.
+    func echoTest() {
+        guard let s = extensions.session(for: echo) else {
+            extensionLine = "The Android phone does not speak x.tether.echo (older build, or not linked)"; return
+        }
+        echo.onResult = { [weak self] r in
+            self?.extensionLine = r.error.map { "Refused: \($0)" } ?? "\(r.rttMs) ms round trip, clock offset \(r.offsetMs) ms, via \(r.via)"
+        }
+        extensionLine = echo.ping(s) == nil ? "Not sent" : "Waiting for the Android phone…"
+    }
 
     var isPaired: Bool { identity.peerKey != nil }
     var peerName: String { identity.peerName ?? "Android" }
@@ -141,7 +193,14 @@ final class AppModel {
     func name(for number: String) -> String? { nameIndex[PhoneNumber.matchKey(number)] }
     func photo(for number: String) -> String? { photoIndex[PhoneNumber.matchKey(number)] }
     /// A contact's name, else the number in a left-to-right isolate (so "+98…" keeps its plus sign in Persian layout).
-    func displayName(_ number: String) -> String { name(for: number) ?? (number.isEmpty ? String(localized: "Unknown") : "\u{2066}\(number)\u{2069}") }
+    func displayName(_ number: String) -> String { name(for: number) ?? (number.isEmpty ? String(localized: "Unknown") : "\u{2066}\(formatted(number))\u{2069}") }
+    /// Country national numbers belong to: the default SIM's (from the Android phone), else this iPhone's region.
+    var numberRegion: String? {
+        let sim = sims.first(where: { $0.sub == status?.defaultSub && $0.country != nil }) ?? sims.first(where: { $0.country != nil })
+        return sim?.country ?? Locale.current.region?.identifier
+    }
+    /// The number grouped for display ("+98 912 345 6789"); short codes, USSD and names unchanged. Display only.
+    func formatted(_ number: String) -> String { PhoneFormat.format(number, region: numberRegion) }
 
     // MARK: missed calls (the Recents badge, like Phone)
 
@@ -285,9 +344,21 @@ final class AppModel {
         photoIndex = p
     }
 
-    private func persist() { if !AppModel.demoMode { store.save(data) } }
+    private func persist() { if !AppModel.demoMode && !AppModel.runningTests { store.save(data) } }
     /// Saved at once (the outbox of a text sent from a notification must survive the app being suspended).
-    func persistNow() { if !AppModel.demoMode { store.saveNow(data) } }
+    func persistNow() { if !AppModel.demoMode && !AppModel.runningTests { store.saveNow(data) } }
+
+    /// Unit tests only: start from the given snapshot with no sync in progress.
+    func resetForTests(_ snapshot: Snapshot = Snapshot()) {
+        precondition(AppModel.runningTests)
+        data = snapshot
+        pendingIds = SyncIds(sms: [], calls: []); incomingContacts = []; contactsPageStart = true
+        smsIndex = [:]; pendingSms = [:]; incrementalSync = false
+        net = nil; netPending = nil; ussdResult = nil; ussdPending = false; finding = false; phoneToolError = nil
+        lastError = nil; selftest = nil; syncing = false; openThread = nil
+        extensions.linkDown(); extensionPort.isUp = false; extensionLine = nil
+        rebuildIndex()
+    }
 
     // MARK: actions
 
@@ -307,7 +378,7 @@ final class AppModel {
     }
 
     /// True while an incremental sync runs: new incoming texts in it were missed while out of reach.
-    @ObservationIgnored private var incrementalSync = false
+    @PerceptionIgnored private var incrementalSync = false
 
     func requestSync(full: Bool = false) {
         guard linkState.isConnected else { return }
@@ -319,7 +390,8 @@ final class AppModel {
         let lastCall = full ? 0 : (data.recents.map(\.id).max() ?? 0)
         link.send(MsgType.sync, SyncBodyV1(sms: lastSms, calls: lastCall, contacts: full ? "" : data.contactsVersion,
                                            codecs: CallAudio.supportedCodecs,
-                                           client: ClientHello(kind: Platform.kind, name: Platform.clientName)))
+                                           client: ClientHello(kind: Platform.kind, name: Platform.clientName),
+                                           caps: extensions.caps.isEmpty ? nil : extensions.caps))
         // Conversations read while out of reach.
         for (thread, upTo) in pendingRead { link.send(MsgType.smsRead, SmsRead(thread: thread, upTo: upTo)) }
         pendingRead.removeAll()
@@ -452,6 +524,36 @@ final class AppModel {
         }
     }
 
+    /// Carrier code (balance etc.) on a SIM of the Android phone; the answer arrives as `ussd.result` (up to 30 s).
+    func sendUssd(_ code: String, sub: Int?) {
+        let code = code.trimmingCharacters(in: .whitespaces)
+        guard linkState.isConnected, !ussdPending else { return }
+        guard UssdCode.isValid(code) else {
+            ussdResult = UssdResult(ok: false, text: nil, err: String(localized: "Not a carrier code (like *123#)"))
+            return
+        }
+        ussdPending = true; ussdResult = nil
+        link.send(MsgType.ussdSend, UssdSend(code: code, sub: sub), expectReply: true)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(40))
+            guard let self, self.ussdPending else { return }
+            self.ussdPending = false
+            self.ussdResult = UssdResult(ok: false, text: nil, err: String(localized: "The Android phone did not answer."))
+        }
+    }
+
+    func setFinding(_ on: Bool) {
+        guard linkState.isConnected else { return }
+        phoneToolError = nil
+        link.send(MsgType.phoneFind, PhoneFind(on: on), expectReply: true)
+    }
+
+    func setRinger(_ mode: String) {
+        guard linkState.isConnected else { return }
+        phoneToolError = nil
+        link.send(MsgType.ringerSet, RingerSet(mode: mode), expectReply: true)
+    }
+
     func runSelftest() {
         selftest = nil
         link.send(MsgType.selftest, Empty(), expectReply: true)
@@ -462,12 +564,18 @@ final class AppModel {
     func linkChanged(_ s: TetherLink.State) {
         let wasConnected = linkState.isConnected
         linkState = s
+        if case .connected(let t) = s { extensionPort.transport = t }
         if s.isConnected && !wasConnected {
+            // Before the sync: it carries what the extensions speak.
+            extensionPort.isUp = true
+            extensions.linkUp(extensionPort)
             lastError = nil
             requestSync()
             flushOutbox()
         }
         if !s.isConnected && wasConnected {
+            extensionPort.isUp = false
+            extensions.linkDown()
             calls.linkLost()
             remoteCalls = []
             // A sync cut off mid-way must start clean next time.
@@ -491,6 +599,7 @@ final class AppModel {
             case MsgType.status:
                 // Kept in memory; saved with the next real change (a full snapshot write per status was wasted).
                 data.lastStatus = try Control.body(StatusBody.self, from: payload)
+                extensions.peerCaps(data.lastStatus?.caps)   // absent (older Android builds): no extensions
             case MsgType.smsBatch:
                 let b = try Control.body(SmsBatch.self, from: payload)
                 let recent = Int64(Date().addingTimeInterval(-6 * 3600).timeIntervalSince1970 * 1000)
@@ -616,6 +725,8 @@ final class AppModel {
                 audio.configure(try Control.body(AudioStart.self, from: payload))
             case MsgType.audioStop:
                 audio.remoteStopped()
+            case MsgType.audioStats:
+                LinkJournal.shared.add("Android phone call audio: " + (try Control.body(AudioStats.self, from: payload)).summary)
             case MsgType.netState:
                 let st = try Control.body(NetState.self, from: payload)
                 // An error reply carries no switch values: keep the last known ones.
@@ -627,23 +738,36 @@ final class AppModel {
                 } else { net = st }
                 // (A state pushed because the other client flipped a switch must not clear our own pending one.)
                 if h.re != nil { netPending = nil }
+            case MsgType.ussdResult:
+                ussdResult = try Control.body(UssdResult.self, from: payload)
+                ussdPending = false
+            case MsgType.phoneFinding:
+                let f = try Control.body(PhoneFinding.self, from: payload)
+                finding = f.on
+                if let e = f.err { phoneToolError = e }
+            case MsgType.ringerResult:
+                let r = try Control.body(RingerResult.self, from: payload)
+                if let m = r.mode, var st = data.lastStatus { st.ringer = m; data.lastStatus = st }
+                if let e = r.err { phoneToolError = e }
             case MsgType.selftestResult:
                 selftest = try Control.body(SelftestResult.self, from: payload)
             default:
-                break
+                // Extension types (x.…) and errors answering an extension's request; everything else stays ignored.
+                _ = extensions.route(h, payload)
             }
         } catch {
             NSLog("[model] bad %@: %@", h.t, "\(error)")
         }
     }
 
-    @ObservationIgnored private var contactsPageStart = true
+    @PerceptionIgnored private var contactsPageStart = true
     /// sync.ids pages collected until the last one (ranges stay sorted: pages come in order).
-    @ObservationIgnored private var pendingIds = SyncIds(sms: [], calls: [])
-    @ObservationIgnored private var incomingContacts: [Contact] = []
+    @PerceptionIgnored private var pendingIds = SyncIds(sms: [], calls: [])
+    @PerceptionIgnored private var incomingContacts: [Contact] = []
 
     private func updateCall(_ c: CallInfo) {
         if c.isEnded { activeCalls[c.cid] = nil } else { activeCalls[c.cid] = c }
+        extensionPort.inCall = !activeCalls.isEmpty
         calls.handle(c)
         remoteCalls = calls.remote.values.sorted { $0.cid < $1.cid }
         #if DEBUG
@@ -657,7 +781,7 @@ final class AppModel {
     var callScreenDismissed = false
 
     /// id → position in `data.sms`, so a sync page is merged in O(page) rather than O(all messages).
-    @ObservationIgnored private var smsIndex: [Int64: Int] = [:]
+    @PerceptionIgnored private var smsIndex: [Int64: Int] = [:]
 
     private func merge(sms: [Sms], notify: Bool) {
         guard !sms.isEmpty else { return }
@@ -704,11 +828,11 @@ final class LinkBridge: TetherLinkDelegate {
 
     // DispatchQueue.main keeps events in order ("ringing" before "ended"); separate Tasks do not promise that.
     func link(_ link: TetherLink, didChange state: TetherLink.State) {
-        DispatchQueue.main.async { MainActor.assumeIsolated { AppModel.shared.linkChanged(state) } }
+        DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.linkChanged(state) } }
     }
 
     func link(_ link: TetherLink, didReceive header: MessageHeader, data: Data) {
-        DispatchQueue.main.async { MainActor.assumeIsolated { AppModel.shared.received(header, data) } }
+        DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.received(header, data) } }
     }
 
     func link(_ link: TetherLink, didReceiveAudio frame: AudioFrame) {
@@ -717,6 +841,6 @@ final class LinkBridge: TetherLinkDelegate {
     }
 
     func link(_ link: TetherLink, didFail reason: String) {
-        DispatchQueue.main.async { MainActor.assumeIsolated { AppModel.shared.linkFailed(reason) } }
+        DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.linkFailed(reason) } }
     }
 }

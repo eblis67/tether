@@ -54,6 +54,8 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     private val mtus = ConcurrentHashMap<String, Int>()
     /** Last connection parameters per link, for the latency report. */
     val linkParams = ConcurrentHashMap<String, String>()
+    /** LE PHY of each link ("2M", "1M", "coded"; tx/rx when they differ), from the stack's PHY callbacks. */
+    val linkPhy = ConcurrentHashMap<String, String>()
     @Volatile var psm = 0; private set
     @Volatile var running = false; private set
     @Volatile var advertising = false; private set
@@ -245,7 +247,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
         val c = wakeChar ?: return
         if (address !in wakeSubscribers) return
         val d = devices[address] ?: return
-        runCatching { s.notifyCharacteristicChanged(d, c, false, byteArrayOf(1)) }
+        runCatching { GattCompat.notify(s, d, c, byteArrayOf(1)) }
     }
 
     /**
@@ -384,11 +386,13 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
                 devices[device.address] = device
                 // 2M PHY roughly halves air time per packet (lower latency, more headroom for audio).
                 runCatching { server?.setPreferredPhy(device, BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_OPTION_NO_PREFERRED) }
+                runCatching { server?.readPhy(device) }
             }
             if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
                 gattPipes.remove(device.address)?.close()
                 txSubscribers.remove(device.address)
                 mtus.remove(device.address)
+                linkPhy.remove(device.address)
                 wakeSubscribers.remove(device.address)
                 devices.remove(device.address)
             }
@@ -402,6 +406,16 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
         fun onConnectionUpdated(device: BluetoothDevice, interval: Int, latency: Int, timeout: Int, status: Int) {
             linkParams[device.address] = "interval %.2f ms, latency %d, timeout %d ms".format(interval * 1.25, latency, timeout * 10)
             Log.i(TAG, "link ${device.address}: ${linkParams[device.address]}")
+        }
+
+        override fun onPhyUpdate(device: BluetoothDevice, txPhy: Int, rxPhy: Int, status: Int) = phy(device, txPhy, rxPhy, status)
+        override fun onPhyRead(device: BluetoothDevice, txPhy: Int, rxPhy: Int, status: Int) = phy(device, txPhy, rxPhy, status)
+
+        private fun phy(device: BluetoothDevice, tx: Int, rx: Int, status: Int) {
+            if (status != BluetoothGatt.GATT_SUCCESS) return
+            fun n(p: Int) = when (p) { BluetoothDevice.PHY_LE_2M -> "2M"; BluetoothDevice.PHY_LE_CODED -> "coded"; else -> "1M" }
+            val v = if (tx == rx) n(tx) else "tx ${n(tx)} rx ${n(rx)}"
+            if (linkPhy.put(device.address, v) != v) Log.i(TAG, "phy ${device.address}: $v")
         }
 
         override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {

@@ -8,6 +8,7 @@ import android.app.Person
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -54,7 +55,7 @@ object CallRegistry {
 
     fun active(): List<Call> = calls.values.toList()
 
-    fun hasActiveCall() = calls.values.any { it.details.state == Call.STATE_ACTIVE }
+    fun hasActiveCall() = calls.values.any { it.stateCompat() == Call.STATE_ACTIVE }
 
     /**
      * Audio is bridged while a call is active or on hold, and also while an outgoing call is dialing,
@@ -62,7 +63,7 @@ object CallRegistry {
      */
     fun wantsAudio() = calls.values.any {
         val d = it.details
-        when (d.state) {
+        when (it.stateCompat()) {
             Call.STATE_ACTIVE, Call.STATE_HOLDING -> true
             Call.STATE_DIALING, Call.STATE_CONNECTING, Call.STATE_PULLING_CALL -> d.callDirection == Call.Details.DIRECTION_OUTGOING
             else -> false
@@ -110,9 +111,9 @@ object CallRegistry {
         val d = c.details
         val num = d.handle?.schemeSpecificPart ?: ""
         // No contacts query here: this runs on the ring path. The iPhone resolves names from its synced contacts.
-        val name = d.contactDisplayName?.takeIf { it.isNotBlank() } ?: d.callerDisplayName?.takeIf { it.isNotBlank() }
+        val name = (if (Build.VERSION.SDK_INT >= 30) d.contactDisplayName else null)?.takeIf { it.isNotBlank() } ?: d.callerDisplayName?.takeIf { it.isNotBlank() }
         val dir = if (d.callDirection == Call.Details.DIRECTION_OUTGOING) "out" else "in"
-        return CallInfo(cid, num, name, stateName(d.state), dir, app.sims.subFor(d.accountHandle),
+        return CallInfo(cid, num, name, stateName(c.stateCompat()), dir, app.sims.subFor(d.accountHandle),
             d.connectTimeMillis.takeIf { it > 0 }, d.disconnectCause?.reason?.takeIf { it.isNotBlank() },
             d.can(Call.Details.CAPABILITY_HOLD))
     }
@@ -124,21 +125,21 @@ object CallRegistry {
     /** Reject a ringing call; a call that is no longer ringing is ended instead (the client's view was late). */
     fun reject(cid: String): Boolean {
         val c = callFor(cid) ?: return false
-        if (c.details.state == Call.STATE_RINGING) c.reject(false, null) else c.disconnect()
+        if (c.stateCompat() == Call.STATE_RINGING) c.reject(false, null) else c.disconnect()
         return true
     }
 
     /** End a call; a call still ringing is rejected (disconnect would only silence it on some builds). */
     fun end(cid: String): Boolean {
         val c = callFor(cid) ?: return false
-        if (c.details.state == Call.STATE_RINGING) c.reject(false, null) else c.disconnect()
-        Log.i(TAG, "end requested for $cid (${stateName(c.details.state)})")
+        if (c.stateCompat() == Call.STATE_RINGING) c.reject(false, null) else c.disconnect()
+        Log.i(TAG, "end requested for $cid (${stateName(c.stateCompat())})")
         return true
     }
     fun hold(cid: String, on: Boolean) = calls[cid]?.let { if (on) it.hold() else it.unhold() } != null
 
     fun dtmf(cid: String, digit: Char): Boolean {
-        val c = calls[cid] ?: calls.values.firstOrNull { it.details.state == Call.STATE_ACTIVE } ?: return false
+        val c = calls[cid] ?: calls.values.firstOrNull { it.stateCompat() == Call.STATE_ACTIVE } ?: return false
         if (digit !in "0123456789*#") return false
         c.playDtmfTone(digit)
         main.postDelayed({ c.stopDtmfTone() }, 180)
@@ -186,13 +187,13 @@ class TetherInCallService : InCallService() {
             return // another app's VoIP call; it has its own UI
         }
         // Last line of defence for blocked callers (screening normally stops them first): no ring, no forwarding.
-        if (d.state in setOf(Call.STATE_NEW, Call.STATE_RINGING) && d.callDirection != Call.Details.DIRECTION_OUTGOING &&
+        if (call.stateCompat() in setOf(Call.STATE_NEW, Call.STATE_RINGING) && d.callDirection != Call.Details.DIRECTION_OUTGOING &&
             runCatching { (application as TetherApp).lists.isBlocked(d.handle?.schemeSpecificPart ?: "") }.getOrDefault(false)) {
             Log.i(CallRegistry.TAG, "blocked caller: rejected without ringing")
             call.reject(false, null)
             return
         }
-        Log.i(CallRegistry.TAG, "call added state=${CallRegistry.stateName(d.state)} (${d.state}) dir=${d.callDirection} handle=${d.handle != null}")
+        Log.i(CallRegistry.TAG, "call added state=${CallRegistry.stateName(call.stateCompat())} (${call.stateCompat()}) dir=${d.callDirection} handle=${d.handle != null}")
         CallRegistry.added(call)
         call.registerCallback(uiCallback)
         showCallUi(call)
@@ -217,19 +218,28 @@ class TetherInCallService : InCallService() {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
         val person = Person.Builder().setName(info.name ?: info.num.ifEmpty { getString(R.string.unknown_caller) })
             .setImportant(true).build()
-        val style = if (info.state == "ringing") {
-            Notification.CallStyle.forIncomingCall(person, action("decline", info.cid, 2), action("answer", info.cid, 3))
-        } else {
-            Notification.CallStyle.forOngoingCall(person, action("end", info.cid, 4))
-        }
-        val n = Notification.Builder(this, TetherApp.CH_CALLS)
+        val b = Notification.Builder(this, TetherApp.CH_CALLS)
             .setSmallIcon(R.drawable.ic_tether)
             .setContentIntent(open)
             .setFullScreenIntent(open, true)
             .setCategory(Notification.CATEGORY_CALL)
             .setOngoing(true)
-            .setStyle(style)
-            .build()
+        if (Build.VERSION.SDK_INT >= 31) {
+            b.setStyle(if (info.state == "ringing") {
+                Notification.CallStyle.forIncomingCall(person, action("decline", info.cid, 2), action("answer", info.cid, 3))
+            } else {
+                Notification.CallStyle.forOngoingCall(person, action("end", info.cid, 4))
+            })
+        } else {
+            // Android 10-11 have no CallStyle: a plain call notification with the same buttons.
+            b.setContentTitle(person.name).setContentText(getString(if (info.state == "ringing") R.string.call_incoming else R.string.call_ongoing))
+            val acts = if (info.state == "ringing") listOf("decline" to 2, "answer" to 3) else listOf("end" to 4)
+            for ((a, code) in acts) {
+                val label = getString(when (a) { "decline" -> R.string.call_decline; "answer" -> R.string.call_answer; else -> R.string.call_end })
+                b.addAction(Notification.Action.Builder(null, label, action(a, info.cid, code)).build())
+            }
+        }
+        val n = b.build()
         getSystemService(NotificationManager::class.java).notify(NOTIF_CALL, n)
     }
 
@@ -239,3 +249,7 @@ class TetherInCallService : InCallService() {
 
     companion object { const val NOTIF_CALL = 20 }
 }
+
+/** The call's state: `Call.Details.getState` only exists from Android 12, `Call.getState` is deprecated there. */
+fun Call.stateCompat(): Int =
+    if (Build.VERSION.SDK_INT >= 31) details.state else @Suppress("DEPRECATION") state

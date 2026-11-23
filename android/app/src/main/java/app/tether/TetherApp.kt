@@ -36,6 +36,7 @@ class TetherApp : Application() {
         nm.createNotificationChannel(NotificationChannel(CH_LINK, getString(R.string.channel_link), NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel(CH_CALLS, getString(R.string.channel_calls), NotificationManager.IMPORTANCE_HIGH))
         nm.createNotificationChannel(NotificationChannel(CH_SETUP, getString(R.string.channel_setup), NotificationManager.IMPORTANCE_HIGH))
+        nm.createNotificationChannel(NotificationChannel(CH_FIND, getString(R.string.channel_find), NotificationManager.IMPORTANCE_HIGH))
     }
 
     /** Same path as the notification's RemoteInput: pair with adbd, grant ourselves what we need, start the helper. */
@@ -54,5 +55,6 @@ class TetherApp : Application() {
         const val CH_LINK = "link"
         const val CH_CALLS = "calls"
         const val CH_SETUP = "setup"
+        const val CH_FIND = "find"
     }
 }

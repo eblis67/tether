@@ -126,4 +126,15 @@ class LinkPolicyTest {
         assertTrue(LinkPolicy.PULSE_SOON_EVERY_S in 3..10 && LinkPolicy.PULSE_SOON_FOR_S >= 30)
         assertTrue(LinkPolicy.PULSE_UP_MS * 5 <= LinkPolicy.PULSE_EVERY_S * 1000)
     }
+
+    // ------------------------------------------------------------------ idle sessions
+
+    @Test fun silentClientIsWokenBeforeItIsDropped() {
+        val m = 60_000L
+        assertEquals(LinkPolicy.Idle.KEEP, LinkPolicy.idle(14 * m, null))
+        assertEquals(LinkPolicy.Idle.WAKE, LinkPolicy.idle(15 * m, null))
+        assertEquals(LinkPolicy.Idle.KEEP, LinkPolicy.idle(15 * m + 1000, 1000))     // woken, waiting for its answer
+        assertEquals(LinkPolicy.Idle.CLOSE, LinkPolicy.idle(16 * m, 60_000))         // woken a minute ago, still silent
+        assertEquals(LinkPolicy.Idle.KEEP, LinkPolicy.idle(5_000, null))             // it answered: silence counts afresh
+    }
 }

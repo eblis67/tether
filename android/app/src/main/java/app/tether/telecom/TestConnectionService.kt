@@ -80,6 +80,9 @@ class TestConnectionService : ConnectionService() {
             ctx.getSystemService(TelecomManager::class.java).addNewIncomingCall(handle(ctx), extras)
         }
 
+        /** The only numbers the test line dials out to: +10000000001 … +10000000009, exactly. */
+        fun dialable(num: String) = Regex("\\+1000000000[1-9]").matches(num)
+
         fun endCurrent() = current?.finish(DisconnectCause.REMOTE)
 
         /**
@@ -87,7 +90,7 @@ class TestConnectionService : ConnectionService() {
          * this ConnectionService only (a self-managed account never reaches a SIM). Test-range numbers only.
          */
         fun dialOut(ctx: Context, num: String) {
-            require(Regex("\\+1000000000[1-9]").matches(num)) { "test numbers +1000000000x only" }
+            require(dialable(num)) { "test numbers +1000000000x only" }
             register(ctx)
             val extras = Bundle().apply { putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle(ctx)) }
             ctx.getSystemService(TelecomManager::class.java).placeCall(Uri.fromParts("tel", num, null), extras)

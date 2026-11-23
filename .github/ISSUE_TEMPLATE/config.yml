@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas (Discussions)
+    url: https://github.com/amirwmr/tether/discussions
+    about: Ask how to set up or build Tether, or discuss an idea before opening an issue.
+  - name: Report a security vulnerability
+    url: https://github.com/amirwmr/tether/security/advisories/new
+    about: Please report security problems privately, not in a public issue.
+  - name: Documentation and troubleshooting
+    url: https://github.com/amirwmr/tether/blob/main/docs/TROUBLESHOOTING.md
+    about: Common problems and which logs to collect.

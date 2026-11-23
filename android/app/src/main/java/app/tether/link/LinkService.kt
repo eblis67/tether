@@ -14,6 +14,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.util.Log
@@ -115,7 +116,9 @@ class LinkService : Service() {
     private var lastTethered = ""
     private val aclReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
-            val d: android.bluetooth.BluetoothDevice? = i.getParcelableExtra(android.bluetooth.BluetoothDevice.EXTRA_DEVICE, android.bluetooth.BluetoothDevice::class.java)
+            val d: android.bluetooth.BluetoothDevice? =
+                if (Build.VERSION.SDK_INT >= 33) i.getParcelableExtra(android.bluetooth.BluetoothDevice.EXTRA_DEVICE, android.bluetooth.BluetoothDevice::class.java)
+                else @Suppress("DEPRECATION") i.getParcelableExtra(android.bluetooth.BluetoothDevice.EXTRA_DEVICE)
             val transport = when (i.getIntExtra(android.bluetooth.BluetoothDevice.EXTRA_TRANSPORT, -1)) { 1 -> "classic"; 2 -> "LE"; else -> "?" }
             val who = LinkLog.short(d?.address)
             val t = i.getIntExtra(android.bluetooth.BluetoothDevice.EXTRA_TRANSPORT, -1)
@@ -193,7 +196,7 @@ class LinkService : Service() {
         .put("transport", app.hub.conn?.transport?.label).put("helper", app.hub.helper.state())
         .put("clients", org.json.JSONArray(app.hub.targets().map { c -> JSONObject().put("name", c.name).put("kind", c.kind)
             .put("transport", c.transport.label).put("audio", c === app.hub.audio.target)
-            .put("link", ble?.linkParams?.get(c.transport.address)) }))
+            .put("link", ble?.linkParams?.get(c.transport.address)).put("phy", ble?.linkPhy?.get(c.transport.address)) }))
         .put("paired", org.json.JSONArray(app.keys.centrals().map { it.name }))
 
     companion object {

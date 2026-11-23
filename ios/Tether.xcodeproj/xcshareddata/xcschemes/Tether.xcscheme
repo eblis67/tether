@@ -40,6 +40,17 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "F36A2E7FE8A9AC1443A276D4"
+               BuildableName = "TetherTests.xctest"
+               BlueprintName = "TetherTests"
+               ReferencedContainer = "container:Tether.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

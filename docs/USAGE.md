@@ -9,6 +9,10 @@ what you do on the Android phone shows up on the iPhone, and the other way round
   SIM's name follows the caller's name ("Sara · Work").
 - **Answer, decline, hang up, mute, hold, keypad, speaker** work as in the Phone app. Holding the phone to your ear
   turns the screen off.
+- **Headsets and cars**: with a Bluetooth headset, a car kit or a wired headset connected, the Speaker button becomes
+  **Audio**: pick iPhone, Speaker or the accessory to move the call there and back. Choices made on the system
+  call screen, in Control Center or on the car's screen are followed too, and a car can answer and end calls (they
+  are CallKit calls, so CarPlay shows them without anything extra).
 - **Dialling**: Keypad, Recents or a contact. With two SIMs you choose the SIM; the phone's own default is used
   otherwise. While the call connects you hear a ringback tone from the iPhone.
 - **Call waiting**: a second call rings as usual; answering it holds the first.
@@ -16,6 +20,24 @@ what you do on the Android phone shows up on the iPhone, and the other way round
   moves its audio to the iPhone.
 - **Audio** is Opus at 16 kHz in both directions. The Link log lists, after each call, frames sent and received,
   gaps concealed and the link's round-trip time.
+
+## Calling numbers from other apps
+
+Numbers tapped elsewhere on the iPhone (Safari, Mail, Notes, a contact card, a `tel:` link) can be called through the
+Android phone. A link never dials by itself: Tether shows "Call …?" and calls when you tap **Call**; if the Android
+phone is not connected it says so and **Show in Keypad** (or Cancel) leaves the number in the Keypad. Service codes
+(`*140*1#`) and extensions (`;ext=12`, pauses `p` / `,`) are kept.
+
+| Route | What you do once | Account |
+| --- | --- | --- |
+| Default calling app (iOS 18.2 or later): every phone number you tap opens Tether | Settings › Apps › Default Apps › Calling › choose Tether (shown under its display name) | Paid developer program only (`com.apple.developer.calling-app`); with a free account the app is not offered there |
+| The Phone app's Recents: tap a Tether call there to call back through the Android phone | Link tab › Numbers in other apps › **Show calls in the Phone app** | Any |
+| Shortcuts / Siri: "Call with Tether" | Nothing (the App Shortcut is built in). Siri asks for the number. In a shortcut, pass a number or any text containing one, e.g. *Receive text from Share Sheet → Call a Number*, to call a number selected in any app via Share | Any |
+| URL scheme: `tether://dial?number=%2B15550100` (also `tether:call?number=…`, `tether://dial/<number>`) | Use it from Shortcuts (Open URL) or a link; iOS asks "Open in …?" first | Any |
+
+Shortcuts, Siri and the Phone app's Recents dial at once when the Android phone is linked (they are your own taps
+in system UI), waiting a few seconds for the link after a cold start; links always ask. Without the paid account
+there is no way to put Tether in the button list of the Contacts app or to make plain `tel:` links open it.
 
 ## Messages
 
@@ -36,6 +58,17 @@ what you do on the Android phone shows up on the iPhone, and the other way round
   the app icon and post a notification, as Phone does. Blocked numbers never count.
 - Blocking a number blocks it on the Android phone (Android's own block list), so it is blocked whichever phone
   you use.
+
+## Phone tools
+
+Link tab › **Phone tools** (shown when the Android phone's Tether supports it):
+
+- **Carrier codes**: type a code such as a balance check (`*123#`), pick the SIM and tap Send; the carrier's answer shows
+  below (30 s limit). Only `*` / `#` codes are accepted. Carrier codes may cost money.
+- **Find phone**: rings the Android phone loudly (alarm volume at maximum, restored afterwards) for up to 30 seconds. It
+  stops when you switch it off, tap Stop in its notification or unlock it.
+- **Ringer**: Ring, Vibrate or Silent. Silent needs Do Not Disturb access for Tether on the Android phone (Settings ›
+  Notifications › Do Not Disturb); without it the iPhone shows the reason.
 
 ## Internet sharing
 

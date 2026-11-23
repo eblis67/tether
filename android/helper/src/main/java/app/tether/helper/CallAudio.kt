@@ -24,6 +24,10 @@ interface Capture {
     fun bufferFrames(): Int
     /** Audio captured by the system but not read by us yet, in frames (-1 if unknown). */
     fun backlogFrames(): Int = -1
+    /** Frames the system has captured so far, from its timestamp (-1 if unknown): the capture's sample clock. */
+    fun capturedFrames(): Long = -1
+    /** Discards up to [max] frames that are already buffered, never waiting for new audio; returns how many. */
+    fun drain(max: Int): Int = 0
     fun stop()
 }
 
@@ -36,13 +40,37 @@ interface Inject {
     fun latencyMs(): Int
     /** Written but not yet played, in frames. */
     fun queuedFrames(): Int = -1
+    /** Times the track ran dry since it started (-1 if unknown). */
+    fun underruns(): Int = -1
+    /** Frames played so far, from the track's timestamp extrapolated to now (-1 if unknown): the call's sample clock. */
+    fun playedFrames(): Long = -1
+    /**
+     * Written and not yet played, from the timestamp (smoother than [queuedFrames]); -1 until the track is playing
+     * (its first timestamp), from [queuedFrames] when it never gives one.
+     */
+    fun pendingFrames(): Int = -1
     fun stop()
 }
 
 @SuppressLint("MissingPermission", "PrivateApi", "DiscouragedPrivateApi", "WrongConstant")
 object CallAudio {
-    val captureMethods = listOf("intercept", "voice_downlink", "telephony_rx", "voice_call")
-    val injectMethods = listOf("intercept", "telephony_tx", "policy_mix")
+    /**
+     * What this Android version can do for call audio (the shell's permissions grow with the version):
+     * 13+: the interception API (plus the older routes as fallbacks); 11-12: capture the voice call and inject into
+     * the incall-music path (telephony_tx); 10 and below: nothing (the shell may not capture a call).
+     */
+    const val MIN_SDK_AUDIO = 30
+    const val FULL_SDK_AUDIO = 33
+    val captureMethods: List<String> get() = when {
+        Build.VERSION.SDK_INT >= FULL_SDK_AUDIO -> listOf("intercept", "voice_downlink", "telephony_rx", "voice_call")
+        Build.VERSION.SDK_INT >= MIN_SDK_AUDIO -> listOf("voice_downlink", "voice_call", "telephony_rx")
+        else -> emptyList()
+    }
+    val injectMethods: List<String> get() = when {
+        Build.VERSION.SDK_INT >= FULL_SDK_AUDIO -> listOf("intercept", "telephony_tx", "policy_mix")
+        Build.VERSION.SDK_INT >= MIN_SDK_AUDIO -> listOf("telephony_tx")
+        else -> emptyList()
+    }
 
     private val am get() = ShellEnv.audioManager
 
@@ -78,6 +106,7 @@ object CallAudio {
             "voice_downlink" -> buildRecord(MediaRecorder.AudioSource.VOICE_DOWNLINK, rate)
             "voice_call" -> buildRecord(MediaRecorder.AudioSource.VOICE_CALL, rate)
             "voice_uplink" -> buildRecord(MediaRecorder.AudioSource.VOICE_UPLINK, rate)
+            "voice_communication" -> buildRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, rate)
             "telephony_rx" -> buildRecord(MediaRecorder.AudioSource.DEFAULT, rate).also { r ->
                 val dev = telephonyDevice(false) ?: run { r.release(); error("no telephony input device") }
                 r.preferredDevice = dev
@@ -97,11 +126,23 @@ object CallAudio {
             private val ts = android.media.AudioTimestamp()
             override fun read(buf: ShortArray) = rec.read(buf, 0, buf.size, AudioRecord.READ_BLOCKING).also { if (it > 0) readFrames += it }
             override fun bufferFrames() = rec.bufferSizeInFrames
+            override fun capturedFrames(): Long = if (rec.getTimestamp(ts, android.media.AudioTimestamp.TIMEBASE_MONOTONIC) != AudioRecord.SUCCESS) -1
+                else ts.framePosition + (System.nanoTime() - ts.nanoTime) * rec.sampleRate / 1_000_000_000L
             override fun backlogFrames(): Int {
                 if (rec.getTimestamp(ts, android.media.AudioTimestamp.TIMEBASE_MONOTONIC) != AudioRecord.SUCCESS) return -1
                 val now = System.nanoTime()
                 val captured = ts.framePosition + (now - ts.nanoTime) * rec.sampleRate / 1_000_000_000L
                 return (captured - readFrames).toInt()
+            }
+            override fun drain(max: Int): Int {
+                val b = ShortArray(minOf(maxOf(max, 1), 1024))
+                var left = max
+                while (left > 0) {
+                    val n = rec.read(b, 0, minOf(left, b.size), AudioRecord.READ_NON_BLOCKING)
+                    if (n <= 0) break
+                    readFrames += n; left -= n
+                }
+                return max - left
             }
             override fun stop() { runCatching { rec.stop() }; rec.release() }
         }
@@ -119,7 +160,8 @@ object CallAudio {
 
     // ---------------------------------------------------------------- inject
 
-    fun openInject(method: String, rate: Int): Inject {
+    /** Opens an uplink injection; [bufferMs] caps the playback buffer (what the uplink waits in it at most). */
+    fun openInject(method: String, rate: Int, bufferMs: Int = 40): Inject {
         var policy: Any? = null
         val track: AudioTrack = when (method) {
             "intercept" -> AudioManager::class.java
@@ -140,14 +182,30 @@ object CallAudio {
             track.release(); policy?.let { unregisterPolicy(it) }; error("AudioTrack not initialized")
         }
         // Cap the playback buffer to ~40 ms (2 frames) to keep uplink latency low.
-        runCatching { track.bufferSizeInFrames = maxOf(rate / 25, track.bufferSizeInFrames.coerceAtMost(rate / 25)) }
+        // Cap the playback buffer (default ~40 ms, 2 frames) to keep uplink latency low; never below one frame.
+        val cap = rate * bufferMs.coerceIn(20, 200) / 1000
+        runCatching { track.bufferSizeInFrames = maxOf(cap, track.bufferSizeInFrames.coerceAtMost(cap)) }
         track.play()
         val p = policy
         return object : Inject {
             override val name = method
-            private var written = 0L
-            override fun write(buf: ShortArray, n: Int) { val w = track.write(buf, 0, n, AudioTrack.WRITE_BLOCKING); if (w > 0) written += w }
+            @Volatile private var written = 0L
+            override fun write(buf: ShortArray, n: Int) { val w = track.write(buf, 0, n, AudioTrack.WRITE_BLOCKING); if (w > 0) { written += w; writes++ } }
             override fun queuedFrames(): Int = (written - (track.playbackHeadPosition.toLong() and 0xffffffffL)).toInt()
+            private val ts = android.media.AudioTimestamp()
+            @Synchronized override fun playedFrames(): Long = if (!track.getTimestamp(ts)) -1 else ts.framePosition + (System.nanoTime() - ts.nanoTime) * track.sampleRate / 1_000_000_000L
+            @Volatile private var writes = 0
+            @Volatile private var timed = false
+            override fun pendingFrames(): Int {
+                val p = playedFrames()
+                if (p > 0) timed = true
+                return when {
+                    p > 0 -> (written - p).coerceIn(0L, written).toInt()
+                    timed || writes > 50 -> maxOf(0, queuedFrames())
+                    else -> -1
+                }
+            }
+            override fun underruns(): Int = runCatching { track.underrunCount }.getOrDefault(-1)
             override fun routedTo(): String = track.routedDevice?.let { "${it.type}:${it.productName}" } ?: "none"
             override fun bufferFrames() = track.bufferSizeInFrames
             override fun latencyMs(): Int = try {
@@ -207,7 +265,7 @@ object CallAudio {
     fun probe(rate: Int = 16000): JSONObject {
         val o = JSONObject()
         o.put("sdk", Build.VERSION.SDK_INT).put("model", Build.MODEL).put("uid", android.os.Process.myUid())
-        o.put("mode", am.mode).put("interceptable", isInterceptable())
+        o.put("mode", am.mode).put("interceptable", isInterceptable()).put("silence", silence.name.lowercase())
         o.put("outputs", devices(AudioManager.GET_DEVICES_OUTPUTS)).put("inputs", devices(AudioManager.GET_DEVICES_INPUTS))
         val caps = JSONArray()
         for (m in captureMethods + "voice_uplink") {
@@ -263,14 +321,22 @@ object CallAudio {
                 inj = openInject(m, rate)
                 val tone = tone(1000.0, rate, frame, amp = 8000.0)
                 var hit = 0.0
-                repeat(25) {
+                // Each frame's tone level and when it was read: the first frame with the tone clearly in it, against
+                // the first write, is the inject → uplink delay (± one frame).
+                val level = DoubleArray(40); val readAt = LongArray(40)
+                val t0 = System.nanoTime()
+                repeat(40) {
                     inj.write(tone)
                     val n = cap.read(buf)
-                    if (it >= 10 && n > 0) hit += goertzel(buf, n, 1000.0, rate)
+                    readAt[it] = System.nanoTime()
+                    if (n > 0) level[it] = goertzel(buf, n, 1000.0, rate)
+                    if (it >= 25 && n > 0) hit += level[it]
                 }
                 val ratio = (hit / 15) / (base / 10 + 1e-3)
                 val ok = ratio > 20
-                r.put("ok", ok).put("note", "tone/base=%.1f routed=%s".format(ratio, inj.routedTo()))
+                val delayMs = if (ok) onsetMs(level, readAt, t0, threshold = hit / 15 / 2) else null
+                if (delayMs != null) r.put("delayMs", delayMs)
+                r.put("ok", ok).put("note", "tone/base=%.1f routed=%s%s".format(ratio, inj.routedTo(), delayMs?.let { " delay≈$it ms" } ?: ""))
                 if (ok && chosen == null) chosen = m
             } catch (t: Throwable) {
                 r.put("ok", false).put("note", describe(t))
@@ -293,6 +359,13 @@ object CallAudio {
             res.put(r)
         }
         return JSONObject().put("methods", res).apply { chosen?.let { put("chosen", it) } }
+    }
+
+    /** Milliseconds from [t0] to the read of the first frame whose level reaches [threshold] (null when none does). */
+    fun onsetMs(level: DoubleArray, readAt: LongArray, t0: Long, threshold: Double): Long? {
+        if (threshold <= 0) return null
+        val i = level.indexOfFirst { it >= threshold }
+        return if (i < 0) null else (readAt[i] - t0) / 1_000_000
     }
 
     private fun devices(flag: Int) = JSONArray().apply {
@@ -325,20 +398,88 @@ object CallAudio {
     val hasSamsungCallMute: Boolean get() = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
 
     /**
-     * Mutes / restores the Android phone's own earpiece (received voice) and microphone for a bridged call.
-     * Samsung: its vendor audio parameters (the ones its Text Call feature sets), rx/tx control mode 1 = muted.
-     * Other phones have no known equivalent the shell may set: the call is still bridged, and the phone's own
-     * earpiece and microphone stay on (keep it in a bag or pocket, volume down).
+     * How this phone's own earpiece and microphone are silenced while a call is bridged (the downlink is still
+     * captured, the injected uplink still goes out). Chosen per vendor from their audio HAL sources:
+     * - Samsung: its vendor parameters (the ones its Text Call feature sets), rx/tx control mode 1 = muted. Verified
+     *   on the reference phone.
+     * - Qualcomm: voice-call stream muted (HAL voice volume 0 sets the "Voice Rx Device Mute" mixer control); the
+     *   Android mic mute is safe there, because while the in-call music uplink is open the HAL mutes the mic device
+     *   only, not the mixed uplink (hardware/qcom/audio voice.c, voice_set_mic_mute).
+     * - MediaTek: Set_SpeechCall_DL_Mute / Set_SpeechCall_UL_Mute (the UL key mutes the microphone source only). The
+     *   Android mic mute must NOT be used: there it mutes the whole uplink, injected audio included.
+     * - Others (Google Tensor, unknown): voice-call stream muted; nothing for the mic that is known to keep the
+     *   injected audio, so the Android mic mute stays as before.
+     * Only the Samsung path is verified on a device; the others follow the vendors' sources and field reports.
      */
-    fun localCallAudio(muted: Boolean, errors: org.json.JSONArray): String {
-        if (!hasSamsungCallMute) return "not available on this phone"
+    enum class Silence(val telecomMicMuteSafe: Boolean) { SAMSUNG(true), QUALCOMM(true), MEDIATEK(false), OTHER(true) }
+
+    /** Overridable for tests on one phone (`TETHER_SILENCE=qualcomm|mediatek|other|samsung` in the helper's environment). */
+    val silence: Silence by lazy { System.getenv("TETHER_SILENCE")?.let { e -> Silence.entries.firstOrNull { it.name.equals(e, true) } } ?: pickSilence(Build.MANUFACTURER, socManufacturer(), prop("ro.board.platform"), prop("ro.hardware")) }
+
+    fun pickSilence(manufacturer: String?, soc: String?, platform: String?, hardware: String?): Silence {
+        if (manufacturer.equals("samsung", ignoreCase = true)) return Silence.SAMSUNG
+        val s = (soc ?: "").lowercase(); val p = (platform ?: "").lowercase(); val h = (hardware ?: "").lowercase()
+        return when {
+            s.contains("mediatek") || p.startsWith("mt") || h.startsWith("mt") -> Silence.MEDIATEK
+            s == "qti" || s.contains("qualcomm") || h == "qcom" ||
+                Regex("^(msm|sdm|sm|apq|qcs|lahaina|kona|taro|kalama|pineapple|sun|lito|bengal|holi|trinket|atoll|parrot|crow|blair)").containsMatchIn(p) -> Silence.QUALCOMM
+            else -> Silence.OTHER
+        }
+    }
+
+    private fun socManufacturer(): String? = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MANUFACTURER else null
+
+    private fun prop(name: String): String? = try {
+        Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, name) as String
+    } catch (t: Throwable) { null }
+
+    /** Whether the voice-call stream is muted by us (restored at stop and whenever the helper starts). */
+    @Volatile private var streamMuted = false
+
+    private fun muteVoiceStream(on: Boolean) {
+        // Muting STREAM_VOICE_CALL needs MODIFY_PHONE_STATE (the shell has it); an app can only lower it to index 1.
+        am.adjustStreamVolume(AudioManager.STREAM_VOICE_CALL, if (on) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE, 0)
+        streamMuted = on
+    }
+
+    /** Result of [localCallAudio]: what was done, and how silent the phone is ("full", "earpiece", "none"). */
+    data class Local(val note: String, val silent: String, val telecomMicMute: Boolean)
+
+    /** Mutes / restores the phone's own earpiece and microphone for a bridged call (see [Silence]). */
+    fun localCallAudio(muted: Boolean, errors: org.json.JSONArray): Local {
         val v = if (muted) "1" else "0"
+        val mode = silence
         return try {
-            am.setParameters("l_voice_rx_control_mode=$v")
-            am.setParameters("l_voice_tx_control_mode=$v")
-            "rx=$v tx=$v"
+            when (mode) {
+                Silence.SAMSUNG -> {
+                    am.setParameters("l_voice_rx_control_mode=$v")
+                    am.setParameters("l_voice_tx_control_mode=$v")
+                    Local("rx=$v tx=$v", "full", mode.telecomMicMuteSafe)
+                }
+                Silence.MEDIATEK -> {
+                    am.setParameters("Set_SpeechCall_DL_Mute=$v")
+                    am.setParameters("Set_SpeechCall_UL_Mute=$v")
+                    Local("mediatek dl=$v ul=$v", "full", mode.telecomMicMuteSafe)
+                }
+                Silence.QUALCOMM, Silence.OTHER -> {
+                    // Unmute also when another helper process muted it (a crash mid-call): nobody else mutes this stream.
+                    if (muted || streamMuted || am.isStreamMute(AudioManager.STREAM_VOICE_CALL)) muteVoiceStream(muted)
+                    Local("voice stream ${if (muted) "muted" else "restored"}",
+                        if (mode == Silence.QUALCOMM) "full" else "earpiece", mode.telecomMicMuteSafe)
+                }
+            }
         } catch (t: Throwable) {
-            errors.put("local mute ${describe(t)}"); "failed"
+            errors.put("local mute ${describe(t)}"); Local("failed", "none", true)
+        }
+    }
+
+    /** A helper that died mid-call would leave the phone silent for its next own call: always start clean. */
+    fun restoreLocalCallAudio() {
+        when (silence) {
+            Silence.SAMSUNG, Silence.MEDIATEK -> localCallAudio(muted = false, errors = org.json.JSONArray())
+            else -> runCatching {
+                if (am.isStreamMute(AudioManager.STREAM_VOICE_CALL)) { streamMuted = true; muteVoiceStream(false) }
+            }
         }
     }
 }

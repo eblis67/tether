@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.database.ContentObserver
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.provider.Telephony
@@ -176,10 +177,14 @@ class SmsRepo(private val ctx: Context) {
         if (to.isBlank() || body.isEmpty()) return "empty recipient or body"
         if (dryRun) return null
         val mgr = try {
-            val base = ctx.getSystemService(SmsManager::class.java)
+            val base = if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(SmsManager::class.java)
+                else @Suppress("DEPRECATION") SmsManager.getDefault()
             val subId = (ctx.applicationContext as TetherApp).sims.resolveSub(sub, forSms = true)
                 ?: SubscriptionManager.INVALID_SUBSCRIPTION_ID
-            if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) base.createForSubscriptionId(subId) else base
+            if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                if (Build.VERSION.SDK_INT >= 31) base.createForSubscriptionId(subId)
+                else @Suppress("DEPRECATION") SmsManager.getSmsManagerForSubscriptionId(subId)
+            } else base
         } catch (t: Throwable) {
             return "no SmsManager: ${t.message}"
         }

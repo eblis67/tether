@@ -38,12 +38,25 @@ adb shell cmd package compile -m speed -f app.tether.android   # optional: compi
 - `JAVA_HOME` must point at a JDK 17 (for Homebrew: `export JAVA_HOME=$(brew --prefix openjdk@17)/libexec/openjdk.jdk/Contents/Home`).
 - The release build is signed with your local debug key unless you set `tether.signing.*` in `local.properties`.
   Keep using the same key: Android refuses to update an app signed with a different one.
+- Prebuilt, signed APKs (and an unsigned iPhone IPA) are attached to each GitHub Release; the version comes from
+  `VERSION` at the repository root. Release keys and cutting a release: [RELEASING.md](RELEASING.md).
 - If `dl.google.com` is not reachable from your network, set `tether.googleMavenMirror=<url>` in
   `local.properties` (or `TETHER_GOOGLE_MAVEN_MIRROR` in the environment).
 - The shell helper (`android/helper`) is built into the same APK; there is nothing else to install.
 
 Enable USB debugging on the phone first (Settings › About phone › tap Build number seven times, then Developer
 options › USB debugging).
+
+### The Android client (a second Android phone)
+
+```bash
+cd android
+./gradlew :client:testDebugUnitTest :client:assembleRelease
+adb -s <the client phone> install -r client/build/outputs/apk/release/client-release.apk
+```
+
+It shares the protocol and codec code with the app above (`android/core`) and is signed the same way. Application
+id `app.tether.client`, Android 10 or later. See [ANDROID-CLIENT.md](ANDROID-CLIENT.md).
 
 ## 4. iPhone / iPad app
 
@@ -77,6 +90,7 @@ General › VPN & Device Management › your Apple account › Trust. iOS 16 and
 | --- | --- | --- |
 | Signature valid for | 7 days: run `tools/reinstall-ios.sh` again before it ends (data and pairing are kept) | 1 year |
 | Sender pictures in message notifications (Communication Notifications entitlement) | Not allowed: the script builds without it automatically | Yes |
+| Default calling app on iOS 18.2+ (`com.apple.developer.calling-app`, same build variant) | Not allowed: built without it | Yes |
 | Everything else | Same | Same |
 
 The Link tab shows how many days the current signature has left.
@@ -85,7 +99,7 @@ The Link tab shows how many days the current signature has left.
 
 ```bash
 cd ios && xcodegen generate
-xcodebuild -project Tether.xcodeproj -scheme Tether -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project Tether.xcodeproj -scheme Tether -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO -skipMacroValidation build
 ```
 
 ## 5. Tests
@@ -93,6 +107,7 @@ xcodebuild -project Tether.xcodeproj -scheme Tether -destination 'generic/platfo
 ```bash
 (cd ios/TetherCore && ./test.sh)                      # Swift: protocol, crypto, framing, playout, parsing
 (cd android && ./gradlew :app:testDebugUnitTest)      # Kotlin: the same protocol vectors, lists, link security
+(cd android && ./gradlew :client:testDebugUnitTest)   # Android client: vectors, and its whole stack against a simulated Android phone
 ```
 
 Both implementations check themselves against `protocol/vectors.json` byte for byte.
@@ -102,8 +117,8 @@ Both implementations check themselves against `protocol/vectors.json` byte for b
 The iOS app runs in the simulator with demo data (no Bluetooth there):
 
 ```bash
-cd ios && xcodebuild -project Tether.xcodeproj -scheme Tether -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath build-sim CODE_SIGNING_ALLOWED=NO build
+cd ios && xcodebuild -project Tether.xcodeproj -scheme Tether \
+  -destination 'generic/platform=iOS Simulator' -derivedDataPath build-sim CODE_SIGNING_ALLOWED=NO -skipMacroValidation build
 xcrun simctl install booted build-sim/Build/Products/Debug-iphonesimulator/Tether.app
 xcrun simctl launch booted <your bundle id> -TetherDemo -TetherDemoMessages
 ```

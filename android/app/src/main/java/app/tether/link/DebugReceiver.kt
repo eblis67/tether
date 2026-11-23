@@ -1,5 +1,6 @@
 package app.tether.link
 
+import app.tether.adb.AdbPairing
 import app.tether.adb.Adb
 import app.tether.core.Phone as PhoneEntry
 import android.content.BroadcastReceiver
@@ -17,6 +18,7 @@ import app.tether.core.T
 import app.tether.telecom.CallRegistry
 import app.tether.telecom.TestConnectionService
 import org.json.JSONObject
+import app.tether.data.UssdCode
 import java.io.IOException
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -30,8 +32,7 @@ import java.util.concurrent.TimeUnit
  *       loopback (full handshake + sync against an in-process fake iPhone) | probe | helper_cmd
  */
 class DebugReceiver : BroadcastReceiver() {
-    /** The only numbers the delete / block hooks accept: +10000000001 … +10000000009. */
-    private fun isTestNumber(n: String) = Regex("""\+?1000000000\d""").matches(n.filter { !it.isWhitespace() })
+    private fun isTestNumber(n: String) = TestGuards.isTestNumber(n)
 
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext as TetherApp
@@ -52,6 +53,20 @@ class DebugReceiver : BroadcastReceiver() {
         }.start()
     }
 
+    /** x.tether.echo to every client that announced it: round trip, clock offset and transport per answer. */
+    private fun extEcho(app: TetherApp, data: String?): String {
+        val echo = app.hub.extensions.extensions.filterIsInstance<app.tether.core.ext.EchoExtension>().firstOrNull() ?: return "echo not registered"
+        val results = LinkedBlockingQueue<app.tether.core.ext.EchoExtension.Result>()
+        echo.onResult = { results.put(it) }
+        try {
+            val sent = app.hub.extensions.sessions(echo).count { echo.ping(it, data) != null }
+            val got = (1..sent).mapNotNull { results.poll(3, TimeUnit.SECONDS) }
+            return "sent $sent, answered ${got.size}" + got.joinToString("") { r ->
+                if (r.error != null) "; error ${r.error}" else "; rtt ${r.rttMs} ms, offset ${r.offsetMs} ms, via ${r.via}, ${r.bytes} bytes"
+            }
+        } finally { echo.onResult = null }
+    }
+
     private fun run(app: TetherApp, cmd: String, intent: Intent): String = when (cmd) {
         "state" -> (LinkService.running?.debugState() ?: JSONObject().put("service", false))
             .put("status", app.hub.statusJson().also { st ->
@@ -61,11 +76,11 @@ class DebugReceiver : BroadcastReceiver() {
         "pair_code" -> app.keys.openPairing().encode()
         // Never rings the user's iPhone by accident: with an iPhone connected it refuses (use loopback_call instead).
         // A test-line ring reaches a linked iPhone only when asked for (--es allow iphone).
-        "fake_incoming" -> if (app.hub.targets().any { it.kind == "iphone" } && intent.getStringExtra("allow") != "iphone")
+        "fake_incoming" -> if (!TestGuards.fakeCallAllowed(app.hub.targets().map { it.kind }, intent.getStringExtra("allow")))
                 "refused: an iPhone would ring; add --es allow iphone to ring it on purpose, or use loopback_call"
             else { TestConnectionService.ringIn(app, intent.getStringExtra("num") ?: "5550100"); "ringing" }
         // fake_outgoing: an outgoing call on the self-managed test line (never a SIM), shown on a linked iPhone.
-        "fake_outgoing" -> if (app.hub.targets().any { it.kind == "iphone" } && intent.getStringExtra("allow") != "iphone")
+        "fake_outgoing" -> if (!TestGuards.fakeCallAllowed(app.hub.targets().map { it.kind }, intent.getStringExtra("allow")))
                 "refused: an iPhone would show it; add --es allow iphone"
             else { TestConnectionService.dialOut(app, "+10000000009"); "dialing on the test line" }
         "fake_end" -> { TestConnectionService.endCurrent(); "ended" }
@@ -75,15 +90,24 @@ class DebugReceiver : BroadcastReceiver() {
         // deletes it again. Touches no existing contact.
         "contact_test" -> {
             val repo = app.contacts
-            // Two numbers; the edit keeps the first (new type), drops the second, adds a third: only changed rows move.
-            val id = repo.add("Tether Test", listOf(PhoneEntry("+10000000006", "mobile"), PhoneEntry("+10000000007", "home")), emptyList())
-            val err = repo.update(id, "Tether Test Edited", listOf(PhoneEntry("+10000000006", "work"),
-                PhoneEntry("+10000000008", "home")), listOf("test@example.com"))
+            // Three numbers, one with a custom kind. Edit 1 (as an older iPhone, no labels): the first changes type, the
+            // labelled one must keep "Satellite", the third is dropped, a new labelled one is added. Edit 2 clears the
+            // label (""). Only throw-away +1000000000x numbers; the contact is deleted at the end.
+            val id = repo.add("Tether Test", listOf(PhoneEntry("+10000000006", "mobile"), PhoneEntry("+10000000007", "other", "Satellite"),
+                PhoneEntry("+10000000009", "home")), emptyList())
+            fun shown() = repo.all(withPhotos = false).firstOrNull { it.id == id }?.phones?.sortedBy { it.n }?.map { it.n.takeLast(1) + "/" + it.type + (it.label?.let { l -> "/$l" } ?: "") }
+            val added = shown()
+            val err = repo.update(id, "Tether Test Edited", listOf(PhoneEntry("+10000000006", "work"), PhoneEntry("+10000000007", "other"),
+                PhoneEntry("+10000000008", "home", "Studio")), listOf("test@example.com"))
+            val edited = shown()
+            val err2 = repo.update(id, "Tether Test Edited", listOf(PhoneEntry("+10000000006", "work"), PhoneEntry("+10000000007", "home", ""),
+                PhoneEntry("+10000000008", "home", "Studio")), listOf("test@example.com"))
+            val cleared = shown()
             val after = repo.all(withPhotos = false).firstOrNull { it.id == id }
             val deleted = app.contentResolver.delete(android.provider.ContactsContract.RawContacts.CONTENT_URI.buildUpon()
                 .appendQueryParameter(android.provider.ContactsContract.CALLER_IS_SYNCADAPTER, "true").build(),
                 "${android.provider.ContactsContract.RawContacts.CONTACT_ID} = ?", arrayOf(id.toString()))
-            "id=$id update=${err ?: "ok"} after=${after?.name} phones=${after?.phones?.map { it.n + "/" + it.type }} emails=${after?.emails} deleted=$deleted"
+            "id=$id added=$added update=${err ?: "ok"} edited=$edited update2=${err2 ?: "ok"} cleared=$cleared after=${after?.name} emails=${after?.emails} deleted=$deleted"
         }
         // sms_read <thread> <upTo>: what an sms.read from the iPhone does (mark read, granting the app-op if needed)
         "sms_read" -> {
@@ -134,6 +158,12 @@ class DebugReceiver : BroadcastReceiver() {
         }
         "mute" -> app.hub.applyListsSet(JSONObject().put("what", "mute").put("thread", intent.getStringExtra("thread")?.toLongOrNull() ?: -1)
             .put("on", intent.getStringExtra("on") != "off")).let { app.hub.broadcast(Message(T.LISTS, it)); "muted=${it.get("muted")}" }
+        // ussd_test <code>: DRY. Validates the way ussd.send does and logs; nothing ever reaches the network.
+        "ussd_test" -> intent.getStringExtra("code").orEmpty().let { c -> "valid=${UssdCode.valid(c)} sent=false" }
+            .also { android.util.Log.i("Tether", "ussd_test (dry) $it") }
+        // phone_find on|off: really rings the Android phone on the alarm stream (max 30 s); ringer: state only
+        "phone_find" -> if (intent.getStringExtra("on") == "on") (app.hub.finder.start() ?: "ringing") else { app.hub.finder.stop(); "stopped" }
+        "ringer" -> "mode=${app.hub.ringer.mode()} dnd=${app.hub.ringer.dndAccess()} finding=${app.hub.finder.active}"
         "lists" -> app.lists.json().let { j -> JSONObject().put("blockedCount", j.getJSONArray("blocked").length()).put("muted", j.get("muted")).put("system", j.get("system")) }.toString()
         // share on|off|loopback|noloopback|state: the Share VPN proxy (loopback = also on 127.0.0.1 for adb-forward tests)
         "share" -> {
@@ -172,6 +202,9 @@ class DebugReceiver : BroadcastReceiver() {
         "airplane" -> app.hub.helper.ensureRunning()?.let { "helper: $it" } ?: app.hub.setAirplane(intent.getStringExtra("on") == "on").toString()
         // linklog [n]: the persistent Bluetooth link event log
         "linklog" -> LinkLog.tail(intent.getStringExtra("n")?.toIntOrNull() ?: 120)
+        // Extensions (protocol §7): what is registered, what each client announced, counters; no message contents.
+        "ext" -> app.hub.extensions.debug().toString()
+        "ext_echo" -> extEcho(app, intent.getStringExtra("data"))
         // net datasub <subId>: choose the SIM that carries mobile data
         "net_datasub" -> app.hub.helper.ensureRunning()?.let { "helper: $it" }
             ?: app.hub.helper.net("dataSub", true, intent.getStringExtra("sub")?.toIntOrNull()).toString()
@@ -183,21 +216,30 @@ class DebugReceiver : BroadcastReceiver() {
         "loopback" -> loopback(app)
         "codec_bench" -> codecBench()
         "codec_bench_paced" -> codecBenchPaced()
+        // inject_ms <20..200|off>: cap of the helper's uplink playback buffer for the next calls (default 40 ms).
+        "inject_ms" -> {
+            val v = intent.getStringExtra("ms")?.toIntOrNull()
+            app.prefs.edit().apply { if (v == null) remove("inject_ms") else putInt("inject_ms", v.coerceIn(20, 200)) }.apply()
+            "inject_ms=${app.prefs.getInt("inject_ms", 40)}"
+        }
         "only" -> { app.hub.onlyKind = intent.getStringExtra("kind")?.takeIf { it != "off" }; "only=${app.hub.onlyKind}" }
         "audio_stats" -> "hub: down=${app.hub.audio.downFrames} up=${app.hub.audio.upFrames} " +
             "encode=%.2f ms decode=%.2f ms ".format(app.hub.audio.encodeNanos / maxOf(1, app.hub.audio.downFrames) / 1e6, app.hub.audio.decodeNanos / maxOf(1, app.hub.audio.upFrames) / 1e6) +
             "echo=%.1f ms over %d; concealed=%d; helper=${app.hub.helper.lastInfo} stats=${app.hub.helper.lastStats}".format(app.hub.audio.echoNanos / maxOf(1, app.hub.audio.echoCount) / 1e6, app.hub.audio.echoCount, app.hub.audio.upLost)
         "audio_reset" -> { app.hub.audio.resetStats(); "reset" }
-        // loopback_call [--es mode answer|decline|remote|outgoing]: answer = ring, answer, audio, keypad, end here;
+        // loopback_call [--es mode answer|decline|remote|outgoing|selftest]: answer = ring, answer, audio, keypad, end here;
         // decline = reject while ringing; remote = the far side hangs up; outgoing = a call placed on the test line.
         // drop: close every live session from this side (as a lost link would), to test the iPhone's reconnect.
         "drop" -> app.hub.conns.filter { it.isUp }.let { l -> l.forEach { it.close("dropped by test") }; "dropped ${l.size}" }
         "loopback_call" -> loopbackCall(app, intent.getStringExtra("sync") == "full", intent.getStringExtra("mode") ?: "answer")
         "loopback_handover" -> loopbackHandover(app)
         "adb_pair" -> {
-            val code = intent.getStringExtra("code") ?: error("--es code required")
-            app.adbPairAndBootstrap(code)
+            // The notification's path (a short foreground service), so this hook never blocks its broadcast either.
+            val code = AdbPairing.normalizeCode(intent.getStringExtra("code")) ?: error("--es code with 6 digits required")
+            AdbPairing.start(app, code); "started (see the notification and the log)"
         }
+        // adb_pair_clear: removes the pairing notification (after testing adb_pair on a phone that is already paired).
+        "adb_pair_clear" -> { app.getSystemService(android.app.NotificationManager::class.java).cancel(Adb.NOTIF_ADB); "cleared" }
         "adb_shell" -> app.adbShell(intent.getStringExtra("sh") ?: "id")
         "helper_start" -> app.hub.helper.ensureRunning() ?: "helper running"
         "helper_quit" -> if (app.hub.helper.quit()) "quit sent" else "helper not connected"
@@ -244,7 +286,7 @@ class DebugReceiver : BroadcastReceiver() {
                 counts[m.t] = (counts[m.t] ?: 0) + 1
                 m.b.optJSONArray("items")?.let { items[m.t] = (items[m.t] ?: 0) + it.length() }
                 if (m.re != null) log.append("${m.t}(re=${m.re}) ${m.b}; ")
-                if (m.re != null) seen.add(m.re)
+                m.re?.let { seen.add(it) }
                 if (seen.containsAll(listOf(2, 3, 4, 5))) break
             }
             log.append("received=$counts items=$items")
@@ -298,7 +340,9 @@ class DebugReceiver : BroadcastReceiver() {
             var codec = -1
             var downFrames = 0
             var states = ArrayList<String>()
-            val deadline = System.currentTimeMillis() + 25_000
+            val deadline = System.currentTimeMillis() + if (mode == "selftest") 45_000 else 25_000
+            var selftestSent = false
+            var selftestDone = false
             var phase = 0
             var audioSeq = 0
             var tEnd = 0L
@@ -322,6 +366,7 @@ class DebugReceiver : BroadcastReceiver() {
                         }
                         T.AUDIO_START -> { log.append("audio.start ${m.b}; "); codec = if (m.b.getString("codec") == "opus") 1 else 2 }
                         T.AUDIO_STOP -> log.append("audio.stop; ")
+                        T.SELFTEST_RESULT -> { log.append("selftest ${m.b}; "); selftestDone = true }
                     }
                 }
                 if (phase == 0 && mode == "decline" && states.lastOrNull() == "ringing") {
@@ -329,7 +374,11 @@ class DebugReceiver : BroadcastReceiver() {
                 }
                 if (phase == 0 && mode == "outgoing" && states.lastOrNull() == "active") phase = 1
                 if (phase == 0 && mode != "decline" && mode != "outgoing" && states.lastOrNull() == "ringing") { send(Message(T.CALL_ANSWER, JSONObject().put("cid", cid))); phase = 1 }
-                if (phase == 1 && downFrames >= 250) {
+                // selftest: the client runs the call-audio self-test in the middle of the call (as the iPhone's button does).
+                if (phase == 1 && mode == "selftest" && !selftestSent && downFrames >= 50) {
+                    send(Message(T.SELFTEST, JSONObject(), id = 2)); selftestSent = true
+                }
+                if (phase == 1 && downFrames >= 250 && (mode != "selftest" || selftestDone)) {
                     send(Message(T.CALL_DTMF, JSONObject().put("cid", cid).put("d", "5"))); tEnd = System.nanoTime()
                     if (mode == "remote") TestConnectionService.endCurrent() else send(Message(T.CALL_END, JSONObject().put("cid", cid)))
                     phase = 2
@@ -345,6 +394,7 @@ class DebugReceiver : BroadcastReceiver() {
             if (a.echoCount > 0) log.append("Android phone round trip (encode→link→decode→inject queue) avg %.1f ms over %d frames; ".format(a.echoNanos / a.echoCount / 1e6, a.echoCount))
             if (a.upLost > 0) log.append("uplink concealed ${a.upLost} frames; ")
             Thread.sleep(400) // helper stats arrive with its stop
+            log.append("timing: ${a.lastTiming}; ")
             log.append("helper=${app.hub.helper.lastInfo} stats=${app.hub.helper.lastStats}")
         } finally {
             TestConnectionService.endCurrent()

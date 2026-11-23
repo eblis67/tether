@@ -1,9 +1,10 @@
+import Perception
 import SwiftUI
 import TetherCore
 
 struct MessagesView: View {
-    @Environment(AppModel.self) private var model
-    @Environment(Router.self) private var router
+    @Environment(\.appModel) private var model
+    @Environment(\.router) private var router
     @State private var search = ""
     @State private var path: [Int64] = []
     @State private var composing = false
@@ -28,7 +29,9 @@ struct MessagesView: View {
         Button(role: .destructive) { deleting = c } label: { Label("Delete", systemImage: "trash") }
     }
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         NavigationStack(path: $path) {
             List {
                 if !search.isEmpty {
@@ -56,7 +59,7 @@ struct MessagesView: View {
             .listStyle(.plain)
             .overlay {
                 if model.conversations.isEmpty && search.isEmpty {
-                    ContentUnavailableView(model.syncing ? "Syncing…" : "No messages",
+                    EmptyStateView(model.syncing ? "Syncing…" : "No messages",
                                            systemImage: "message",
                                            description: Text(model.isPaired ? "" : "Pair with your Android phone in the Link tab."))
                 }
@@ -82,7 +85,7 @@ struct MessagesView: View {
             .refreshable { model.requestSync() }
             .navigationTitle("Messages")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button { hideKeyboard(); composing = true } label: { Image(systemName: "square.and.pencil") }
                         .disabled(!model.linkState.isConnected)
                 }
@@ -93,13 +96,13 @@ struct MessagesView: View {
                     composing = false
                     if let thread { path = [thread] }
                 }
-                .environment(AppModel.shared).environment(Router.shared)
+                .environment(\.appModel, AppModel.shared).environment(\.router, Router.shared)
             }
-            .onChange(of: router.openThread) { _, t in
+            .onChangeCompat(of: router.openThread) { t in
                 if let t { path = [t]; router.openThread = nil }
             }
             // "Send message" on a number inside a bubble: its conversation, or a new one.
-            .onChange(of: router.composeTo) { _, n in
+            .onChangeCompat(of: router.composeTo) { n in
                 guard let n else { return }
                 router.composeTo = nil
                 if let t = model.thread(for: n) { path = [t] } else { composeTo = n; path = []; composing = true }
@@ -123,10 +126,12 @@ struct MessagesView: View {
 }
 
 struct ConversationRow: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     let conversation: Conversation
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         HStack(spacing: 10) {
             // Unread marker, where Messages puts it.
             Circle().fill(conversation.unread > 0 ? Color.blue : Color.clear).frame(width: 10, height: 10)
@@ -159,7 +164,7 @@ struct ConversationRow: View {
 }
 
 struct ThreadView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     let thread: Int64
     @State private var text = ""
     @State private var sub: Int?
@@ -202,7 +207,9 @@ struct ThreadView: View {
         return out
     }
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         let msgs = model.messages(thread: thread)
         let name = model.displayName(address)
         ScrollViewReader { proxy in
@@ -226,9 +233,9 @@ struct ThreadView: View {
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
             }
-            .defaultScrollAnchor(.bottom)
+            .bottomAnchoredCompat(proxy, last: msgs.last?.id)
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: msgs.count) { _, _ in
+            .onChangeCompat(of: msgs.count) { _ in
                 if let last = msgs.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
                 if model.appActive { model.markRead(thread: thread) }
             }
@@ -245,11 +252,11 @@ struct ThreadView: View {
                 }
                 .accessibilityElement(children: .combine)
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button { model.dial(address, sub: sub) } label: { Image(systemName: "phone") }
                     .disabled(!model.linkState.isConnected || address.isEmpty)
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     let muted = model.isMuted(thread)
                     Color.clear.frame(width: 0, height: 0).onAppear { focused = false }
@@ -360,7 +367,7 @@ struct BubbleShape: Shape {
             if !mine {
                 t = t.applying(CGAffineTransform(translationX: rect.minX + rect.maxX, y: 0).scaledBy(x: -1, y: 1))
             }
-            p = p.union(t)   // not addPath: opposite winding would punch a notch where the two overlap
+            if #available(iOS 17, *) { p = p.union(t) } else { p = Path(p.cgPath.union(t.cgPath)) }   // not addPath: opposite winding would punch a notch where the two overlap
         }
         return p
     }
@@ -368,13 +375,15 @@ struct BubbleShape: Shape {
 
 struct Bubble: View {
     @Environment(\.layoutDirection) private var direction
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     let message: Sms
     var tail = true
     @State private var phone: String?
     @State private var confirmDelete = false
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         let mine = !message.incoming
         // The shape is drawn in left-to-right coordinates; in right-to-left layouts the sides swap.
         let onRight = (direction == .leftToRight) == mine
@@ -465,7 +474,7 @@ struct Bubble: View {
 }
 
 struct ComposeView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     var initialTo = ""
     let done: (Int64?) -> Void
     @State private var to = ""
@@ -474,7 +483,9 @@ struct ComposeView: View {
     private enum Field { case to, message }
     @FocusState private var field: Field?
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         NavigationStack {
             Form {
                 Section {
@@ -485,7 +496,7 @@ struct ComposeView: View {
                     if !to.isEmpty {
                         ForEach(suggestions, id: \.1) { name, number in
                             Button { to = number; field = .message } label: {
-                                VStack(alignment: .leading) { Text(name); Text(number).font(.caption).foregroundStyle(.secondary) }
+                                VStack(alignment: .leading) { Text(name); Text(model.formatted(number)).font(.caption).foregroundStyle(.secondary) }
                             }
                         }
                     }

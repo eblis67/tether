@@ -32,7 +32,7 @@ final class Notifications: NSObject, UNUserNotificationCenterDelegate {
             UNNotificationCategory(identifier: Self.otpCategory, actions: [copy, reply], intentIdentifiers: []),
         ])
         // Simulator screenshots (-TetherDemoQuiet) must not be covered by the permission alert.
-        if ProcessInfo.processInfo.arguments.contains("-TetherDemoQuiet") { return }
+        if ProcessInfo.processInfo.arguments.contains("-TetherDemoQuiet") || AppModel.runningTests { return }
         center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 

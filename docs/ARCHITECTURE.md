@@ -19,6 +19,8 @@
 
 | Part | Where | What it does |
 | --- | --- | --- |
+| Shared Android core | `android/core` | Protocol code used by both Android apps: framing, the handshake (both sides), sealed records, message types, G.711 and Opus (Concentus) |
+| Android client | `android/client` | The iPhone app's job on a second Android phone: BLE central with L2CAP / GATT pipe and the iPhone's reconnect rules, self-managed Telecom calls, call audio with the ported playout buffer, the five tabs, notifications. See [ANDROID-CLIENT.md](ANDROID-CLIENT.md) |
 | Android app | `android/app` | BLE peripheral and foreground service (`link/`), sync of SMS, contacts and call log (`data/`), Telecom: the default-dialer InCallService, call screening and a self-managed test line (`telecom/`), the audio bridge to the helper (`audio/`), in-app Wireless debugging pairing (`adb/`), the Share VPN proxy, its own small UI |
 | Shell helper | `android/helper` | Started by the app as the shell user over the phone's own Wireless debugging. Captures the call downlink and injects the uplink through Android's call-audio interception API (with fallbacks), and changes network settings an app may not (mobile data, hotspot, tethering, airplane mode, network mode, data SIM) |
 | iOS app | `ios/Tether` | SwiftUI: Recents, Contacts with Favourites, Keypad, Messages, Link. CallKit for calls, AVAudioEngine with voice processing and Opus for audio, local notifications |
@@ -36,6 +38,13 @@
   by the helper, Opus-encoded by the app and carried on the link's audio channel.
 - **Ownership**: the Android phone is the source of truth for texts, contacts, calls, read state, blocks and
   favourites. The iPhone keeps a snapshot for instant start and offline viewing.
+
+## libopus on the iPhone
+
+`ios/TetherCore/Sources/COpus` vendors libopus 1.5.2 (floating point, no assembly or intrinsics; `config/config.h` is
+ours, `include/copus_shim.h` wraps the variadic `opus_*_ctl` calls for Swift). `LibOpusDecoder` / `LibOpusEncoder`
+(`TetherCore/LibOpus.swift`) expose mono 16-bit decode with packet-loss concealment (`opus_decode` without data) and
+VOIP encode. The tests round-trip a tone and decode both ways against AudioToolbox's `kAudioFormatOpus`.
 
 ## Transports
 

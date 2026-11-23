@@ -1,13 +1,16 @@
 import AVFoundation
+import Perception
 import SwiftUI
 import TetherCore
 
 struct LinkView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     @State private var scanning = false
     @State private var confirmUnpair = false
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         NavigationStack {
             ScrollViewReader { scroller in
             List {
@@ -100,12 +103,19 @@ struct LinkView: View {
                         Text("Turn on the hotspot and join it in Settings › Wi-Fi to use the Android phone's internet here. Bluetooth tethering is slower: after switching it on, tap the Android phone in Settings › Bluetooth. Airplane mode keeps Bluetooth on so this link stays up; if the link is not back within 90 seconds it switches itself off. The hotspot and Bluetooth tethering come back on after it.")
                     }
                     VPNSection().id("vpn")
+                    if let t = s.tools, t.ussd == true || t.find == true || t.ringer == true {
+                        PhoneToolsSection(status: s, tools: t).id("phonetools")
+                    }
                     Section("Call audio") {
                         LabeledContent("Audio helper", value: s.helper.state == "running" ? String(localized: "Running") : String(localized: "Stopped"))
                         if let m = s.helper.method { LabeledContent("Method", value: m) }
+                        if let q = s.helper.silent {
+                            LabeledContent("Android phone silent", value: q == "full" ? String(localized: "Yes") :
+                                q == "earpiece" ? String(localized: "Earpiece only") : String(localized: "No"))
+                        }
                         if let a = model.lastAudioStats {
                             LabeledContent("Last call") {
-                                Text(String(format: "buffer %.0f ms · jitter %.1f ms · gaps %d", a.playoutMs, a.jitterMs, a.underruns))
+                                Text(String(format: "buffer %.0f ms · jitter %.1f ms · gaps %d", a.delayMs, a.jitterMs, a.underruns))
                                     .font(.caption.monospacedDigit())
                             }
                         }
@@ -124,6 +134,8 @@ struct LinkView: View {
                         }
                     }
                 }
+
+                PhoneLinksSection()
 
                 Section {
                     NavigationLink {
@@ -152,12 +164,18 @@ struct LinkView: View {
                 } footer: {
                     Text("On the Android phone, open Tether and tap Pair iPhone, then scan the code (or paste it). Calls, messages, contacts and call history stay between your devices; there is no server.")
                 }
+                #if DEBUG
+                DeveloperSection()
+                #endif
             }
             #if DEBUG
             // -TetherDemoVPN: start scrolled to the VPN section (screenshots).
             .onAppear {
                 if ProcessInfo.processInfo.arguments.contains("-TetherDemoPair") || ProcessInfo.processInfo.arguments.contains("-TetherDemoPairManual") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { scanning = true }
+                }
+                if ProcessInfo.processInfo.arguments.contains("-TetherDemoPhoneTools") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { scroller.scrollTo("phonetools", anchor: .top) }
                 }
                 if ProcessInfo.processInfo.arguments.contains("-TetherDemoVPN") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1) { scroller.scrollTo("vpn", anchor: .top) }
@@ -167,14 +185,14 @@ struct LinkView: View {
             }
             .navigationTitle("Link")
             .onAppear { model.refreshNet() }
-            .onChange(of: model.linkState.isConnected) { _, up in if up { model.refreshNet() } }
+            .onChangeCompat(of: model.linkState.isConnected) { up in if up { model.refreshNet() } }
             // Full screen: nothing of the Link tab shows around or behind the camera.
             .fullScreenCover(isPresented: $scanning) {
                 PairingView { code in
                     scanning = false
                     if let code { model.pair(code) }
                 }
-                .environment(AppModel.shared)
+                .environment(\.appModel, AppModel.shared)
             }
             .confirmationDialog("Forget the Android phone and delete synced data from this iPhone?", isPresented: $confirmUnpair,
                                 titleVisibility: .visible) {
@@ -196,10 +214,33 @@ struct LinkView: View {
 }
 
 /// The Android phone's VPN (any VPN app) and "Share VPN": its proxy lets this device use that VPN.
-struct VPNSection: View {
-    @Environment(AppModel.self) private var model
+#if DEBUG
+/// Debug builds only: try the extensions (protocol §7) against the linked Android phone. Not translated on purpose.
+struct DeveloperSection: View {
+    @Environment(\.appModel) private var model
+    var body: some View { WithPerceptionTracking { bodyContent } }
 
-    var body: some View {
+    @ViewBuilder private var bodyContent: some View {
+        Section {
+            Button { model.echoTest() } label: { Text(verbatim: "Echo round trip (x.tether.echo)") }
+                .disabled(!model.linkState.isConnected)
+            if let line = model.extensionLine { Text(verbatim: line).font(.footnote) }
+            Text(verbatim: model.extensions.summary).font(.caption2.monospaced()).foregroundStyle(.secondary)
+        } header: {
+            Text(verbatim: "Developer")
+        } footer: {
+            Text(verbatim: "Debug builds only. Add your own feature: docs/EXTENDING.md.")
+        }
+    }
+}
+#endif
+
+struct VPNSection: View {
+    @Environment(\.appModel) private var model
+
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         Section {
             LabeledContent {
                 Text(model.net?.vpn == true ? String(localized: "On") : model.net?.vpn == false ? String(localized: "Off") : "–")
@@ -222,10 +263,12 @@ struct VPNSection: View {
 
 /// One-time steps: iOS lets no app set the system proxy, but the hotspot network can use the phone's PAC file.
 struct IPhoneProxySetup: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     let proxy: ShareProxyInfo?
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         DisclosureGroup {
             if let a = proxy?.addrs.first(where: { $0.kind == "hotspot" }) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -288,7 +331,7 @@ struct LinkLogView: View {
         }
         .navigationTitle("Link log")
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { ShareLink(item: text) }
+            ToolbarItem(placement: .navigationBarTrailing) { ShareLink(item: text) }
         }
         .refreshable { text = LinkJournal.shared.text }
     }
@@ -296,9 +339,11 @@ struct LinkLogView: View {
 
 /// Blocked numbers (the Android phone's list), with swipe to unblock, as in Settings › Phone › Blocked Contacts.
 struct BlockedListView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         List {
             Section {
                 ForEach(model.blockLists.blocked, id: \.self) { n in
@@ -324,9 +369,28 @@ struct BlockedListView: View {
             }
         }
         .overlay {
-            if model.blockLists.blocked.isEmpty { ContentUnavailableView("No Blocked Contacts", systemImage: "hand.raised") }
+            if model.blockLists.blocked.isEmpty { EmptyStateView("No Blocked Contacts", systemImage: "hand.raised") }
         }
         .navigationTitle("Blocked Contacts")
+    }
+}
+
+/// Calling numbers from other apps (tel: links, Shortcuts, the Phone app's Recents); docs/USAGE.md.
+struct PhoneLinksSection: View {
+    @Environment(\.appModel) private var model
+    @AppStorage(CallController.phoneRecentsKey) private var inPhoneRecents = false
+
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
+        Section {
+            Toggle(isOn: $inPhoneRecents) { Label("Show calls in the Phone app", systemImage: "clock.arrow.circlepath") }
+                .onChangeCompat(of: inPhoneRecents) { _ in model.calls.applyRecentsSetting() }
+        } header: {
+            Text("Numbers in other apps")
+        } footer: {
+            Text("Calls made here also appear in the Phone app's Recents; tapping one calls back through the Android phone. To call numbers you tap in other apps, choose this app in Settings › Apps › Default Apps › Calling (needs a paid Apple developer account), or use the \"Call with\" shortcut in the Shortcuts app.")
+        }
     }
 }
 
@@ -351,15 +415,76 @@ struct SigningSection: View {
     }
 }
 
+/// Link tab › Phone tools: carrier codes (balance etc.) on a SIM, "find my phone" and the ringer mode. Each part shows
+/// only when the Android phone's status says it can (older Android builds of Tether do not say: the section is hidden).
+struct PhoneToolsSection: View {
+    @Environment(\.appModel) private var model
+    let status: StatusBody
+    let tools: StatusBody.PhoneTools
+    @State private var code = ""
+    @State private var sub: Int?
+
+    private var chosenSub: Int? { sub ?? status.defaultSub ?? status.sims.first?.sub }
+
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
+        Section {
+            if tools.ussd == true {
+                HStack {
+                    TextField("*123#", text: $code)
+                        .keyboardType(.numbersAndPunctuation).autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .font(.body.monospaced())
+                    Button("Send") { model.sendUssd(code, sub: chosenSub) }
+                        .disabled(!UssdCode.isValid(code.trimmingCharacters(in: .whitespaces)) || model.ussdPending || !model.linkState.isConnected)
+                }
+                if status.sims.count > 1 {
+                    Picker("SIM", selection: Binding(get: { chosenSub ?? -1 }, set: { sub = $0 })) {
+                        ForEach(status.sims) { sim in Text("SIM \(sim.slot + 1) · \(sim.name)").tag(sim.sub) }
+                    }
+                }
+                if model.ussdPending {
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Waiting for the carrier…").foregroundStyle(.secondary) }
+                } else if let r = model.ussdResult {
+                    Text(r.ok ? (r.text ?? "") : (r.err ?? String(localized: "No answer")))
+                        .font(.callout).foregroundStyle(r.ok ? Color.primary : Color.red).textSelection(.enabled)
+                }
+            }
+            if tools.find == true {
+                Toggle(isOn: Binding(get: { model.finding }, set: { model.setFinding($0) })) {
+                    Label("Find phone", systemImage: "bell.and.waves.left.and.right")
+                }
+                .tint(.green).disabled(!model.linkState.isConnected)
+            }
+            if tools.ringer == true, let mode = status.ringer {
+                Picker(selection: Binding(get: { mode }, set: { model.setRinger($0) })) {
+                    Text("Ring").tag("normal"); Text("Vibrate").tag("vibrate"); Text("Silent").tag("silent")
+                } label: { Label("Ringer", systemImage: "bell") }
+                .disabled(!model.linkState.isConnected)
+                if status.dnd == false {
+                    Text("Silent needs Do Not Disturb access for Tether on the Android phone.").font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            if let e = model.phoneToolError { Text(e).font(.footnote).foregroundStyle(.red) }
+        } header: {
+            Text("Phone tools")
+        } footer: {
+            Text("Carrier codes are sent from the Android phone's SIM and may cost money. Find phone rings the Android phone loudly for up to 30 seconds, until it is unlocked or you switch it off.")
+        }
+    }
+}
+
 /// One switch in the Internet section: shows the phone's state, greys out while a change is in flight.
 struct NetToggle: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     let title: LocalizedStringKey
     let icon: String
     let what: String
     let value: Bool?
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         Toggle(isOn: Binding(get: { value ?? false }, set: { model.setNet(what, on: $0) })) {
             Label {
                 HStack(spacing: 8) {

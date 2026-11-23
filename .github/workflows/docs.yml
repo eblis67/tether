@@ -1,0 +1,71 @@
+# Publishes the documentation site to GitHub Pages on every push to main: the Markdown in docs/ (Jekyll),
+# the Swift API reference (DocC) under /swift and the Kotlin API reference (Dokka) under /kotlin.
+# Pages must be set to "GitHub Actions" as its source in the repository settings.
+name: Docs
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v5
+      - name: Markdown site (Jekyll)
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./site
+      - name: Make the site writable
+        run: sudo chown -R "$(id -u)" site
+      - name: Swift API reference (DocC)
+        run: |
+          if [ ! -f Package.swift ] || ! grep -q swift-docc-plugin Package.swift; then
+            echo "::error::No root Package.swift with swift-docc-plugin; the Swift reference cannot be generated."
+            exit 1
+          fi
+          swift package --allow-writing-to-directory site/swift generate-documentation \
+            --target TetherCore --output-path site/swift \
+            --transform-for-static-hosting --hosting-base-path tether/swift
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Kotlin API reference (Dokka)
+        working-directory: android
+        run: |
+          if ! ./gradlew --console=plain -q :core:tasks --all | grep -q '^dokkaGenerate'; then
+            echo "::error::The :core:dokkaGenerate task is missing (Dokka not applied to android/core)."
+            exit 1
+          fi
+          ./gradlew --console=plain :core:dokkaGenerate
+          out=core/build/dokka/html
+          if [ ! -d "$out" ]; then
+            echo "::error::Dokka ran but $out does not exist."
+            exit 1
+          fi
+          mkdir -p ../site/kotlin && cp -R "$out"/. ../site/kotlin/
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

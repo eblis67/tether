@@ -91,8 +91,8 @@ public struct JitterBuffer<Frame> {
         }
         if nextSeq == nil { nextSeq = seq }
         frames[seq] = frame
-        if frames.count > maxDepth, let next = nextSeq {
-            // Too far behind: skip ahead to the oldest frames we can still use.
+        // Too far behind: skip ahead to the oldest frames we can still use (past lost ones too, or the depth grows).
+        while frames.count > maxDepth, let next = nextSeq {
             frames.removeValue(forKey: next)
             nextSeq = next &+ 1
             dropped += 1

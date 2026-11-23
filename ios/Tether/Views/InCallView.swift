@@ -1,11 +1,12 @@
+import Perception
 import SwiftUI
-import TetherCore
+@_spi(TetherApp) import TetherCore
 
 /// Full-screen call UI in the style of the iOS Phone app: caller and status on top, a 3×2 grid of
 /// round controls, the red end button centred below. Actions go through CallKit so the system
 /// call state (lock screen, Dynamic Island, AirPods buttons) stays in sync.
 struct InCallView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     #if DEBUG
     @State private var keypad = ProcessInfo.processInfo.arguments.contains("-TetherDemoKeypad")
     #else
@@ -13,7 +14,9 @@ struct InCallView: View {
     #endif
     @State private var typed = ""
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         if let call = model.callScreen {
             ZStack {
                 background(call)
@@ -38,7 +41,7 @@ struct InCallView: View {
             .foregroundStyle(.white)
             .preferredColorScheme(.dark)
             .animation(.easeInOut(duration: 0.2), value: keypad)
-            .onChange(of: call.uuid) { _, _ in keypad = false; typed = "" }
+            .onChangeCompat(of: call.uuid) { _ in keypad = false; typed = "" }
         }
     }
 
@@ -89,7 +92,7 @@ struct InCallView: View {
                 Text(typed).font(.system(size: 34, weight: .light)).lineLimit(1).minimumScaleFactor(0.5)
                     .environment(\.layoutDirection, .leftToRight)
             } else {
-                Text(call.name ?? call.number)
+                Text(call.name ?? model.formatted(call.number))
                     .font(.system(size: 34, weight: .regular))
                     .lineLimit(1).minimumScaleFactor(0.5)
             }
@@ -104,8 +107,12 @@ struct InCallView: View {
         let enabled = call.state != "ended"
         return Grid(horizontalSpacing: 26, verticalSpacing: 26) {
             GridRow {
-                RoundControl(icon: call.speaker ? "speaker.wave.3.fill" : "speaker.wave.2.fill", label: "Speaker", on: call.speaker) {
-                    model.calls.setSpeaker(!call.speaker)
+                if call.routes.contains(where: { !$0.kind.isBuiltIn }) {
+                    AudioRouteMenu(call: call) { model.calls.selectRoute($0) }
+                } else {
+                    RoundControl(icon: call.speaker ? "speaker.wave.3.fill" : "speaker.wave.2.fill", label: "Speaker", on: call.speaker) {
+                        model.calls.setSpeaker(!call.speaker)
+                    }
                 }
                 RoundControl(icon: call.held ? "pause.fill" : "pause", label: "Hold", on: call.held) {
                     model.calls.setHeld(call.uuid, !call.held)
@@ -182,6 +189,51 @@ struct CallStatusText: View {
                 Duration.seconds(Int(now.timeIntervalSince(t))).formatted(.time(pattern: .minuteSecond))
             } else { "" }
         }
+    }
+}
+
+/// The call's audio menu once a headset, car or other accessory is available (like the Phone app's "Audio"):
+/// iPhone, Speaker and each accessory, with the current one checked. It follows routes chosen elsewhere.
+struct AudioRouteMenu: View {
+    let call: CallScreen
+    let select: (String) -> Void
+    @Environment(\.isEnabled) private var enabled
+
+    static func icon(_ k: RouteKind) -> String {
+        switch k {
+        case .receiver: "iphone"
+        case .speaker: "speaker.wave.3.fill"
+        case .bluetooth: "headphones"
+        case .car: "car.fill"
+        case .wired: "headphones"
+        case .usb: "cable.connector"
+        case .airPlay: "airplayaudio"
+        case .other: "speaker.wave.2.fill"
+        }
+    }
+
+    var body: some View {
+        let onAccessory = !call.route.isBuiltIn
+        Menu {
+            ForEach(call.routes) { r in
+                Button { select(r.id) } label: {
+                    if r.id == call.selectedRoute { Label(r.id == RouteOption.speakerID ? String(localized: "Speaker") : r.name, systemImage: "checkmark") }
+                    else { Label(r.id == RouteOption.speakerID ? String(localized: "Speaker") : r.name, systemImage: Self.icon(r.kind)) }
+                }
+            }
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: Self.icon(call.route == .receiver ? .speaker : call.route))
+                    .font(.system(size: 28, weight: .regular))
+                    .frame(width: 78, height: 78)
+                    .foregroundStyle(onAccessory || call.speaker ? Color.black : Color.white)
+                    .background(onAccessory || call.speaker ? Color.white : Color.white.opacity(0.16), in: Circle())
+                Text("Audio").font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
+            }
+        }
+        .buttonStyle(.plain)
+        .opacity(enabled ? 1 : 0.45)
+        .accessibilityLabel(Text("Audio"))
     }
 }
 
@@ -265,9 +317,11 @@ struct KeypadPad: View {
 
 /// Green strip on top of the app while a call runs with the call screen hidden.
 struct ReturnToCallBanner: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         if let call = model.callScreen, !model.showCallScreen, call.state != "ended" {
             Button {
                 model.callScreenDismissed = false

@@ -85,15 +85,22 @@ final class SnapshotStore {
     private let queue = DispatchQueue(label: "tether.store")
     private var pending: DispatchWorkItem?
 
-    init() {
+    init(url: URL? = nil) {
+        if let url { self.url = url; return }
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        url = dir.appendingPathComponent("tether-data.json")
+        self.url = dir.appendingPathComponent("tether-data.json")
     }
 
     func load() -> Snapshot {
-        guard let d = try? Data(contentsOf: url), let s = try? JSONDecoder().decode(Snapshot.self, from: d) else { return Snapshot() }
-        return s
+        guard let d = try? Data(contentsOf: url) else { return Snapshot() }
+        if let s = try? JSONDecoder().decode(Snapshot.self, from: d) { return s }
+        // Unreadable (damaged, or from a build that changed the format): keep it aside instead of letting the
+        // next save overwrite it, so the data can still be recovered.
+        let aside = url.deletingPathExtension().appendingPathExtension("corrupt.json")
+        try? FileManager.default.removeItem(at: aside)
+        try? FileManager.default.moveItem(at: url, to: aside)
+        return Snapshot()
     }
 
     /// Debounced write.
@@ -141,17 +148,22 @@ final class LinkJournal: @unchecked Sendable {
     private let url: URL
     private let fmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "MM-dd HH:mm:ss.SSS"; f.locale = Locale(identifier: "en_US_POSIX"); return f }()
 
-    private init() {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        url = dir.appendingPathComponent("link-log.txt")
-        lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").suffix(400).map(String.init)
+    private let cap: Int
+
+    init(url: URL? = nil, cap: Int = 400) {
+        self.cap = cap
+        self.url = url ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("link-log.txt")
+        lines = ((try? String(contentsOf: self.url, encoding: .utf8)) ?? "").split(separator: "\n").suffix(cap).map(String.init)
     }
+
+    /// Waits for queued writes (tests).
+    func flush() { q.sync {} }
 
     func add(_ event: String) {
         let line = "\(fmt.string(from: Date())) \(event)"
         q.async {
             self.lines.append(line)
-            if self.lines.count > 400 { self.lines.removeFirst(self.lines.count - 400) }
+            if self.lines.count > self.cap { self.lines.removeFirst(self.lines.count - self.cap) }
             try? (self.lines.joined(separator: "\n") + "\n").write(to: self.url, atomically: true, encoding: .utf8)
         }
     }

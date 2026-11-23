@@ -65,7 +65,7 @@ class CallActivity : Activity() {
             lookedUp = info.num
             Thread { val n = (application as TetherApp).contacts.nameFor(info.num); main.post { lookedUpName = n } }.start()
         }
-        title.text = info.name ?: lookedUpName ?: info.num.ifEmpty { getString(R.string.unknown_caller) }
+        title.text = info.name ?: lookedUpName ?: info.num.ifEmpty { getString(R.string.unknown_caller) }.let { if (info.num.isEmpty()) it else displayNumber(info.num) }
         state.text = getString(when (info.state) {
             "ringing" -> R.string.call_incoming
             "dialing", "connecting" -> R.string.call_outgoing
@@ -94,6 +94,14 @@ class CallActivity : Activity() {
         layoutParams = LinearLayout.LayoutParams(dp(96), dp(96)).apply { marginStart = dp(16); marginEnd = dp(16) }
         setOnClickListener { onClick(); main.postDelayed(::refresh, 200) }
     }
+}
+
+/** The number grouped for display by the SIM / network country ("+98 912 345 6789"); unchanged when Android cannot. */
+private fun Activity.displayNumber(n: String): String {
+    val tm = getSystemService(android.telephony.TelephonyManager::class.java)
+    val iso = (tm?.simCountryIso?.takeIf { it.isNotBlank() } ?: tm?.networkCountryIso?.takeIf { it.isNotBlank() }
+        ?: java.util.Locale.getDefault().country).uppercase()
+    return android.telephony.PhoneNumberUtils.formatNumber(n, iso) ?: n
 }
 
 /** ACTION_DIAL handler (required for the phone-app role): a number field and a Call button. */

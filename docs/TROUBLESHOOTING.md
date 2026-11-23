@@ -46,18 +46,35 @@ touch Bluetooth at all and is faster.
 
 ## No call audio
 
+On Android 10 the phone cannot bridge call audio at all, and on Android 11 and 12 it works only if the phone's audio
+system allows capturing the call: see [features by Android version](devices/android-versions.md). The Call audio
+card in the Android app says which case you are in.
+
 1. In Tether on the Android phone, the **Audio helper** must say *Running*. If not, see the next section.
 2. During a call, tap **Run call-audio self-test**: it lists each capture and inject path and whether it works.
 3. The Android version must be 13 or later, and the build must let the shell user intercept call audio. Not every
    manufacturer allows it. If no path works, calls still work from the iPhone but their audio stays on the
    Android phone. Please report your model and the self-test result.
-4. You hear the other side on the Android phone too: only Samsung phones let Tether mute the phone's own earpiece
-   and microphone during a bridged call.
+4. You hear the other side on the Android phone too: Tether mutes the phone's own earpiece and microphone during a
+   bridged call with each vendor's controls: Samsung (tested), Qualcomm and MediaTek (from their audio sources,
+   untested). Other phones (Google Pixel and unknown chips) get the earpiece muted only. The Link tab shows it
+   under **Call audio › Android phone silent**. On MediaTek, Tether never mutes the microphone through Android,
+   because there that also mutes what the iPhone sends.
+
+### Headset or car
+
+- The call does not go to the headset or car: it must be connected as a hands-free (calls) device in the iPhone's
+  Bluetooth settings; music-only (A2DP) speakers have no microphone and are not offered for calls.
+- The Link log shows each route change as `audio route bluetooth / car / receiver / speaker` with its reason. If
+  the route changes but the far end goes quiet for more than a second, please report the lines around it.
 
 ## The audio helper does not start
 
 - Wireless debugging needs a Wi-Fi connection when the helper starts. Connect the Android phone to Wi-Fi, then tap
   **Start**.
+- With TCP debugging (SETUP.md): the TCP mode is lost on every phone restart; connect USB and run `adb tcpip 5555`
+  again, accept the key prompt, then tap **Start**. If you used another port, Tether only tries the one it was
+  enabled with (default 5555).
 - If the phone forgot the Wireless debugging pairing (some updates do), pair again (SETUP.md, Wireless debugging).
 - From a computer, `tools/start-helper.sh` starts the helper over USB `adb` as a fallback.
 

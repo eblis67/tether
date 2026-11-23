@@ -30,6 +30,25 @@ object LinkPolicy {
     const val PULSE_EVERY_S = 30L
     /** Short, so the link (plus Android's ~4 s linger after release) is gone before the next pulse. */
     const val PULSE_UP_MS = 3_000L
+
+    /** What to do with a session that has been silent for [silentMs]; [sinceWakeMs]: since we woke the client without
+     *  an answer yet (null: not woken since it last sent anything). */
+    enum class Idle { KEEP, WAKE, CLOSE }
+
+    /**
+     * A suspended iPhone app sends nothing and cannot answer pings, so silence alone means nothing. After
+     * [IDLE_WAKE_MS] of it the client is woken (GATT wake notification) and pinged; only a client that still says
+     * nothing [WAKE_ANSWER_MS] later is gone (a half-open session). Closing at once instead made the iPhone relink,
+     * handshake and sync every 15 minutes (seen 2026-11-23: 13 relinks in 3 hours).
+     */
+    fun idle(silentMs: Long, sinceWakeMs: Long?): Idle = when {
+        silentMs < IDLE_WAKE_MS -> Idle.KEEP
+        sinceWakeMs == null -> Idle.WAKE
+        sinceWakeMs >= WAKE_ANSWER_MS -> Idle.CLOSE
+        else -> Idle.KEEP
+    }
+    const val IDLE_WAKE_MS = 15 * 60_000L
+    const val WAKE_ANSWER_MS = 45_000L
 }
 
 /**

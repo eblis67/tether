@@ -132,6 +132,7 @@ object Net {
     private fun tether(type: Int, on: Boolean): String? {
         // Built by hand with our shell context: the cached system-service instance would present the
         // wrong package name, and the tethering service then answers "no permission" (error 14).
+        if (android.os.Build.VERSION.SDK_INT < 30) return "this switch needs Android 11 or later"
         val cls = Class.forName("android.net.TetheringManager")
         val binder = Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java)
         val supplier = java.util.function.Supplier<android.os.IBinder?> { binder.invoke(null, "tethering") as android.os.IBinder? }

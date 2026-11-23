@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import os
-import TetherCore
+@_spi(TetherApp) import TetherCore
 
 /// 20 ms mono voice codec.
 protocol VoiceCoder: AnyObject {
@@ -9,7 +9,11 @@ protocol VoiceCoder: AnyObject {
     var rate: Double { get }
     func encode(_ pcm: [Int16]) -> Data?
     func decode(_ data: Data) -> [Int16]
+    /// The codec's own concealment for one lost 20 ms frame (nil: none).
+    func conceal() -> [Int16]?
 }
+
+extension VoiceCoder { func conceal() -> [Int16]? { nil } }
 
 final class PcmuCoder: VoiceCoder {
     let id = AudioFrame.Codec.pcmu
@@ -26,6 +30,9 @@ final class OpusCoder: VoiceCoder {
     private let opusFormat: AVAudioFormat
     private let encoder: AVAudioConverter
     private let decoder: AVAudioConverter
+    /// libopus decoder when available: the same packets, plus packet-loss concealment that continues the voice
+    /// (AudioToolbox has none). AudioToolbox decodes only if libopus cannot start.
+    private let lib: LibOpusDecoder?
 
     init?(rate: Double = 16000, bitrate: Int = 32000) {
         self.rate = rate
@@ -38,6 +45,7 @@ final class OpusCoder: VoiceCoder {
               let dec = AVAudioConverter(from: opus, to: pcm) else { return nil }
         enc.bitRate = bitrate
         pcmFormat = pcm; opusFormat = opus; encoder = enc; decoder = dec
+        lib = LibOpusDecoder(rate: Int(rate))
     }
 
     func encode(_ pcm: [Int16]) -> Data? {
@@ -59,6 +67,7 @@ final class OpusCoder: VoiceCoder {
 
     func decode(_ data: Data) -> [Int16] {
         guard !data.isEmpty else { return [] }
+        if let lib { return lib.decode(data) }
         let cb = AVAudioCompressedBuffer(format: opusFormat, packetCapacity: 1, maximumPacketSize: max(1, data.count))
         data.withUnsafeBytes { cb.data.copyMemory(from: $0.baseAddress!, byteCount: data.count) }
         cb.packetDescriptions?[0] = AudioStreamPacketDescription(mStartOffset: 0, mVariableFramesInPacket: 0,
@@ -76,6 +85,10 @@ final class OpusCoder: VoiceCoder {
         }
         return Array(UnsafeBufferPointer(start: out.int16ChannelData![0], count: Int(out.frameLength)))
     }
+}
+
+extension OpusCoder {
+    func conceal() -> [Int16]? { lib.map { $0.conceal(samples: Int(rate / 50)) }.flatMap { $0.isEmpty ? nil : $0 } }
 }
 
 /// Two-way call audio. The engine starts when CallKit activates the audio session:
@@ -103,6 +116,10 @@ final class CallAudio: @unchecked Sendable {
     private var captureMono: AVAudioFormat?
     private var pump: DispatchSourceTimer?
     private var routeObserver: NSObjectProtocol?
+    private var sessionRouteObserver: NSObjectProtocol?
+    /// The I/O formats the running engine was built with (a hands-free route changes them).
+    private var builtFormat: EngineFormat?
+    private var rebuildRetries = 0
     private var captureFormat: AVAudioFormat?
     private var captureAcc: [Int16] = []
     private var seq: UInt16 = 0
@@ -120,6 +137,8 @@ final class CallAudio: @unchecked Sendable {
     private(set) var stats = Stats()
     struct Stats { var ioBufferMs = 0.0; var inputLatencyMs = 0.0; var outputLatencyMs = 0.0; var playoutMs = 0.0
         var underruns = 0; var trimmedMs = 0.0; var lost = 0
+        /// Mean playout delay the listener had (the buffer's level), and quiet audio added to reach the target.
+        var delayMs = 0.0; var addedMs = 0.0
         /// Frame arrival spacing over the link: mean |gap − 20 ms| and the worst gap seen (BLE jitter).
         var jitterMs = 0.0; var worstGapMs = 0.0; var frames = 0 }
     private var lastArrival: UInt64 = 0
@@ -127,6 +146,9 @@ final class CallAudio: @unchecked Sendable {
     /// Debug (-TetherEcho): send every received frame straight back with the same sequence number instead of
     /// the microphone, so the Android phone can time the whole link round trip (its encode → BLE → our decode/encode → BLE → its decode).
     static let echoTest = ProcessInfo.processInfo.arguments.contains("-TetherEcho")
+    /// Debug (-TetherAudioTrace): every 2 s of a call, one console line with the playout's level, target and arrival spread.
+    static let trace = ProcessInfo.processInfo.arguments.contains("-TetherAudioTrace")
+    private var pumps = 0
 
     init(model: AppModel, link: TetherLink) {
         self.model = model
@@ -149,15 +171,21 @@ final class CallAudio: @unchecked Sendable {
 
     static func configureSession() {
         let s = AVAudioSession.sharedInstance()
-        try? s.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])   // hands-free route for calls (A2DP has no microphone)
+        // Hands-free (HFP) Bluetooth and car kits for calls; A2DP has no microphone. No .defaultToSpeaker: the
+        // receiver is the default and the speaker is an override the user picks.
+        do { try s.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP]) }
+        catch { NSLog("[audio] category: %@", "\(error)") }
         try? s.setPreferredSampleRate(16000)
         try? s.setPreferredIOBufferDuration(0.01) // 10 ms I/O buffer
     }
 
-    /// From the link queue: decode right away (Opus decoding is cheap) and queue PCM for playout.
+    /// From the link queue: decode right away (Opus decoding is cheap) and queue PCM for playout. The arrival time is
+    /// taken here, not when the audio queue gets to the frame: that queue also encodes the microphone and restarts the
+    /// engine, and its delays are not the link's (the playout's arrival statistics are about the link).
     static func incoming(_ f: AudioFrame) {
         guard let c = current else { return }
-        c.q.async { c.receive(f) }
+        let at = DispatchTime.now().uptimeNanoseconds
+        c.q.async { c.receive(f, at: at) }
     }
 
     @MainActor func configure(_ start: AudioStart) {
@@ -168,6 +196,7 @@ final class CallAudio: @unchecked Sendable {
             if self.sessionActive {
                 if self.running && (self.coder?.rate ?? 16000) != self.playRate { self.stopLocked() }
                 self.startLocked()
+                self.observeSessionRoute()   // a next call on a still-active session: stop() removed it
             }
         }
     }
@@ -177,12 +206,14 @@ final class CallAudio: @unchecked Sendable {
         q.async {
             self.noVoiceProcessing = false   // try echo cancellation again on every call
             self.sessionActive = true
+            self.rebuildRetries = 0
             self.startLocked()
+            self.observeSessionRoute()
         }
     }
 
     @MainActor func sessionDeactivated() {
-        q.async { self.sessionActive = false; self.stopLocked() }
+        q.async { self.sessionActive = false; self.unobserveSessionRoute(); self.stopLocked() }
     }
 
     @MainActor func remoteStopped() {
@@ -190,13 +221,15 @@ final class CallAudio: @unchecked Sendable {
     }
 
     @MainActor func stop() {
-        q.async { self.stopLocked(); self.coder = nil; self.remote = nil; self.ringback = false; self.muted = false; self.seq = 0 }
+        q.async { self.unobserveSessionRoute(); self.stopLocked(); self.coder = nil; self.remote = nil; self.ringback = false; self.muted = false; self.seq = 0 }
     }
 
     /// Voice processing (echo cancellation) could not start with the current devices: run without it.
     private var noVoiceProcessing = false
 
-    private func startLocked() {
+    /// `rebuild`: a route change on a running call; the playout buffer, ringback and statistics carry over so the
+    /// far end keeps playing after the switch (only the graph, its formats and converters are new).
+    private func startLocked(rebuild: Bool = false) {
         guard !running else { return }
         let rate = coder?.rate ?? 16000
         let input = engine.inputNode
@@ -209,8 +242,9 @@ final class CallAudio: @unchecked Sendable {
               let playFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false) else {
             NSLog("[audio] no input format"); return
         }
+        let keepPlayout = rebuild && playRate == rate
         playRate = rate
-        playout = PlayoutBuffer(rate: rate)
+        if !keepPlayout { playout = PlayoutBuffer(rate: rate) }
         captureFormat = codecFormat
         guard let mono = AVAudioFormat(standardFormatWithSampleRate: inFormat.sampleRate, channels: 1) else { return }
         captureMono = mono
@@ -255,30 +289,28 @@ final class CallAudio: @unchecked Sendable {
             if !noVoiceProcessing {
                 // The output unit would not initialize with voice processing: retry plainly.
                 noVoiceProcessing = true
-                engine.reset()
-                startLocked()
+                engine = AVAudioEngine()
+                startLocked(rebuild: rebuild)
             }
             return
         }
         captureAcc.removeAll()
         // `seq` keeps counting across engine restarts (route changes): the Android phone drops frames whose number goes back.
-        lastArrival = 0; jitterSum = 0
-        stats = Stats()
+        if !rebuild { lastArrival = 0; jitterSum = 0; stats = Stats() }
+        // Read the same way as in routeEvent (the session's values): the engine nodes report other channel counts with
+        // voice processing, and the mismatch made every route event look like a format change.
+        builtFormat = Self.sessionFormat()
+        rebuildRetries = 0
         running = true
         let p = DispatchSource.makeTimerSource(queue: q)
         p.schedule(deadline: .now() + 0.005, repeating: 0.005, leeway: .milliseconds(1))   // 5 ms: frames leave ≤ 5 ms after capture
         p.setEventHandler { [weak self] in self?.drainCapture() }
         p.resume()
         pump = p
-        // Speaker / AirPods / route changes reconfigure the engine and stop it: rebuild it.
+        // Speaker / headset / car route changes reconfigure the engine and stop it: build a fresh one.
         routeObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
             guard let self else { return }
-            self.q.async {
-                guard self.running else { return }
-                NSLog("[audio] engine configuration changed: restarting")
-                self.stopLocked()
-                self.startLocked()
-            }
+            self.q.async { self.routeEvent(configurationChanged: true) }
         }
         let s = AVAudioSession.sharedInstance()
         stats.ioBufferMs = s.ioBufferDuration * 1000
@@ -289,51 +321,129 @@ final class CallAudio: @unchecked Sendable {
               noVoiceProcessing ? "off" : "on", inFormat.sampleRate, Int(inFormat.channelCount))
     }
 
+    /// Route change or engine configuration change while a call's session is active (TetherCore decides).
+    private func routeEvent(configurationChanged: Bool) {
+        guard sessionRouteObserver != nil || configurationChanged else { return }   // not after stop()
+        let now = Self.sessionFormat()
+        let t = DispatchTime.now().uptimeNanoseconds
+        rebuildTimes.removeAll { t - $0 > 3_000_000_000 }
+        switch EngineDecision.onRouteEvent(sessionActive: sessionActive, running: running, configurationChanged: configurationChanged,
+                                           built: builtFormat, now: now, engineRunning: running && engine.isRunning,
+                                           recentRebuilds: rebuildTimes.count) {
+        case .keep: return
+        case .rebuild:
+            rebuildTimes.append(t)
+            NSLog("[audio] %@ changed: rebuilding the engine (%.0f Hz in)", configurationChanged ? "configuration" : "route", now.inputRate)
+            stopLocked(rebuild: true)
+            engine = AVAudioEngine()   // a fresh graph: the old one keeps stale I/O formats after a hands-free switch
+            startLocked(rebuild: true)
+            if !running { retryLater() }
+        case .restart:
+            do { try engine.start(); NSLog("[audio] configuration changed, same formats: engine started again") }
+            catch {
+                NSLog("[audio] engine restart failed (%@): rebuilding", "\(error)")
+                rebuildTimes.append(t)
+                stopLocked(rebuild: true); engine = AVAudioEngine(); startLocked(rebuild: true)
+                if !running { retryLater() }
+            }
+        case .retryLater:
+            if running { stopLocked(rebuild: true) }
+            retryLater()
+        }
+    }
+
+    /// When the engine was rebuilt for a route event in the last 3 s (a loop guard, see EngineDecision).
+    private var rebuildTimes: [UInt64] = []
+
+    /// The audio session's current formats, as the engine decisions compare them.
+    private static func sessionFormat() -> EngineFormat {
+        let s = AVAudioSession.sharedInstance()
+        return EngineFormat(inputRate: s.isInputAvailable ? s.sampleRate : 0, inputChannels: s.isInputAvailable ? max(1, s.inputNumberOfChannels) : 0,
+                            outputRate: s.sampleRate, outputChannels: s.outputNumberOfChannels)
+    }
+
+    /// The new route has no input yet (Bluetooth hands-free takes a moment): try again shortly, ~2 s at most.
+    private func retryLater() {
+        guard rebuildRetries < 20 else { NSLog("[audio] no usable route after a change"); return }
+        rebuildRetries += 1
+        q.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            // The call may have ended meanwhile (stop() removes the route observer before CallKit deactivates).
+            guard let self, self.sessionActive, !self.running, self.sessionRouteObserver != nil else { return }
+            self.routeEvent(configurationChanged: false)
+        }
+    }
+
+    private func observeSessionRoute() {
+        guard sessionRouteObserver == nil else { return }
+        sessionRouteObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil) { [weak self] _ in
+            guard let self else { return }
+            self.q.async { self.routeEvent(configurationChanged: false) }
+        }
+    }
+
+    private func unobserveSessionRoute() {
+        if let o = sessionRouteObserver { NotificationCenter.default.removeObserver(o); sessionRouteObserver = nil }
+    }
+
     private func teardownNodes() {
         if let source { engine.detach(source) }
         if let sink { engine.detach(sink) }
         source = nil; sink = nil
     }
 
-    private func stopLocked() {
+    private func stopLocked(rebuild: Bool = false) {
         guard running else { return }
         running = false
         pump?.cancel(); pump = nil
         if let o = routeObserver { NotificationCenter.default.removeObserver(o); routeObserver = nil }
         engine.stop()
         teardownNodes()
+        builtFormat = nil
+        if rebuild { return }   // the call goes on: statistics are logged once, at its end
         stats.underruns = playout.underruns
         stats.trimmedMs = Double(playout.trimmed) / playRate * 1000
         stats.playoutMs = Double(playout.target) / playRate * 1000
+        stats.delayMs = playout.meanBuffered / playRate * 1000
+        stats.addedMs = Double(playout.inserted) / playRate * 1000
         stats.jitterMs = stats.frames > 1 ? jitterSum / Double(stats.frames - 1) : 0
-        NSLog("[audio] stopped: playout target %.0f ms, underruns %d, trimmed %.0f ms, lost %d, frames %d, jitter %.1f ms, worst gap %.0f ms",
-              stats.playoutMs, stats.underruns, stats.trimmedMs, stats.lost, stats.frames, stats.jitterMs, stats.worstGapMs)
+        NSLog("[audio] stopped: playout delay %.0f ms (target %.0f), underruns %d, concealed %.0f ms, trimmed %.0f ms, added %.0f ms, lost %d, frames %d, jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm",
+              stats.delayMs, stats.playoutMs, stats.underruns, Double(playout.concealedSamples) / playRate * 1000, stats.trimmedMs, stats.addedMs,
+              stats.lost, stats.frames, stats.jitterMs, stats.worstGapMs, playout.driftPpm)
         let snapshot = stats
         let concealedMs = Double(playout.concealedSamples) / playRate * 1000
         let rtt = link.lastRoundTripMs.map { "\($0) ms" } ?? "-"
         // Call statistics in the Link log: what a real call measured on this iPhone.
-        LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout target %.0f ms, concealed %.0f ms, underruns %d, drained %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, io %.1f ms, out latency %.1f ms",
-                                      rtt, snapshot.playoutMs, concealedMs, snapshot.underruns, snapshot.trimmedMs, snapshot.lost,
-                                      snapshot.frames, snapshot.jitterMs, snapshot.worstGapMs, snapshot.ioBufferMs, snapshot.outputLatencyMs))
-        DispatchQueue.main.async { MainActor.assumeIsolated { AppModel.shared.lastAudioStats = snapshot } }
+        let spreadMs = Double(playout.jitterFloor) / playRate * 1000
+        if playout.concealedFrames > 0 { NSLog("[audio] %d lost frames filled by Opus concealment", playout.concealedFrames) }
+        LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout delay %.0f ms (target %.0f, arrival spread asks %.0f), concealed %.0f ms, underruns %d, drained %.0f ms, added %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm, io %.1f ms, out latency %.1f ms",
+                                      rtt, snapshot.delayMs, snapshot.playoutMs, spreadMs, concealedMs, snapshot.underruns, snapshot.trimmedMs, snapshot.addedMs, snapshot.lost,
+                                      snapshot.frames, snapshot.jitterMs, snapshot.worstGapMs, playout.driftPpm, snapshot.ioBufferMs, snapshot.outputLatencyMs))
+        DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.lastAudioStats = snapshot } }
     }
 
-    private func receive(_ f: AudioFrame) {
+    private func receive(_ f: AudioFrame, at now: UInt64) {
         guard running, let coder, f.codec == coder.id else { return }
+        var missing = 0
         if let last = lastSeq {
             let gap = Int(Int16(bitPattern: f.seq &- last))
             if gap <= 0 { return }               // late / duplicate: drop
-            if gap > 1 { stats.lost += gap - 1 }
+            if gap > 1 { stats.lost += gap - 1; missing = min(gap - 1, 50) }
         }
         lastSeq = f.seq
-        let now = DispatchTime.now().uptimeNanoseconds
-        if lastArrival != 0 {
+        if lastArrival != 0 && now > lastArrival {
             let gap = Double(now - lastArrival) / 1e6
             jitterSum += abs(gap - 20)
             stats.worstGapMs = max(stats.worstGapMs, gap)
         }
         lastArrival = now
         stats.frames += 1
+        // Frames the Android phone dropped for lateness: the decoder's concealment takes their place (up to two, as the
+        // Android phone does for the uplink). It must run before this frame is decoded: concealment continues from the
+        // last decoded frame, and the decoder then moves smoothly into this one.
+        var filled = 0
+        if missing > 0 && missing <= 2 {
+            for _ in 0..<missing { if let plc = coder.conceal() { playout.push(plc, at: now, concealed: true); filled += 1 } }
+        }
         let pcm = coder.decode(f.payload)
         if Self.echoTest, let back = coder.encode(pcm) {
             link.sendAudio(AudioFrame(codec: coder.id, seq: f.seq, payload: back))
@@ -346,10 +456,12 @@ final class CallAudio: @unchecked Sendable {
                 NSLog("[audio] far end audible: local ringback off")
             }
         }
-        playout.push(pcm)
+        // Arrival time and lost frames feed the playout's jitter statistics (its target follows the arrival spread).
+        playout.push(pcm, at: now, missing: missing - filled)
     }
 
     private func drainCapture() {
+        if Self.trace, running { pumps += 1; if pumps % 400 == 0 { traceLine() } }
         guard running, let coder, let conv = captureConverter, let format = captureFormat, let mono = captureMono else { return }
         let n = captureRing.available
         guard n > 0, let buf = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: AVAudioFrameCount(n)) else { return }
@@ -374,6 +486,13 @@ final class CallAudio: @unchecked Sendable {
                 seq &+= 1
             }
         }
+    }
+
+    private func traceLine() {
+        let ms = { (s: Int) in Double(s) / self.playRate * 1000 }
+        NSLog("[audio] trace: level %.0f ms (mean %.0f), target %.0f, floor %.0f, drained %.0f, added %.0f, concealed %.0f ms; %@",
+              ms(playout.buffered), playout.meanBuffered / playRate * 1000, ms(playout.target), ms(playout.jitterFloor),
+              ms(playout.trimmed), ms(playout.inserted), ms(playout.concealedSamples), playout.arrivalSummary())
     }
 
     /// 425 Hz, 1 s on / 4 s off (the ITU-recommended ringback used by Iranian and most European networks).

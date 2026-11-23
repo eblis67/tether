@@ -154,42 +154,27 @@ class ShareProxy(private val ctx: Context) {
         // to DIRECT, or works again after rejoining the hotspot).
         if (!sharing && localIp != "127.0.0.1") return
         if (method == "CONNECT") {
-            val host = target.substringBeforeLast(':'); val port = target.substringAfterLast(':').toIntOrNull() ?: 443
-            val up = connect(host.trim('[', ']'), port) ?: run { out.write("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n".toByteArray()); return }
+            val (host, port) = ProxyRequests.connectTarget(target)
+            val up = connect(host, port) ?: run { out.write("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n".toByteArray()); return }
             out.write("HTTP/1.1 200 Connection established\r\n\r\n".toByteArray()); out.flush()
             pipe(client, up)
             return
         }
         // Absolute-form request: forward it as origin-form, one request per connection.
-        val uri = runCatching { java.net.URI(target) }.getOrNull()
-        if (uri?.host == null || uri.scheme?.lowercase() != "http") {
+        val fwd = ProxyRequests.forward(method, target, parts[2], headers)
+        if (fwd == null) {
             val body = "Tether VPN sharing proxy. Set this address as the HTTP / HTTPS / SOCKS proxy, or use /proxy.pac.\n"
             out.write("HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body".toByteArray())
             return
         }
-        val up = connect(uri.host, if (uri.port > 0) uri.port else 80)
+        val up = connect(fwd.host, fwd.port)
             ?: run { out.write("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray()); return }
-        val path = (uri.rawPath?.ifEmpty { "/" } ?: "/") + (uri.rawQuery?.let { "?$it" } ?: "")
-        val sb = StringBuilder("$method $path ${parts[2]}\r\n")
-        for (h in headers) {
-            val k = h.substringBefore(':').trim().lowercase()
-            if (k.startsWith("proxy-") || k == "connection" || k == "keep-alive") continue
-            sb.append(h).append("\r\n")
-        }
-        sb.append("Connection: close\r\n\r\n")
-        up.getOutputStream().write(sb.toString().toByteArray(Charsets.ISO_8859_1))
+        up.getOutputStream().write(fwd.head.toByteArray(Charsets.ISO_8859_1))
         pipe(client, up)
     }
 
     private fun pac(out: OutputStream, localIp: String) {
-        val body = if (sharing) """
-            function FindProxyForURL(url, host) {
-              if (isPlainHostName(host) || isInNet(host, "10.0.0.0", "255.0.0.0") || isInNet(host, "172.16.0.0", "255.240.0.0") ||
-                  isInNet(host, "192.168.0.0", "255.255.0.0") || isInNet(host, "127.0.0.0", "255.0.0.0") || shExpMatch(host, "*.local"))
-                return "DIRECT";
-              return "PROXY $localIp:$PORT; SOCKS5 $localIp:$PORT; DIRECT";
-            }
-        """.trimIndent() else "function FindProxyForURL(url, host) { return \"DIRECT\"; }"
+        val body = ProxyRequests.pac(sharing, localIp, PORT)
         val bytes = body.toByteArray()
         out.write(("HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nCache-Control: no-cache, max-age=0\r\n" +
             "Content-Length: ${bytes.size}\r\nConnection: close\r\n\r\n").toByteArray())
@@ -203,25 +188,12 @@ class ShareProxy(private val ctx: Context) {
         val nMethods = inp.read(); if (nMethods <= 0) return
         repeat(nMethods) { inp.read() }
         out.write(byteArrayOf(5, 0)); out.flush()                     // no authentication
-        if (inp.read() != 5) return
-        val cmd = inp.read(); inp.read()
-        val host = when (inp.read()) {
-            1 -> ByteArray(4).also { readFully(inp, it) }.let { InetAddress.getByAddress(it).hostAddress }
-            3 -> ByteArray(inp.read()).also { readFully(inp, it) }.toString(Charsets.US_ASCII)
-            4 -> ByteArray(16).also { readFully(inp, it) }.let { InetAddress.getByAddress(it).hostAddress }
-            else -> return
-        }
-        val port = (inp.read() shl 8) or inp.read()
+        val (cmd, host, port) = ProxyRequests.socksRequest(inp) ?: return
         if (cmd != 1) { out.write(byteArrayOf(5, 7, 0, 1, 0, 0, 0, 0, 0, 0)); return }   // CONNECT only
-        val up = connect(host ?: return, port)
+        val up = connect(host, port)
         if (up == null) { out.write(byteArrayOf(5, 5, 0, 1, 0, 0, 0, 0, 0, 0)); return }
         out.write(byteArrayOf(5, 0, 0, 1, 0, 0, 0, 0, 0, 0)); out.flush()
         pipe(client, up)
-    }
-
-    private fun readFully(inp: InputStream, b: ByteArray) {
-        var n = 0
-        while (n < b.size) { val r = inp.read(b, n, b.size - n); if (r < 0) throw java.io.EOFException(); n += r }
     }
 
     /** Outgoing connection from this app: it follows the phone's default network, i.e. the VPN when it is up. */
@@ -230,7 +202,7 @@ class ShareProxy(private val ctx: Context) {
         // any-local, and this phone's own addresses. Checked after DNS, so names cannot get round it.
         val addr = InetAddress.getByName(host)
         val own = try { NetworkInterface.getNetworkInterfaces().toList().flatMap { it.inetAddresses.toList() }.toSet() } catch (t: Throwable) { emptySet() }
-        if (addr.isLoopbackAddress || addr.isLinkLocalAddress || addr.isAnyLocalAddress || addr.isMulticastAddress || addr in own) null
+        if (ProxyRequests.forbidden(addr, own)) null
         else Socket().apply { tcpNoDelay = true; connect(InetSocketAddress(addr, port), 15_000); soTimeout = IDLE_MS }
     } catch (t: Throwable) { null }
 

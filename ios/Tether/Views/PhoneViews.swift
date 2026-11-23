@@ -1,8 +1,9 @@
+import Perception
 import SwiftUI
 import TetherCore
 
 struct RecentsView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     @State private var missedOnly = false
     @State private var search = ""
     @State private var blocking: String?
@@ -13,7 +14,9 @@ struct RecentsView: View {
         if let t = model.thread(for: num) { Router.shared.openThread = t } else { Router.shared.compose(to: num) }
     }
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         NavigationStack {
             List(entries) { e in
                 HStack(spacing: 12) {
@@ -58,14 +61,14 @@ struct RecentsView: View {
             .refreshable { model.requestSync() }
             .onAppear { model.markRecentsSeen() }
             // Seen only while the user can see it: a call missed in the background keeps its badge.
-            .onChange(of: model.data.recents.first?.id) { _, _ in if Router.shared.tab == .recents && model.appActive { model.markRecentsSeen() } }
-            .onChange(of: model.appActive) { _, on in if on && Router.shared.tab == .recents { model.markRecentsSeen() } }
+            .onChangeCompat(of: model.data.recents.first?.id) { _ in if Router.shared.tab == .recents && model.appActive { model.markRecentsSeen() } }
+            .onChangeCompat(of: model.appActive) { on in if on && Router.shared.tab == .recents { model.markRecentsSeen() } }
             .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Search name or number"))
             .overlay {
-                if !search.isEmpty && entries.isEmpty { ContentUnavailableView.search(text: search) }
+                if !search.isEmpty && entries.isEmpty { EmptyStateView(searchText: search) }
             }
             .overlay {
-                if model.data.recents.isEmpty { ContentUnavailableView("No recent calls", systemImage: "clock") }
+                if model.data.recents.isEmpty { EmptyStateView("No recent calls", systemImage: "clock") }
             }
             .navigationTitle("Recents")
             .confirmationDialog(blocking.map { model.displayName($0) } ?? "",
@@ -80,7 +83,7 @@ struct RecentsView: View {
                 Text("The call history will be deleted from your Android phone and all your devices.")
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .navigationBarLeading) {
                     Button("Clear") { clearing = true }
                         .disabled(model.data.recents.isEmpty || !model.linkState.isConnected)
                 }
@@ -115,7 +118,8 @@ struct RecentsView: View {
 }
 
 struct KeypadView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
+    @Environment(\.router) private var router
     @State private var number = ""
     @State private var longPressedZero = false
     @State private var sub: Int?
@@ -127,10 +131,12 @@ struct KeypadView: View {
         [("*", ""), ("0", "+"), ("#", "")],
     ]
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         VStack(spacing: 18) {
             Spacer()
-            Text(number.isEmpty ? " " : number)
+            Text(number.isEmpty ? " " : model.formatted(number))
                 .font(.system(size: 36, weight: .regular, design: .rounded))
                 .lineLimit(1).minimumScaleFactor(0.5)
                 .environment(\.layoutDirection, .leftToRight)
@@ -182,6 +188,22 @@ struct KeypadView: View {
             .environment(\.layoutDirection, .leftToRight)
             Spacer()
         }
-        .onAppear { if sub == nil { sub = model.status?.defaultSub } }
+        .onAppear {
+            if sub == nil { sub = model.status?.defaultSub }
+            #if DEBUG
+            // -TetherDemoKeypad <digits>: a typed number, to check the as-you-type grouping.
+            let args = ProcessInfo.processInfo.arguments
+            if number.isEmpty, let i = args.firstIndex(of: "-TetherDemoKeypad"), i + 1 < args.count { number = args[i + 1] }
+            #endif
+            takeRouted()
+        }
+        .onChangeCompat(of: router.keypadNumber) { _ in takeRouted() }
+    }
+
+    /// A number from a link the owner did not call yet (cancelled, or the Android phone was not connected).
+    private func takeRouted() {
+        guard let n = router.keypadNumber else { return }
+        number = n
+        router.keypadNumber = nil
     }
 }

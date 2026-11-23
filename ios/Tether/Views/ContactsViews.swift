@@ -1,12 +1,15 @@
+import Perception
 import SwiftUI
 import TetherCore
 
 struct ContactsView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     @State private var search = ""
     @State private var adding = false
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         NavigationStack {
             List {
                 // Favourites first, as in the Phone app (the Android phone's starred contacts).
@@ -31,18 +34,18 @@ struct ContactsView: View {
             }
             .listStyle(.plain)
             .overlay {
-                if model.data.contacts.isEmpty { ContentUnavailableView("No contacts", systemImage: "person.crop.circle") }
+                if model.data.contacts.isEmpty { EmptyStateView("No contacts", systemImage: "person.crop.circle") }
             }
             .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Search contacts"))
             .scrollDismissesKeyboard(.immediately)
             .refreshable { model.requestSync() }
             .navigationTitle("Contacts")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button { hideKeyboard(); adding = true } label: { Image(systemName: "plus") }.disabled(!model.linkState.isConnected)
                 }
             }
-            .sheet(isPresented: $adding) { AddContactView().environment(AppModel.shared).environment(Router.shared) }
+            .sheet(isPresented: $adding) { AddContactView().environment(\.appModel, AppModel.shared).environment(\.router, Router.shared) }
         }
     }
 
@@ -56,10 +59,12 @@ struct ContactsView: View {
 
 /// A favourite: tap to call (its first number, on the SIM last used with it), ⓘ for the contact.
 struct FavouriteRow: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     let contact: Contact
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         HStack(spacing: 12) {
             Avatar(name: contact.name, photo: contact.photo, size: 36)
             VStack(alignment: .leading, spacing: 1) {
@@ -83,7 +88,7 @@ struct FavouriteRow: View {
 }
 
 struct ContactDetailView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     /// The contact as it was when the row was tapped; the live copy follows edits and re-syncs.
     let original: Contact
     @State private var editing = false
@@ -92,7 +97,9 @@ struct ContactDetailView: View {
     init(contact: Contact) { original = contact }
     private var contact: Contact { model.data.contacts.first { $0.id == original.id } ?? original }
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         List {
             Section {
                 VStack(spacing: 10) {
@@ -106,8 +113,12 @@ struct ContactDetailView: View {
                 ForEach(contact.phones, id: \.self) { p in
                     HStack {
                         VStack(alignment: .leading) {
-                            Text(LocalizedStringKey(p.type.capitalized)).font(.caption).foregroundStyle(.secondary)
-                            Text(p.n).environment(\.layoutDirection, .leftToRight)
+                            Group {
+                                if let label = p.label, !label.trimmingCharacters(in: .whitespaces).isEmpty { Text(verbatim: label) }
+                                else { Text(LocalizedStringKey(p.type.capitalized)) }
+                            }
+                            .font(.caption).foregroundStyle(.secondary)
+                            Text(model.formatted(p.n)).environment(\.layoutDirection, .leftToRight)
                         }
                         Spacer()
                         Button { openThread(p.n) } label: { Image(systemName: "message.fill").accessibilityLabel(Text("Message")) }.buttonStyle(.borderless)
@@ -143,19 +154,19 @@ struct ContactDetailView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button { model.setStarred(contact.id, !contact.starred) } label: {
                     Image(systemName: contact.starred ? "star.fill" : "star").foregroundStyle(contact.starred ? .yellow : .accentColor)
                 }
                 .accessibilityLabel(Text(contact.starred ? "Remove from Favourites" : "Add to Favourites"))
                 .disabled(!model.linkState.isConnected)
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Edit") { editing = true }.disabled(!model.linkState.isConnected)
             }
         }
         .sheet(isPresented: $editing) {
-            EditContactView(contact: contact).environment(AppModel.shared).environment(Router.shared)
+            EditContactView(contact: contact).environment(\.appModel, AppModel.shared).environment(\.router, Router.shared)
         }
     }
 
@@ -169,14 +180,16 @@ struct ContactDetailView: View {
 }
 
 struct AddContactView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var phone = ""
     @State private var type = "mobile"
     @State private var email = ""
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         NavigationStack {
             Form {
                 Section { TextField("Name", text: $name) }
@@ -211,18 +224,32 @@ struct AddContactView: View {
 /// Edit an existing contact, laid out like the iOS Contacts editor: name, then phone and e-mail rows that
 /// can be added, retyped and removed. Saving rewrites the contact on the Android phone.
 struct EditContactView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     @Environment(\.dismiss) private var dismiss
     let contact: Contact
 
-    private struct PhoneRow: Identifiable { let id = UUID(); var number: String; var type: String }
+    /// `label`: the number's custom kind from the Android phone ("Satellite"); kept unless another kind is picked.
+    struct PhoneRow: Identifiable { let id = UUID(); var number: String; var type: String; var label: String? = nil }
     private struct EmailRow: Identifiable { let id = UUID(); var address: String }
     @State private var name = ""
     @State private var phones: [PhoneRow] = []
     @State private var emails: [EmailRow] = []
     private let types = ["mobile", "home", "work", "main", "other"]
 
-    var body: some View {
+    /// Picker tag for "keep the custom kind" (never sent: it goes out as type "other" with the label).
+    static let custom = "custom"
+
+    /// What the Android phone stores: a kept custom kind is sent with its label; picking a standard kind for a
+    /// custom one sends an empty label (clears it); otherwise no label (protocol §5 contact.update).
+    static func phone(from row: PhoneRow) -> Phone {
+        let n = row.number.trimmingCharacters(in: .whitespaces)
+        if row.type == custom, let label = row.label { return Phone(n: n, type: "other", label: label) }
+        return Phone(n: n, type: row.type, label: row.label != nil ? "" : nil)
+    }
+
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         NavigationStack {
             Form {
                 Section {
@@ -234,6 +261,7 @@ struct EditContactView: View {
                     ForEach($phones) { $p in
                         HStack {
                             Picker("", selection: $p.type) {
+                                if let label = p.label { Text(verbatim: label).tag(Self.custom) }
                                 ForEach(types, id: \.self) { Text(LocalizedStringKey($0.capitalized)).tag($0) }
                             }
                             .labelsHidden().fixedSize()
@@ -265,7 +293,7 @@ struct EditContactView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
-                        let ps = phones.map { Phone(n: $0.number.trimmingCharacters(in: .whitespaces), type: $0.type) }.filter { !$0.n.isEmpty }
+                        let ps = phones.map { Self.phone(from: $0) }.filter { !$0.n.isEmpty }
                         let es = emails.map { $0.address.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                         model.updateContact(id: contact.id, name: name.trimmingCharacters(in: .whitespaces), phones: ps, emails: es)
                         dismiss()
@@ -275,7 +303,10 @@ struct EditContactView: View {
             }
             .onAppear {
                 name = contact.name
-                phones = contact.phones.map { PhoneRow(number: $0.n, type: types.contains($0.type) ? $0.type : "other") }
+                phones = contact.phones.map { p in
+                    let label = p.label.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+                    return PhoneRow(number: p.n, type: label != nil ? Self.custom : (types.contains(p.type) ? p.type : "other"), label: label)
+                }
                 emails = contact.emails.map { EmailRow(address: $0) }
             }
         }

@@ -28,4 +28,7 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "Tether"
-include(":app", ":helper")
+// -Ptether.libraryOnly=true (or TETHER_LIBRARY_ONLY=true) configures only the JVM library :core, so it builds and
+// publishes without the Android SDK (JitPack, the "Kotlin library (JVM)" CI job, desktop developers).
+val libraryOnly = (providers.gradleProperty("tether.libraryOnly").orNull ?: System.getenv("TETHER_LIBRARY_ONLY")) == "true"
+if (libraryOnly) include(":core") else include(":app", ":helper", ":core", ":core-android", ":client")
