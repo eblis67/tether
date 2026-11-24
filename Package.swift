@@ -24,7 +24,7 @@ let package = Package(
         .library(name: "TetherCore", targets: ["TetherCore"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"6.0.0"),
         // Documentation only: `swift package generate-documentation --target TetherCore`.
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0"),
     ],

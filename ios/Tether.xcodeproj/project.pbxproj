@@ -37,6 +37,7 @@
 		E94D17DD6D42BF34C5B5A9AC /* Signing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888EDF1A791F4ABFC8A4EE65 /* Signing.swift */; };
 		F5C87C5424AE219E0C83D698 /* CallController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CBB9A44039858F32A499F1B /* CallController.swift */; };
 		F5F980AA00C9F35EA8DBD777 /* DisplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81CED4113375A394DEACC546 /* DisplayTests.swift */; };
+		F83746016A4CFC2C0CEDAA6F /* CallAudioRowsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E49921D93B25D04604D39D0B /* CallAudioRowsTests.swift */; };
 		F96DDCAC7F2163E7969993A5 /* ExtensionRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3722EE0161E63C93D7E8603D /* ExtensionRouterTests.swift */; };
 		FAE810BB4A344D52557B9E5D /* InCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 620608AA608B70B4FC21E0A9 /* InCallView.swift */; };
 /* End PBXBuildFile section */
@@ -88,6 +89,7 @@
 		C567AA851BD82FCD74E3DFEA /* LinkJournalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkJournalTests.swift; sourceTree = "<group>"; };
 		D07D9884FDEFAA158C1A7DF1 /* Tether.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tether.entitlements; sourceTree = "<group>"; };
 		D8299BCD38C963DC339407E1 /* PhoneViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneViews.swift; sourceTree = "<group>"; };
+		E49921D93B25D04604D39D0B /* CallAudioRowsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallAudioRowsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -146,6 +148,7 @@
 			isa = PBXGroup;
 			children = (
 				89E9230950F516251A08C469 /* AppModelReceivedTests.swift */,
+				E49921D93B25D04604D39D0B /* CallAudioRowsTests.swift */,
 				AB1D0F65D7009320B615590F /* ContactLabelTests.swift */,
 				81CED4113375A394DEACC546 /* DisplayTests.swift */,
 				3722EE0161E63C93D7E8603D /* ExtensionRouterTests.swift */,
@@ -363,6 +366,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A5120646391E346F5BC0F6FF /* AppModelReceivedTests.swift in Sources */,
+				F83746016A4CFC2C0CEDAA6F /* CallAudioRowsTests.swift in Sources */,
 				916C565D48ECFEDC9E18052B /* ContactLabelTests.swift in Sources */,
 				F5F980AA00C9F35EA8DBD777 /* DisplayTests.swift in Sources */,
 				F96DDCAC7F2163E7969993A5 /* ExtensionRouterTests.swift in Sources */,

@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import app.tether.TetherApp
+import app.tether.helper.MicPath
 import app.tether.core.AudioFrame
 import app.tether.core.CentralHandshake
 import app.tether.core.Message
@@ -221,6 +222,19 @@ class DebugReceiver : BroadcastReceiver() {
             val v = intent.getStringExtra("ms")?.toIntOrNull()
             app.prefs.edit().apply { if (v == null) remove("inject_ms") else putInt("inject_ms", v.coerceIn(20, 200)) }.apply()
             "inject_ms=${app.prefs.getInt("inject_ms", 40)}"
+        }
+        // mic_mute on|off|state: "mute this phone's mic during bridged calls" (on/off also forget the remembered check result).
+        "mic_mute" -> {
+            when (intent.getStringExtra("on")) { "on" -> app.hub.audio.setMicSetting(true); "off" -> app.hub.audio.setMicSetting(false) }
+            app.hub.pushStatus()
+            "micMute=${app.hub.audio.micSetting} remembered=${app.hub.audio.memory()?.wire ?: "none"} helper=${app.hub.audio.helperStatus()} uplink=${app.hub.helper.lastUplink}"
+        }
+        // mic auto|mute|open|state: "this phone's microphone during bridged calls" (a new choice forgets what was remembered).
+        "mic" -> {
+            intent.getStringExtra("on")?.let { w -> MicPath.Setting.entries.firstOrNull { it.wire == w } }?.let { app.hub.audio.setMic(it) }
+            app.hub.pushStatus()
+            "mic=${app.hub.audio.mic.wire} redirect=${MicPath.memoryJson(app.hub.audio.redirectMemory())} mute=${app.hub.audio.memory()?.wire ?: "none"} " +
+                "helper=${app.hub.audio.helperStatus()} micReport=${app.hub.helper.lastMic} uplink=${app.hub.helper.lastUplink}"
         }
         "only" -> { app.hub.onlyKind = intent.getStringExtra("kind")?.takeIf { it != "off" }; "only=${app.hub.onlyKind}" }
         "audio_stats" -> "hub: down=${app.hub.audio.downFrames} up=${app.hub.audio.upFrames} " +

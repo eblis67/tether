@@ -28,7 +28,7 @@ dependencies {
     api("io.github.jaredmdobson:concentus:1.0.2") // pure-Java libopus port: synchronous, full encoder control
     // Message bodies are org.json objects. Android ships org.json in the platform, so the Android apps exclude
     // this dependency (group org.json) to avoid duplicate platform classes; a JVM program gets it from here.
-    api("org.json:json:20250517")
+    api("org.json:json:20260814")
     testImplementation("junit:junit:4.13.2")
 }
 

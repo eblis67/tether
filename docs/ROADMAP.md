@@ -10,7 +10,10 @@ Tether is tested on one pair (a Samsung Galaxy A54 and an iPhone). Most other ro
 
 - Reports from other Android phones, especially non-Samsung ones on Android 13+, and Android 10–12
   ([device report](https://github.com/amirwmr/tether/issues/new?template=device_report.yml)).
-- Confirm the per-vendor muting of the phone's own earpiece and microphone on Qualcomm and MediaTek phones.
+- Confirm the per-vendor muting of the phone's own earpiece on Qualcomm and MediaTek phones, and which phones keep the
+  injected uplink with the optional microphone mute (the in-call check and the self-test report it, #2).
+- Collect which phones take the redirect audio mode on a real call (the self-test's `mic:call_redirect` row, #2) and
+  ship known answers per model, so a new phone does not have to find out during its first calls.
 - iPad and iOS 16 on real devices (so far simulator and build only).
 - The Android client on a real second phone (so far tested against a simulated Android phone), and next to an
   iPhone on the same Android phone.

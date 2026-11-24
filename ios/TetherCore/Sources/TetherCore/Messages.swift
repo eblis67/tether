@@ -43,7 +43,7 @@ public enum MsgType {
     public static let callAnswer = "call.answer", callReject = "call.reject", callEnd = "call.end"
     public static let callHold = "call.hold", callMute = "call.mute", callDtmf = "call.dtmf"
     public static let callDial = "call.dial", callDialed = "call.dialed", callTake = "call.take"
-    public static let audioStart = "audio.start", audioStop = "audio.stop", audioStats = "audio.stats"
+    public static let audioStart = "audio.start", audioStop = "audio.stop", audioStats = "audio.stats", audioSet = "audio.set"
     public static let selftest = "selftest", selftestResult = "selftest.result"
     public static let netGet = "net.get", netSet = "net.set", netState = "net.state"
     public static let smsDelete = "sms.delete", smsDeleted = "sms.deleted", callsDelete = "calls.delete", callsDeleted = "calls.deleted"
@@ -171,13 +171,28 @@ public struct SimInfo: Codable, Equatable, Hashable, Sendable, Identifiable {
 
 public struct HelperInfo: Codable, Equatable, Sendable {
     public var state: String
+    /// Inject method of the current or last call ("intercept", "telephony_tx", …).
     public var method: String?
+    /// Capture method of the current or last call.
+    public var capture: String?
     public var up: Bool
     public var down: Bool
     /// During a bridged call: how silent the Android phone itself is ("full", "earpiece", "none").
     public var silent: String?
-    public init(state: String, method: String? = nil, up: Bool = false, down: Bool = false, silent: String? = nil) {
-        self.state = state; self.method = method; self.up = up; self.down = down; self.silent = silent
+    /// The setting "mute the Android phone's microphone during bridged calls" (nil from builds without it: no switch).
+    /// Newer builds send ``mic`` too; this stays true only for "mute".
+    public var micMute: Bool?
+    /// Whether this iPhone's voice reaches the call: "checking", "ok", "muted-locally-fixed", "unverified", "off".
+    public var uplink: String?
+    /// The setting "the Android phone's microphone during bridged calls": "auto" (taken out of the call by a redirect
+    /// audio mode where the phone allows it), "mute", "open". Nil from builds before it (they have only ``micMute``).
+    public var mic: String?
+    /// During a bridged call, what the Android phone's own mic does: "off" (out of the call), "muted", "open".
+    public var micPath: String?
+    public init(state: String, method: String? = nil, capture: String? = nil, up: Bool = false, down: Bool = false,
+                silent: String? = nil, micMute: Bool? = nil, uplink: String? = nil, mic: String? = nil, micPath: String? = nil) {
+        self.state = state; self.method = method; self.capture = capture; self.up = up; self.down = down; self.silent = silent
+        self.micMute = micMute; self.uplink = uplink; self.mic = mic; self.micPath = micPath
     }
 }
 
@@ -419,6 +434,14 @@ public struct RingerSet: Codable, Equatable, Sendable { public var mode: String;
 public struct RingerResult: Codable, Equatable, Sendable {
     public var ok: Bool; public var mode: String?; public var err: String?
     public init(ok: Bool, mode: String? = nil, err: String? = nil) { self.ok = ok; self.mode = mode; self.err = err }
+}
+/// Changes the Android phone's microphone setting (answered with a `status`): `mic` "auto" | "mute" | "open" for
+/// Android builds that report `helper.mic`, else the older switch `micMute`.
+public struct AudioSet: Codable, Equatable, Sendable {
+    public var micMute: Bool?
+    public var mic: String?
+    public init(micMute: Bool) { self.micMute = micMute }
+    public init(mic: String) { self.mic = mic }
 }
 public struct SelftestMethod: Codable, Equatable, Sendable, Hashable {
     public var name: String; public var ok: Bool; public var note: String?

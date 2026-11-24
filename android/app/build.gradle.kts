@@ -71,8 +71,8 @@ dependencies {
     implementation(project(":core")) { exclude(group = "org.json") } // protocol and codecs, shared with the Android client
     implementation("com.google.zxing:core:3.5.4")
     implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
-    implementation("org.conscrypt:conscrypt-android:2.5.3")
-    implementation("org.bouncycastle:bcpkix-jdk15to18:1.81")
+    implementation("org.conscrypt:conscrypt-android:2.9.0")
+    implementation("org.bouncycastle:bcpkix-jdk15to18:1.87")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20250517")
+    testImplementation("org.json:json:20260814")
 }

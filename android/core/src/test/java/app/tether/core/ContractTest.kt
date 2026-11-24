@@ -39,6 +39,7 @@ class ContractTest {
         "call.dtmf" to listOf(F("cid", K.STR, true), F("d", K.STR, true)),
         "call.dial" to listOf(F("num", K.STR, true), F("sub", K.INT)),
         "selftest" to emptyList(),
+        "audio.set" to listOf(F("micMute", K.BOOL), F("mic", K.STR)),
         "net.get" to emptyList(),
         "net.set" to listOf(F("what", K.STR, true), F("on", K.BOOL, true), F("sub", K.INT), F("slot", K.INT), F("mode", K.STR)),
         "ussd.send" to listOf(F("code", K.STR, true), F("sub", K.INT)),

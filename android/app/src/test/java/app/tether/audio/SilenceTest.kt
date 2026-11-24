@@ -4,6 +4,7 @@ import app.tether.helper.CallAudio
 import app.tether.helper.CallAudio.Silence
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** The helper's choice of how a bridged call silences the Android phone itself (CallAudio.Silence). */
@@ -22,8 +23,14 @@ class SilenceTest {
     @Test fun mediatekNeverUsesTheAndroidMicMute() {
         val s = CallAudio.pickSilence("Xiaomi", "Mediatek", "mt6893", "mt6893")
         assertEquals(Silence.MEDIATEK, s)
-        assertFalse(s.telecomMicMuteSafe)
+        assertTrue("its own UL key instead", s.vendorMicKeys)
         assertEquals(Silence.MEDIATEK, CallAudio.pickSilence("TECNO", null, "mt6789", null))
+    }
+
+    @Test fun onlySamsungAndMediatekHaveTheirOwnMicKeys() {
+        assertTrue(Silence.SAMSUNG.vendorMicKeys)
+        assertFalse(Silence.QUALCOMM.vendorMicKeys)
+        assertFalse(Silence.OTHER.vendorMicKeys)
     }
 
     @Test fun othersFallBack() {

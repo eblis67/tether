@@ -16,6 +16,8 @@ concurrency:
   group: release-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 env:
+  # Maven Central answers shared runners with 429 Too Many Requests at busy times; Google's mirror of it does not.
+  TETHER_MAVEN_CENTRAL_MIRROR: https://maven-central.storage-download.googleapis.com/maven2/
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
@@ -27,7 +29,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
       - id: v
@@ -55,14 +57,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
       - name: Release key from the repository secrets
         id: key
         env:
@@ -101,7 +103,7 @@ jobs:
           aapt2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
           "$aapt2" dump badging "dist/Tether-A54-$VERSION$SUFFIX.apk" | head -1
           rm -f "$RUNNER_TEMP/release.jks"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: android
           path: dist/
@@ -113,7 +115,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
       - name: Swift package TetherCore builds at this tag
@@ -136,7 +138,7 @@ jobs:
           mkdir -p work/Payload dist
           cp -R "$app" work/Payload/
           (cd work && zip -qry "../dist/Tether-$VERSION-unsigned.ipa" Payload)
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: ios
           path: dist/
@@ -152,17 +154,17 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
       - name: Checksums
         working-directory: dist
         run: sha256sum -- * > SHA256SUMS && cat SHA256SUMS
-      - uses: actions/attest-build-provenance@v3
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             dist/*.apk
