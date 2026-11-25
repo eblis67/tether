@@ -326,7 +326,7 @@ class MainActivity : Activity() {
         val size = 720
         val m = QRCodeWriter().encode(if (qrLegacy) code.encode() else code.link(), BarcodeFormat.QR_CODE, size, size,
             mapOf(EncodeHintType.MARGIN to 1))
-        val px = IntArray(size * size) { if (m[it % size, it / size]) Color.BLACK else Color.WHITE }
+        val px = IntArray(size * size) { if (m[it % size, it / size]) Color.BLACK else Color.WHITE }   // theme: ok, a QR code must be black on white
         qrBitmap = Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888)
     }
 

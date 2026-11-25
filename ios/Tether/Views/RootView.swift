@@ -14,7 +14,7 @@ struct RootView: View {
         VStack(spacing: 0) {
             ReturnToCallBanner()
             RemoteCallBanner()
-            StatusStrip()
+            if model.isPaired || router.tab != .link { StatusStrip() }
             TabView(selection: $router.tab) {
                 RecentsView()
                     .tabItem { Label("Recents", systemImage: "clock") }
@@ -239,7 +239,7 @@ struct Avatar: View {
                 Image(uiImage: img).resizable().scaledToFill()
             } else {
                 ZStack {
-                    LinearGradient(colors: [Color(red: 0.65, green: 0.67, blue: 0.72), Color(red: 0.52, green: 0.54, blue: 0.58)],
+                    LinearGradient(colors: [Color(red: 0.65, green: 0.67, blue: 0.72), Color(red: 0.52, green: 0.54, blue: 0.58)],   // theme: ok, Apple's contact-avatar grey
                                    startPoint: .top, endPoint: .bottom)
                     if let text = AvatarImage.initials(name) {
                         Text(text).font(.system(size: size * 0.42, weight: .medium)).foregroundStyle(.white)

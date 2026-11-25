@@ -142,3 +142,13 @@ jobs:
       - run: sudo apt-get install -y zsh >/dev/null && zsh -n tools/reinstall-ios.sh && zsh -n tools/device-test.sh && zsh -n tools/test-all.sh && zsh -n tools/release.sh
       - run: python3 tools/altstore-source.py selftest && python3 tools/check-docs-links.py
       - run: zsh tools/check-private.sh --all
+      # The theme and identity guardrails (CONTRIBUTING.md, "Design rules"); on a pull request also what it may not touch.
+      - name: Guardrails
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            git fetch --no-tags --depth=200 origin "${{ github.base_ref }}"
+            git fetch --no-tags --deepen=200 origin HEAD 2>/dev/null || true
+            python3 tools/check-guardrails.py --base "origin/${{ github.base_ref }}"
+          else
+            python3 tools/check-guardrails.py
+          fi

@@ -76,7 +76,9 @@ particular (or a paid) developer account. Release keys live only in the reposito
 
 ## Pull requests: what gets merged
 
-Everyone is welcome to contribute; a pull request is merged only when it keeps every installed app working. The
+Everyone is welcome to contribute; a pull request is merged only when it keeps every installed app working and
+stays inside the design rules above. Pull requests are reviewed by maintainers with help from automated review; a
+part that breaks a rule is left out (and said so), the rest can still be merged with your name on it. The
 `main` branch enforces this: all five CI jobs must pass on the pull request (Android, Kotlin library, Swift on Linux,
 Apple, hygiene), the branch must be up to date with `main`, and a maintainer must approve the latest push. For
 contributors from outside, CI starts once a maintainer has looked at the change.
@@ -99,6 +101,25 @@ contributors from outside, CI starts once a maintainer has looked at the change.
    profiles, keystores, passwords or tokens (`tools/check-private.sh`).
 7. **Fill in the template.** A pull request with an empty description, failing CI, or a change of the project's name
    is closed with a note on what to do instead.
+
+## Design rules
+
+Both apps share one look; a change that leaves it is not merged.
+
+- **Dark first.** Black page backgrounds, dark grey cards (on iOS the system grouped backgrounds, on Android
+  `@color/surface`), light text. Light mode on iOS must stay readable; never force light mode.
+- **One accent.** The teal `AccentColor` (iOS) / `@color/accent` #2FD3BE (Android) for buttons, links, selection and
+  icons. Status colours from the palette only: ok (green), warn (orange), bad (red). No new colours, gradients, brand
+  colours or fonts; system fonts and, on iOS, SF Symbols.
+- **Native controls.** Lists, sections, buttons and sheets as the platform draws them; no custom chrome.
+- **Two languages, both directions.** Every user-facing string in English and Persian, and Persian screens laid out
+  right to left.
+- **The name stays.** Tether, the iPhone app Cellular, Tether Client; icons and logo unchanged.
+
+`tools/check-guardrails.py` checks this in CI: raw colours in code (Swift `Color(red:…)`, Kotlin
+`Color.parseColor`, hex values outside `colors.xml`) and colours off the palette fail the build, and on a pull
+request so does any change to the palette, icons, app names, ids, signing, workflows or the checks themselves. A line
+that truly needs a fixed colour says why: `// theme: ok <reason>`.
 
 ## Testing on devices without real calls
 

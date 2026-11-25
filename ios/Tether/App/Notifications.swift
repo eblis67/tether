@@ -169,8 +169,8 @@ enum AvatarImage {
                 img.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
                 return
             }
-            let colors = [UIColor(red: 0.65, green: 0.67, blue: 0.72, alpha: 1).cgColor,
-                          UIColor(red: 0.52, green: 0.54, blue: 0.58, alpha: 1).cgColor] as CFArray
+            let colors = [UIColor(red: 0.65, green: 0.67, blue: 0.72, alpha: 1).cgColor,   // theme: ok, Apple's contact-avatar grey
+                          UIColor(red: 0.52, green: 0.54, blue: 0.58, alpha: 1).cgColor] as CFArray   // theme: ok, Apple's contact-avatar grey
             if let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
                 ctx.cgContext.drawLinearGradient(g, start: .zero, end: CGPoint(x: 0, y: side), options: [])
             }

@@ -11,6 +11,7 @@
 See [CONTRIBUTING.md › Pull requests: what gets merged](https://github.com/amirwmr/tether/blob/main/CONTRIBUTING.md#pull-requests-what-gets-merged): CI must pass and a maintainer must approve before merging.
 
 - [ ] One topic; no renaming of the project or apps, no ids or branding changed
+- [ ] Inside the [design rules](https://github.com/amirwmr/tether/blob/main/CONTRIBUTING.md#design-rules) (dark theme, teal accent, no new colours); screenshots in English and Persian for UI changes
 - [ ] Installed apps keep working: no wire break, pairing and saved data survive the update
 - [ ] No CI or workflow change (or this pull request is only that, with the reason)
 

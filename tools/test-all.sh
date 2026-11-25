@@ -39,6 +39,7 @@ step "script syntax" sh -c 'sh -n tools/dbg.sh && sh -n tools/lib.sh && zsh -n t
 step "privacy scan (tracked changes)" tools/check-private.sh
 step "AltStore source (generate + validate)" python3 tools/altstore-source.py selftest
 step "docs links" python3 tools/check-docs-links.py
+step "guardrails (theme, identity)" python3 tools/check-guardrails.py
 
 gradle_tasks=(:core:testDebugUnitTest :app:testDebugUnitTest :helper:testDebugUnitTest :client:testDebugUnitTest)
 (( quick )) || gradle_tasks+=(:app:lintRelease :client:lintRelease :app:assembleRelease :helper:assembleRelease :client:assembleRelease)

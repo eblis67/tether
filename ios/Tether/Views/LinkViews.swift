@@ -14,28 +14,33 @@ struct LinkView: View {
         NavigationStack {
             ScrollViewReader { scroller in
             List {
-                Section {
-                    HStack(spacing: 14) {
-                        Image(systemName: model.linkState.isConnected ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
-                            .font(.system(size: 34))
-                            .foregroundStyle(model.linkState.isConnected ? .teal : .secondary)
-                            .frame(width: 48)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(model.isPaired ? model.peerName : String(localized: "Not paired")).font(.headline)
-                            Text(stateLine).font(.subheadline).foregroundStyle(.secondary)
+                if !model.isPaired {
+                    SetupGuideSection(
+                        status: stateLine,
+                        linkState: model.linkState
+                    ) { scanning = true }
+                } else {
+                    Section {
+                        HStack(spacing: 14) {
+                            Image(systemName: model.linkState.isConnected ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
+                                .font(.system(size: 34))
+                                .foregroundStyle(model.linkState.isConnected ? .teal : .secondary)
+                                .frame(width: 48)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(model.peerName).font(.headline)
+                                Text(stateLine).font(.subheadline).foregroundStyle(.secondary)
+                            }
                         }
+                        .padding(.vertical, 6)
                     }
-                    .padding(.vertical, 6)
-                }
 
-                if !model.isPaired { SetupGuideSection { scanning = true } }
-
-                Section {
-                    Label {
-                        Text("Tether keeps the link in the background and when the screen is locked. Swiping Tether away in the app switcher stops it until you open it again: iOS does not relaunch a force-quit app for Bluetooth.")
-                            .font(.footnote)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+                    Section {
+                        Label {
+                            Text("Tether keeps the link in the background and when the screen is locked. Swiping Tether away in the app switcher stops it until you open it again: iOS does not relaunch a force-quit app for Bluetooth.")
+                                .font(.footnote)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+                        }
                     }
                 }
 
@@ -199,12 +204,10 @@ struct LinkView: View {
                     }
                     Button("Sync everything again") { model.requestSync(full: true) }.disabled(!model.linkState.isConnected)
                     NavigationLink("Link log") { LinkLogView() }
-                    Button(model.isPaired ? "Pair again" : "Pair with Android phone") { scanning = true }
                     if model.isPaired {
+                        Button("Pair again") { scanning = true }
                         Button("Unpair", role: .destructive) { confirmUnpair = true }
                     }
-                } footer: {
-                    Text("On the Android phone, open Tether and tap Pair iPhone, then scan the code with the Camera or here (or paste it). Calls, messages, contacts and call history stay between your devices; there is no server.")
                 }
                 #if DEBUG
                 DeveloperSection()
@@ -257,29 +260,100 @@ struct LinkView: View {
 
 /// First run (not paired): what to install on the Android phone, how to show and scan the code, and which
 /// permissions the iPhone will ask for and why.
-struct SetupGuideSection: View {
+private struct SetupGuideSection: View {
+    let status: String
+    let linkState: TetherLink.State
     let scan: () -> Void
+
+    /// The app's own teal (Assets › AccentColor), as on every other screen.
+    private let accent = Color("AccentColor")
+
+    private var bluetoothUnavailable: Bool { linkState == .poweredOff || linkState == .unauthorized }
 
     var body: some View {
         Section {
-            step(1, "Install Tether on the Android phone that holds your SIMs and do its Setup steps (permissions, default phone app, battery, wireless debugging).")
-            step(2, "On the Android phone, open Tether and tap Pair iPhone. A QR code appears for 5 minutes.")
-            step(3, "Point this iPhone's Camera at the code and tap Open in Cellular, or tap the button below and scan it here.")
-            step(4, "Allow what the iPhone asks: Bluetooth (the link to the phone), Microphone (your voice in calls) and Notifications (calls and new texts).")
-            Button { scan() } label: { Label("Scan Pairing Code", systemImage: "qrcode.viewfinder") }
+            VStack(alignment: .leading, spacing: 14) {
+                Image(systemName: "personalhotspot")
+                    .font(.title2.weight(.semibold))
+                    .imageScale(.large)
+                    .foregroundStyle(accent)
+                    .padding(12)
+                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+                    .accessibilityHidden(true)
+
+                Text("Connect your Android phone")
+                    .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
+
+                Text("Use your Android SIM for calls and texts on this device.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Label(status, systemImage: bluetoothUnavailable ? "exclamationmark.circle.fill" : "link")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(bluetoothUnavailable ? Color.orange : accent)
+
+                if linkState == .poweredOff {
+                    Text("Turn on Bluetooth in Settings on this device before pairing.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button(action: scan) {
+                    Label("Scan Pairing Code", systemImage: "qrcode.viewfinder")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.black)
+                        .multilineTextAlignment(.center)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(accent)
+
+                if linkState == .unauthorized, let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                    Link("Open Settings", destination: settingsURL)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(accent)
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            .listRowBackground(Color.clear)
+        }
+
+        Section {
+            step(1, title: "Set up Tether on Android",
+                 detail: "On the phone with the SIM, install Tether and complete its setup.")
+            step(2, title: "Show the pairing code",
+                 detail: "In Tether on Android, tap Pair iPhone. The QR code is available for five minutes.")
+            step(3, title: "Scan with this device",
+                 detail: "Keep both phones nearby. Scan it here, or point this iPhone's Camera at it and tap Open in Cellular. You can also enter the code manually from the scanner.")
         } header: {
             Text("Set up")
         } footer: {
-            Text("Keep both phones close while pairing. Nothing goes through a server.")
+            Label("Calls and texts stay on your devices and travel over an encrypted Bluetooth link.",
+                  systemImage: "lock.shield")
         }
     }
 
-    private func step(_ n: Int, _ text: LocalizedStringKey) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(n.formatted()).font(.subheadline.weight(.bold)).foregroundStyle(.teal).frame(minWidth: 18)
-            Text(text).font(.subheadline)
+    private func step(_ number: Int, title: LocalizedStringKey, detail: LocalizedStringKey) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(number.formatted())
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+                .foregroundStyle(accent)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(accent.opacity(0.12), in: Capsule())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+            }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -626,166 +700,327 @@ struct NetToggle: View {
     }
 }
 
-/// Full-screen QR scanner for the pairing code (`tether://pair?c=…` since 1.2, `tether1:…` from 1.1 phones): the camera fills the screen with only Cancel, a short
-/// instruction and "Enter Code Manually" over it (no text field or other content behind the camera); typing the
-/// code is its own screen, so the keyboard never comes up behind the scanner.
+/// Presents the camera and the manual code entry as separate screens.
 struct PairingView: View {
+    @Environment(\.scenePhase) private var scenePhase
     let done: (PairingCode?) -> Void
     @State private var error: String?
     @State private var manual = false
-    @State private var cameraMissing = false
+    @State private var cameraState: QRScanner.State = .starting
+    @State private var completed = false
+
+    /// The app's own teal (Assets › AccentColor), as on every other screen.
+    private let accent = Color("AccentColor")
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            if cameraMissing {
-                VStack(spacing: 12) {
-                    Image(systemName: "camera.fill").font(.system(size: 40)).foregroundStyle(.white.opacity(0.6))
-                    Text("Camera not available").font(.headline).foregroundStyle(.white)
-                    Text("Allow camera access in Settings, or enter the code by hand.")
-                        .font(.callout).foregroundStyle(.white.opacity(0.7)).multilineTextAlignment(.center)
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Scan the code shown in Tether on the Android phone.")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+
+                    cameraPanel
+
+                    if let error {
+                        Label(error, systemImage: "exclamationmark.circle")
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                    }
+
+                    if cameraState == .permissionDenied, let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                        Link("Open Settings", destination: settingsURL).font(.body.weight(.semibold))
+                    }
+
+                    Button { openManualEntry() } label: {
+                        Label("Enter Code Manually", systemImage: "keyboard")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.black)
+                            .multilineTextAlignment(.center)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .padding(32)
-            } else {
-                QRScanner(onCode: { text in
-                    if let code = PairingCode.parse(text) { done(code) } else { error = String(localized: "That is not a Tether pairing code.") }
-                }, onUnavailable: { cameraMissing = true })
-                .ignoresSafeArea()
-                // Viewfinder: where to hold the code.
-                RoundedRectangle(cornerRadius: 24).stroke(.white.opacity(0.85), lineWidth: 3)
-                    .frame(width: 250, height: 250).allowsHitTesting(false)
+                .padding(20)
+                .frame(maxWidth: 560)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
-            VStack {
-                HStack {
-                    Button("Cancel") { done(nil) }
-                        .font(.body.weight(.semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 16).padding(.vertical, 9)
-                        .background(.black.opacity(0.45), in: Capsule())
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                Spacer()
-                Text(error ?? String(localized: "Scan the code shown in Tether on the Android phone."))
-                    .font(.callout).foregroundStyle(.white).multilineTextAlignment(.center)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-                    .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
-                    .padding(.horizontal, 24)
-                Button { manual = true } label: {
-                    Label("Enter Code Manually", systemImage: "keyboard").font(.body.weight(.semibold))
-                        .padding(.horizontal, 20).padding(.vertical, 12)
-                }
-                .foregroundStyle(.white).background(.white.opacity(0.2), in: Capsule())
-                .padding(.top, 12).padding(.bottom, 24)
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle("Scan Pairing Code")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { done(nil) } }
             }
         }
-        .environment(\.colorScheme, .dark)   // a camera screen is dark in light mode too, as in Camera
-        .statusBarHidden(false)
+        .tint(accent)
+        .environment(\.colorScheme, .dark)
+        .onChangeCompat(of: scenePhase) { phase in
+            if phase == .active, cameraState == .permissionDenied,
+               AVCaptureDevice.authorizationStatus(for: .video) == .authorized {
+                cameraState = .starting
+            }
+        }
         .sheet(isPresented: $manual) {
             ManualPairingView { code in
                 manual = false
-                if let code { done(code) }
+                if let code { finish(code) }
             }
+            .tint(accent)
         }
         #if DEBUG
-        .onAppear { if ProcessInfo.processInfo.arguments.contains("-TetherDemoPairManual") { manual = true } }
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("-TetherDemoPairManual") { openManualEntry() }
+        }
         #endif
+    }
+
+    @ViewBuilder private var cameraPanel: some View {
+        switch cameraState {
+        case .starting, .ready:
+            Color.black
+                .aspectRatio(1, contentMode: .fit)
+                .overlay {
+                    if !manual && !completed {
+                        QRScanner(onCode: scan, onStateChange: { cameraState = $0 })
+                            .accessibilityHidden(true)
+                        if cameraState == .ready {
+                            RoundedRectangle(cornerRadius: 24)
+                                .strokeBorder(accent, lineWidth: 3)
+                                .aspectRatio(1, contentMode: .fit)
+                                .padding(36)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    if cameraState == .starting {
+                        ProgressView("Starting camera…").tint(accent)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 24))
+        case .permissionDenied:
+            cameraMessage("Camera access is off",
+                          detail: "Allow camera access in Settings, or enter the code by hand.")
+        case .unavailable:
+            cameraMessage("Camera not available",
+                          detail: "You can still pair by entering the code manually.")
+        }
+    }
+
+    private func cameraMessage(_ title: LocalizedStringKey, detail: LocalizedStringKey) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: "camera.fill").font(.title2).foregroundStyle(accent).accessibilityHidden(true)
+            Text(title).font(.headline)
+            Text(detail).font(.callout).foregroundStyle(.secondary)
+        }
+        .multilineTextAlignment(.center)
+        .padding(24)
+        .frame(maxWidth: .infinity, minHeight: 200)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24))
+    }
+
+    private func openManualEntry() {
+        error = nil
+        if cameraState == .ready { cameraState = .starting }
+        manual = true
+    }
+
+    private func scan(_ text: String) {
+        guard !manual && !completed else { return }
+        guard let code = PairingCode.parse(text) else {
+            error = String(localized: "That is not a Tether pairing code.")
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        finish(code)
+    }
+
+    private func finish(_ code: PairingCode) {
+        guard !completed else { return }
+        completed = true
+        done(code)
     }
 }
 
-/// Typing or pasting the `tether1:` code (from "Enter Code Manually").
 struct ManualPairingView: View {
     let done: (PairingCode?) -> Void
     @State private var typed = ""
     @State private var error: String?
     @FocusState private var focused: Bool
 
+    private var trimmedCode: String { typed.trimmingCharacters(in: .whitespacesAndNewlines) }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     TextField("tether1:…", text: $typed, axis: .vertical)
-                        .lineLimit(1...4).autocorrectionDisabled().textInputAutocapitalization(.never)
-                        .font(.body.monospaced()).focused($focused).submitLabel(.done).onSubmit(use)
-                    PasteButton(payloadType: String.self) { items in
-                        if let s = items.first { typed = s.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .accessibilityLabel(Text("Pairing code"))
+                        .environment(\.layoutDirection, .leftToRight)
+                        .lineLimit(1...4)
+                        .keyboardType(.asciiCapable)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .font(.body.monospaced())
+                        .focused($focused)
+                        .submitLabel(.done)
+                        .onSubmit(use)
+
+                    HStack {
+                        Text("Paste pairing code")
+                            .accessibilityHidden(true)
+                        Spacer()
+                        PasteButton(payloadType: String.self) { items in
+                            if let code = items.first { typed = code.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        }
+                        .labelStyle(.iconOnly)
+                        .accessibilityLabel(Text("Paste pairing code"))
                     }
                 } footer: {
-                    Text(error ?? String(localized: "Paste or type a tether1: pairing code you have as text. The Android phone shows it as a QR code: scanning is quicker."))
-                        .foregroundStyle(error == nil ? Color.secondary : Color.red)
+                    if let error {
+                        Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.orange)
+                    } else {
+                        Text("Paste a pairing link or type the code from Tether on your Android phone.")
+                    }
                 }
             }
-            .navigationTitle("Enter Code")
+            .navigationTitle("Enter Code Manually")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { done(nil) } }
-                ToolbarItem(placement: .confirmationAction) { Button("Pair", action: use).disabled(typed.isEmpty) }
+                ToolbarItem(placement: .confirmationAction) { Button("Pair", action: use).disabled(trimmedCode.isEmpty) }
             }
             .onAppear { focused = true }
+            .onChangeCompat(of: typed) { _ in error = nil }
         }
     }
 
     private func use() {
-        if let code = PairingCode.parse(typed.trimmingCharacters(in: .whitespacesAndNewlines)) { done(code) }
+        if let code = PairingCode.parse(trimmedCode) { done(code) }
         else { error = String(localized: "That is not a Tether pairing code.") }
     }
 }
 
-struct QRScanner: UIViewControllerRepresentable {
-    let onCode: (String) -> Void
-    var onUnavailable: () -> Void = {}
-
-    func makeUIViewController(context: Context) -> ScannerController {
-        let c = ScannerController()
-        c.onCode = onCode
-        c.onUnavailable = onUnavailable
-        return c
+private struct QRScanner: UIViewControllerRepresentable {
+    enum State {
+        case starting, ready, permissionDenied, unavailable
     }
 
-    func updateUIViewController(_ vc: ScannerController, context: Context) {}
+    let onCode: (String) -> Void
+    let onStateChange: (State) -> Void
+
+    func makeUIViewController(context: Context) -> ScannerController {
+        ScannerController()
+    }
+
+    func updateUIViewController(_ controller: ScannerController, context: Context) {
+        controller.onCode = onCode
+        controller.onStateChange = onStateChange
+    }
+
+    static func dismantleUIViewController(_ controller: ScannerController, coordinator: ()) {
+        controller.onCode = nil
+        controller.onStateChange = nil
+        controller.stop()
+    }
 
     final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
         var onCode: ((String) -> Void)?
-        var onUnavailable: (() -> Void)?
+        var onStateChange: ((State) -> Void)?
         private let session = AVCaptureSession()
+        private let sessionQueue = DispatchQueue(label: "tether.qr-capture")
+        private var preview: AVCaptureVideoPreviewLayer?
+        private var visible = false
         private var last: String?
 
-        override func viewDidLoad() {
-            super.viewDidLoad()
-            view.backgroundColor = .black
-            guard let cam = AVCaptureDevice.default(for: .video), let input = try? AVCaptureDeviceInput(device: cam),
-                  session.canAddInput(input) else {
-                // No camera (simulator) or access denied: say so instead of a blank screen.
-                DispatchQueue.main.async { self.onUnavailable?() }
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            visible = true
+            guard AVCaptureDevice.default(for: .video) != nil else {
+                onStateChange?(.unavailable)
                 return
             }
-            session.addInput(input)
-            let out = AVCaptureMetadataOutput()
-            guard session.canAddOutput(out) else { return }
-            session.addOutput(out)
-            out.setMetadataObjectsDelegate(self, queue: .main)
-            out.metadataObjectTypes = [.qr]
-            let preview = AVCaptureVideoPreviewLayer(session: session)
-            preview.videoGravity = .resizeAspectFill
-            preview.frame = view.bounds
-            view.layer.addSublayer(preview)
-            DispatchQueue.global(qos: .userInitiated).async { self.session.startRunning() }
+            switch AVCaptureDevice.authorizationStatus(for: .video) {
+            case .authorized:
+                start()
+            case .notDetermined:
+                AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                    DispatchQueue.main.async {
+                        guard let self, self.visible else { return }
+                        if granted { self.start() }
+                        else { self.onStateChange?(.permissionDenied) }
+                    }
+                }
+            case .denied, .restricted:
+                onStateChange?(.permissionDenied)
+            @unknown default:
+                onStateChange?(.unavailable)
+            }
+        }
+
+        private func start() {
+            if preview == nil {
+                let output = AVCaptureMetadataOutput()
+                guard let camera = AVCaptureDevice.default(for: .video),
+                      let input = try? AVCaptureDeviceInput(device: camera),
+                      session.canAddInput(input) else {
+                    onStateChange?(.unavailable)
+                    return
+                }
+                session.addInput(input)
+                guard session.canAddOutput(output) else {
+                    session.removeInput(input)
+                    onStateChange?(.unavailable)
+                    return
+                }
+                session.addOutput(output)
+                guard output.availableMetadataObjectTypes.contains(.qr) else {
+                    session.removeOutput(output)
+                    session.removeInput(input)
+                    onStateChange?(.unavailable)
+                    return
+                }
+                output.setMetadataObjectsDelegate(self, queue: .main)
+                output.metadataObjectTypes = [.qr]
+                let layer = AVCaptureVideoPreviewLayer(session: session)
+                layer.videoGravity = .resizeAspectFill
+                layer.frame = view.bounds
+                view.layer.addSublayer(layer)
+                preview = layer
+            }
+            sessionQueue.async { [weak self] in
+                guard let self else { return }
+                self.session.startRunning()
+                let state: State = self.session.isRunning ? .ready : .unavailable
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.visible else { return }
+                    self.onStateChange?(state)
+                }
+            }
         }
 
         override func viewDidLayoutSubviews() {
             super.viewDidLayoutSubviews()
-            view.layer.sublayers?.first?.frame = view.bounds
+            preview?.frame = view.bounds
         }
 
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
-            session.stopRunning()
+            stop()
+        }
+
+        func stop() {
+            visible = false
+            let session = session
+            sessionQueue.async { if session.isRunning { session.stopRunning() } }
         }
 
         func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput objects: [AVMetadataObject], from connection: AVCaptureConnection) {
-            guard let s = (objects.first as? AVMetadataMachineReadableCodeObject)?.stringValue, s != last else { return }
-            last = s
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            onCode?(s)
+            guard visible, let value = (objects.first as? AVMetadataMachineReadableCodeObject)?.stringValue,
+                  value != last else { return }
+            last = value
+            onCode?(value)
         }
     }
 }

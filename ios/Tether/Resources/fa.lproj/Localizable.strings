@@ -208,7 +208,7 @@
 "Vibrate" = "لرزش";
 "Silent" = "بی‌صدا";
 "Not a carrier code (like *123#)" = "کد اپراتور معتبر نیست (مثل ‎*123#‎)";
-"Silent needs Do Not Disturb access for Tether on the Android phone." = "برای حالت بی‌صدا، Tether روی گوشی اندرویدی باید به «مزاحم نشوید» دسترسی داشته باشد.";
+"Silent needs Do Not Disturb access for Tether on the Android phone." = "برای حالت بی‌صدا، تتر روی گوشی اندرویدی باید به «مزاحم نشوید» دسترسی داشته باشد.";
 "Carrier codes are sent from the Android phone's SIM and may cost money. Find phone rings the Android phone loudly for up to 30 seconds, until it is unlocked or you switch it off." = "کدهای اپراتور از سیم‌کارت گوشی اندرویدی ارسال می‌شوند و ممکن است هزینه داشته باشند. «پیدا کردن گوشی» گوشی اندرویدی را تا ۳۰ ثانیه بلند زنگ می‌زند، تا وقتی قفلش باز شود یا آن را خاموش کنید.";
 
 /* Numbers from other apps (tel: links, Shortcuts, the Phone app's Recents) */
@@ -246,18 +246,23 @@
 "Microphone out of the call" = "میکروفون بیرون از تماس";
 "Microphone muted" = "میکروفون بی‌صدا";
 "Microphone on" = "میکروفون روشن";
-"Muting works on some phones only: on others it also mutes your voice for the other side. Tether checks during each call and turns the mute off if your voice does not get through." = "بی‌صدا کردن فقط روی بعضی گوشی‌ها کار می‌کند: روی بقیه صدای شما را هم برای طرف مقابل قطع می‌کند. Tether در هر تماس بررسی می‌کند و اگر صدای شما نرسد، بی‌صدا کردن را خاموش می‌کند.";
+"Muting works on some phones only: on others it also mutes your voice for the other side. Tether checks during each call and turns the mute off if your voice does not get through." = "بی‌صدا کردن فقط روی بعضی گوشی‌ها کار می‌کند: روی بقیه صدای شما را هم برای طرف مقابل قطع می‌کند. تتر در هر تماس بررسی می‌کند و اگر صدای شما نرسد، بی‌صدا کردن را خاموش می‌کند.";
 "The Android phone's microphone stays in the call: the other side may hear your voice twice, and the room around the phone." = "میکروفون گوشی اندروید در تماس می‌ماند: ممکن است طرف مقابل صدای شما را دو بار بشنود، همراه با صدای اطراف آن گوشی.";
-"Tether puts the call in Android's redirect audio mode: the Android phone's own microphone and earpiece leave the call, so the other side hears only this iPhone. Tether checks that both directions still work and keeps the microphone on where the phone does not allow it." = "Tether تماس را به حالت صوتی «هدایت تماس» اندروید می‌برد: میکروفون و بلندگوی مکالمهٔ گوشی اندروید از تماس بیرون می‌روند و طرف مقابل فقط صدای این آیفون را می‌شنود. Tether بررسی می‌کند که صدا در هر دو جهت برقرار بماند و جایی که گوشی اجازه ندهد، میکروفون را روشن نگه می‌دارد.";
+"Tether puts the call in Android's redirect audio mode: the Android phone's own microphone and earpiece leave the call, so the other side hears only this iPhone. Tether checks that both directions still work and keeps the microphone on where the phone does not allow it." = "تتر تماس را به حالت صوتی «هدایت تماس» اندروید می‌برد: میکروفون و بلندگوی مکالمهٔ گوشی اندروید از تماس بیرون می‌روند و طرف مقابل فقط صدای این آیفون را می‌شنود. تتر بررسی می‌کند که صدا در هر دو جهت برقرار بماند و جایی که گوشی اجازه ندهد، میکروفون را روشن نگه می‌دارد.";
 
 /* First run and pairing links */
 "Set up" = "راه‌اندازی";
-"Install Tether on the Android phone that holds your SIMs and do its Setup steps (permissions, default phone app, battery, wireless debugging)." = "تتر را روی گوشی اندرویدی که سیم‌کارت‌هایتان در آن است نصب کنید و مراحل راه‌اندازی آن را انجام دهید (مجوزها، برنامهٔ پیش‌فرض تلفن، باتری، اشکال‌زدایی بی‌سیم).";
-"On the Android phone, open Tether and tap Pair iPhone. A QR code appears for 5 minutes." = "روی گوشی اندروید تتر را باز کنید و «جفت کردن آیفون» را بزنید. یک کد QR به مدت ۵ دقیقه نمایش داده می‌شود.";
-"Point this iPhone's Camera at the code and tap Open in Cellular, or tap the button below and scan it here." = "دوربین این آیفون را به سمت کد بگیرید و «باز کردن در Cellular» را بزنید، یا دکمهٔ پایین را بزنید و همین‌جا اسکن کنید.";
-"Allow what the iPhone asks: Bluetooth (the link to the phone), Microphone (your voice in calls) and Notifications (calls and new texts)." = "آنچه آیفون می‌پرسد را مجاز کنید: بلوتوث (اتصال به گوشی)، میکروفون (صدای شما در تماس) و اعلان‌ها (تماس‌ها و پیامک‌های تازه).";
+"Connect your Android phone" = "گوشی اندرویدی‌تان را وصل کنید";
+"Use your Android SIM for calls and texts on this device." = "با سیم‌کارت گوشی اندرویدی، از همین دستگاه تماس بگیرید و پیامک بفرستید.";
+"Set up Tether on Android" = "راه‌اندازی تتر در اندروید";
+"On the phone with the SIM, install Tether and complete its setup." = "تتر را روی گوشی سیم‌کارت‌دار نصب کنید و مراحل راه‌اندازی را انجام دهید.";
+"Show the pairing code" = "نمایش کد جفت‌سازی";
+"In Tether on Android, tap Pair iPhone. The QR code is available for five minutes." = "در تترِ گوشی اندرویدی، «جفت کردن آیفون» را بزنید. کد QR تا پنج دقیقه معتبر است.";
+"Scan with this device" = "اسکن با همین دستگاه";
+"Keep both phones nearby. Scan it here, or point this iPhone's Camera at it and tap Open in Cellular. You can also enter the code manually from the scanner." = "دو گوشی را نزدیک هم نگه دارید. کد را همین‌جا اسکن کنید، یا دوربین آیفون را روی آن بگیرید و Open in Cellular را بزنید. در صفحهٔ اسکن می‌توانید کد را دستی هم وارد کنید.";
+"Turn on Bluetooth in Settings on this device before pairing." = "پیش از جفت‌سازی، بلوتوث را در تنظیمات این دستگاه روشن کنید.";
 "Scan Pairing Code" = "اسکن کد جفت‌سازی";
-"Keep both phones close while pairing. Nothing goes through a server." = "هنگام جفت کردن دو گوشی را نزدیک هم نگه دارید. هیچ چیزی از سرور نمی‌گذرد.";
+"Calls and texts stay on your devices and travel over an encrypted Bluetooth link." = "تماس‌ها و پیامک‌ها در دستگاه‌های شما می‌مانند و از طریق بلوتوث رمزنگاری‌شده منتقل می‌شوند.";
 "Pair with %@?" = "با %@ جفت شود؟";
 "the Android phone" = "گوشی اندروید";
 "This replaces the current pairing and removes the synced data from this iPhone." = "این کار جفت‌سازی فعلی را جایگزین می‌کند و داده‌های همگام‌شده را از این آیفون پاک می‌کند.";
@@ -266,10 +271,21 @@
 "Paste or type a pairing code you have as text (tether1:… or tether://pair?…). The Android phone shows it as a QR code: scanning is quicker." = "کد جفت‌سازی را که به صورت متن دارید بچسبانید یا تایپ کنید (tether1:… یا tether://pair?…). گوشی اندروید آن را به صورت کد QR نشان می‌دهد: اسکن سریع‌تر است.";
 
 /* This iPhone's microphone (issue #14) */
-"Microphone off for Tether" = "میکروفون برای Tether خاموش است";
+"Microphone off for Tether" = "میکروفون برای تتر خاموش است";
 "The other side cannot hear you. Allow the microphone in Settings › Privacy & Security › Microphone." = "طرف مقابل صدای شما را نمی‌شنود. در تنظیمات › حریم خصوصی و امنیت › میکروفون اجازه دهید.";
-"Microphone off for Tether: the other side cannot hear you. Allow it in Settings › Privacy & Security › Microphone." = "میکروفون برای Tether خاموش است: طرف مقابل صدای شما را نمی‌شنود. در تنظیمات › حریم خصوصی و امنیت › میکروفون اجازه دهید.";
+"Microphone off for Tether: the other side cannot hear you. Allow it in Settings › Privacy & Security › Microphone." = "میکروفون برای تتر خاموش است: طرف مقابل صدای شما را نمی‌شنود. در تنظیمات › حریم خصوصی و امنیت › میکروفون اجازه دهید.";
 "This iPhone's microphone gives no sound: the other side may not hear you." = "میکروفون این آیفون صدایی نمی‌دهد: ممکن است طرف مقابل صدای شما را نشنود.";
 "Does not reach: microphone off on this iPhone" = "نمی‌رسد: میکروفون این آیفون خاموش است";
 "Does not reach: no sound from this iPhone's microphone" = "نمی‌رسد: از میکروفون این آیفون صدایی نمی‌آید";
 "Open Settings" = "باز کردن تنظیمات";
+
+/* Pairing scanner */
+"Enter Code Manually" = "ورود دستی کد";
+"Starting camera…" = "در حال آماده‌سازی دوربین…";
+"Camera access is off" = "دسترسی به دوربین بسته است";
+"Allow camera access in Settings, or enter the code by hand." = "دسترسی به دوربین را در تنظیمات مجاز کنید یا کد را دستی وارد کنید.";
+"Camera not available" = "دوربین در دسترس نیست";
+"You can still pair by entering the code manually." = "برای جفت‌سازی می‌توانید کد را دستی وارد کنید.";
+"Pairing code" = "کد جفت‌سازی";
+"Paste pairing code" = "جای‌گذاری کد جفت‌سازی";
+"Paste a pairing link or type the code from Tether on your Android phone." = "پیوند جفت‌سازی را جای‌گذاری کنید یا کدی را که تتر روی گوشی اندرویدی نشان می‌دهد وارد کنید.";

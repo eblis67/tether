@@ -2,7 +2,6 @@ package app.tether.ui
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
@@ -93,7 +92,7 @@ class CallActivity : Activity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun round(t: String, colorId: Int, onClick: () -> Unit) = Button(this).apply {
-        text = t; isAllCaps = false; setTextColor(Color.WHITE)
+        text = t; isAllCaps = false; setTextColor(getColor(R.color.text))
         background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(getColor(colorId)) }
         layoutParams = LinearLayout.LayoutParams(dp(96), dp(96)).apply { marginStart = dp(16); marginEnd = dp(16) }
         setOnClickListener { onClick(); main.postDelayed(::refresh, 200) }
@@ -121,7 +120,7 @@ class DialerActivity : Activity() {
             setText(intent?.data?.schemeSpecificPart ?: "")
         }
         val call = Button(this).apply {
-            text = getString(R.string.dial); isAllCaps = false; setTextColor(Color.WHITE)
+            text = getString(R.string.dial); isAllCaps = false; setTextColor(getColor(R.color.text))
             background = GradientDrawable().apply { cornerRadius = dp(24).toFloat(); setColor(getColor(R.color.ok)) }
             setOnClickListener { CallRegistry.dial(this@DialerActivity, number.text.toString(), null); finish() }
         }
