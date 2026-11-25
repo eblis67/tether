@@ -1,6 +1,6 @@
 name: iOS IPA (unsigned)
 
-# retry: 2 — the tether-ios-retry cron increments this on each capacity retry.
+# retry: 3 — the tether-ios-retry cron increments this on each capacity retry.
 # The PAT cannot re-run jobs or dispatch workflows, so a push is the only trigger.
 # 2026-11-25: bumped to re-trigger after the upstream sync to 1fc7a1f —
 # the merge-upstream push itself started no runs.
