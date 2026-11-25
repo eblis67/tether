@@ -55,6 +55,7 @@ class ThreadActivity : Activity() {
         bar.addView(pill(getString(R.string.send)) { send() })
         root.addView(bar)
         setContentView(root)
+        fitSystemBars(root)
     }
 
     override fun onResume() {

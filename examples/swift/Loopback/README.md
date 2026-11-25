@@ -8,7 +8,7 @@ swift run
 ```
 
 ```
-• pairing code tether1:BMFZ2MFST0GQvMY_… (133 characters) for "Demo phone"
+• pairing code tether://pair?c=BMS_DaCPPd5V… (141 characters) for "Demo phone"
 • paired: session up, transcript a6873b2d2489…
 • phone got sync, client decodes opus, pcmu
 • status: Demo phone, battery 87 %, SIM 1 LTE
@@ -23,7 +23,8 @@ done: 3012 bytes carried in the first session
 What [`Sources/Loopback/main.swift`](Sources/Loopback/main.swift) does, step by step:
 
 1. **Pairing code.** The phone makes a long-term key (`TetherPrivateKey`) and a one-time token and shows them as a
-   `tether1:` code (`PairingCode`); the client parses it.
+   `tether://pair?c=…` link, the form the QR code holds since 1.2 (`PairingCode.link`; typed codes are `tether1:…`,
+   `PairingCode.string`); the client parses it (`parse` reads both).
 2. **Handshake.** `CentralHandshake` (client) and `PeripheralHandshake` (phone) exchange HELLO, HELLO_ACK and two FIN
    records and end up with matching `SecureSession`s. Records cross a `Wire` that cuts them into 7-byte chunks and
    puts them back together with `RecordReader`, as a Bluetooth stream would.
@@ -42,7 +43,7 @@ The program exits with status 1 if any step goes wrong, so CI runs it as a test.
 In your own package, depend on the SDK by URL instead of the relative path in this example's `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/amirwmr/tether", from: "1.1.0")
+.package(url: "https://github.com/amirwmr/tether", from: "1.2.0")
 ```
 
 More: [docs/SDK-swift.md](../../../docs/SDK-swift.md), the protocol in

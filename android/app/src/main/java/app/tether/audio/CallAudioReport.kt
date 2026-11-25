@@ -18,10 +18,16 @@ object CallAudioReport {
         val injectErrors = errors.filter { it.startsWith("inject:") }
         return buildString {
             append("call audio path: capture ").append(info.str("capture") ?: "NONE (the iPhone hears nothing)")
-            if (inject != null) append(", uplink injection open via ").append(inject).append(" (routed ").append(info.str("routed") ?: "?").append(')')
-            else append(", uplink injection NOT open: the other side cannot hear the iPhone")
+            if (inject != null) {
+                append(", uplink injection open via ").append(inject).append(" (routed ").append(info.str("routed") ?: "?")
+                if (info.has("routedToCall") && !info.isNull("routedToCall") && !info.optBoolean("routedToCall"))
+                    append(": NOT the call's uplink, the other side may not hear the iPhone")
+                append(')')
+            } else append(", uplink injection NOT open: the other side cannot hear the iPhone")
             if (inject != null && injectErrors.isNotEmpty()) append(" after ").append(injectErrors.joinToString("; "))
             if (inject == null && injectErrors.isNotEmpty()) append(" (").append(injectErrors.joinToString("; ")).append(')')
+            val wait = info.optLong("openWaitMs", -1)
+            if (wait >= 1000) append("; opened ").append("%.1f".format(wait / 1000.0)).append(" s after the start (waited for the call's audio)")
             append("; ").append(micLine(u, setting, memory, info.optJSONObject("mic")))
             info.str("earpiece")?.let { append("; earpiece ").append(it) }
             val other = errors - injectErrors.toSet()
@@ -40,7 +46,12 @@ object CallAudioReport {
         mic != null && mic.optString("setting") == "auto" && u?.optBoolean("micMuted") != true -> "phone mic open (${mic.optString("note")})"
         u == null -> "phone mic mute unknown (old helper)"
         u.optBoolean("micMuted") -> "phone mic MUTED via " + (if (u.optBoolean("telecomMicMute")) "Android (Telecom)" else "the vendor key") +
-            (if (u.optString("state") == "checking") ", uplink check running" else ", uplink checked before on this phone")
+            (if (mic?.optString("setting") == "auto") " (automatic: ${mic.optString("note").ifEmpty { "no redirect mode" }})" else "") + when {
+                u.optString("state") == "checking" -> ", uplink check running"
+                u.optBoolean("kept") -> ", kept although the uplink cannot be checked (the vendor key is known to keep the injected voice)"
+                u.optString("state") == "unverified" -> ", the uplink cannot be checked on this phone (the vendor key is known to keep the injected voice)"
+                else -> ", uplink checked before on this phone"
+            }
         !setting -> "phone mic not muted (setting off)"
         memory == LocalMutes.Memory.BREAKS_UPLINK -> "phone mic not muted (setting on, but on this phone the mute silenced the uplink)"
         u.optBoolean("unmuted") -> "phone mic mute undone by the uplink check"

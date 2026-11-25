@@ -21,6 +21,7 @@ import android.util.Log
 import app.tether.R
 import app.tether.TetherApp
 import app.tether.core.CallInfo
+import app.tether.core.OldAndroid
 import app.tether.ui.CallActivity
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -62,10 +63,9 @@ object CallRegistry {
      * so the iPhone hears the network's ringback.
      */
     fun wantsAudio() = calls.values.any {
-        val d = it.details
         when (it.stateCompat()) {
             Call.STATE_ACTIVE, Call.STATE_HOLDING -> true
-            Call.STATE_DIALING, Call.STATE_CONNECTING, Call.STATE_PULLING_CALL -> d.callDirection == Call.Details.DIRECTION_OUTGOING
+            Call.STATE_DIALING, Call.STATE_CONNECTING, Call.STATE_PULLING_CALL -> it.isOutgoing()
             else -> false
         }
     }
@@ -79,11 +79,16 @@ object CallRegistry {
     internal fun removed(c: Call) {
         c.unregisterCallback(callback)
         // Calls never registered (blocked callers, other apps' VoIP calls) end without telling anyone.
-        val cid = ids.remove(c) ?: return
+        val cid = ids.remove(c) ?: run { firstOutgoing.remove(c); return }
         calls.remove(cid)
         endedIds.add(cid)
         listeners.forEach { it(info(c, cid).copy(state = "ended")) }
+        firstOutgoing.remove(c)
     }
+
+    /** Before Android 10: whether each call is outgoing, fixed by the state it was first seen in (see [isOutgoing]). */
+    private val firstOutgoing = ConcurrentHashMap<Call, Boolean>()
+    internal fun firstSeenOutgoing(c: Call): Boolean = firstOutgoing.getOrPut(c) { OldAndroid.outgoingFromFirstState(c.stateCompat()) }
 
     /** Ids of calls that ended in this process: a late end / reject for one of them must not hit another call. */
     private val endedIds = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
@@ -112,7 +117,7 @@ object CallRegistry {
         val num = d.handle?.schemeSpecificPart ?: ""
         // No contacts query here: this runs on the ring path. The iPhone resolves names from its synced contacts.
         val name = (if (Build.VERSION.SDK_INT >= 30) d.contactDisplayName else null)?.takeIf { it.isNotBlank() } ?: d.callerDisplayName?.takeIf { it.isNotBlank() }
-        val dir = if (d.callDirection == Call.Details.DIRECTION_OUTGOING) "out" else "in"
+        val dir = if (c.isOutgoing()) "out" else "in"
         return CallInfo(cid, num, name, stateName(c.stateCompat()), dir, app.sims.subFor(d.accountHandle),
             d.connectTimeMillis.takeIf { it > 0 }, d.disconnectCause?.reason?.takeIf { it.isNotBlank() },
             d.can(Call.Details.CAPABILITY_HOLD))
@@ -187,13 +192,13 @@ class TetherInCallService : InCallService() {
             return // another app's VoIP call; it has its own UI
         }
         // Last line of defence for blocked callers (screening normally stops them first): no ring, no forwarding.
-        if (call.stateCompat() in setOf(Call.STATE_NEW, Call.STATE_RINGING) && d.callDirection != Call.Details.DIRECTION_OUTGOING &&
+        if (call.stateCompat() in setOf(Call.STATE_NEW, Call.STATE_RINGING) && !call.isOutgoing() &&
             runCatching { (application as TetherApp).lists.isBlocked(d.handle?.schemeSpecificPart ?: "") }.getOrDefault(false)) {
             Log.i(CallRegistry.TAG, "blocked caller: rejected without ringing")
             call.reject(false, null)
             return
         }
-        Log.i(CallRegistry.TAG, "call added state=${CallRegistry.stateName(call.stateCompat())} (${call.stateCompat()}) dir=${d.callDirection} handle=${d.handle != null}")
+        Log.i(CallRegistry.TAG, "call added state=${CallRegistry.stateName(call.stateCompat())} (${call.stateCompat()}) out=${call.isOutgoing()} handle=${d.handle != null}")
         CallRegistry.added(call)
         call.registerCallback(uiCallback)
         showCallUi(call)
@@ -216,8 +221,7 @@ class TetherInCallService : InCallService() {
         val info = CallRegistry.info(call)
         val open = PendingIntent.getActivity(this, 1, Intent(this, CallActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
-        val person = Person.Builder().setName(info.name ?: info.num.ifEmpty { getString(R.string.unknown_caller) })
-            .setImportant(true).build()
+        val who = info.name ?: info.num.ifEmpty { getString(R.string.unknown_caller) }
         val b = Notification.Builder(this, TetherApp.CH_CALLS)
             .setSmallIcon(R.drawable.ic_tether)
             .setContentIntent(open)
@@ -225,14 +229,15 @@ class TetherInCallService : InCallService() {
             .setCategory(Notification.CATEGORY_CALL)
             .setOngoing(true)
         if (Build.VERSION.SDK_INT >= 31) {
+            val person = Person.Builder().setName(who).setImportant(true).build()
             b.setStyle(if (info.state == "ringing") {
                 Notification.CallStyle.forIncomingCall(person, action("decline", info.cid, 2), action("answer", info.cid, 3))
             } else {
                 Notification.CallStyle.forOngoingCall(person, action("end", info.cid, 4))
             })
         } else {
-            // Android 10-11 have no CallStyle: a plain call notification with the same buttons.
-            b.setContentTitle(person.name).setContentText(getString(if (info.state == "ringing") R.string.call_incoming else R.string.call_ongoing))
+            // Android 8-11 have no CallStyle: a plain call notification with the same buttons.
+            b.setContentTitle(who).setContentText(getString(if (info.state == "ringing") R.string.call_incoming else R.string.call_ongoing))
             val acts = if (info.state == "ringing") listOf("decline" to 2, "answer" to 3) else listOf("end" to 4)
             for ((a, code) in acts) {
                 val label = getString(when (a) { "decline" -> R.string.call_decline; "answer" -> R.string.call_answer; else -> R.string.call_end })
@@ -249,6 +254,10 @@ class TetherInCallService : InCallService() {
 
     companion object { const val NOTIF_CALL = 20 }
 }
+
+/** Whether the call is outgoing: `Call.Details.getCallDirection` from Android 10; before, the state it was first seen in. */
+fun Call.isOutgoing(): Boolean =
+    if (Build.VERSION.SDK_INT >= 29) details.callDirection == Call.Details.DIRECTION_OUTGOING else CallRegistry.firstSeenOutgoing(this)
 
 /** The call's state: `Call.Details.getState` only exists from Android 12, `Call.getState` is deprecated there. */
 fun Call.stateCompat(): Int =

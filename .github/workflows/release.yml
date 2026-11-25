@@ -1,6 +1,7 @@
 # Builds and publishes a GitHub Release when a version tag (v1.2.3, v1.2.3-rc.1) is pushed: Android APKs of the A54
 # app and the Android client, an unsigned iPhone app (.ipa) for sideloading tools that re-sign, SHA256SUMS and build
-# provenance attestations. Tags are made by tools/release.sh; see docs/RELEASING.md.
+# provenance attestations, and altstore.json (an AltStore / SideStore source for the IPA, tools/altstore-source.py).
+# Tags are made by tools/release.sh; see docs/RELEASING.md.
 name: Release
 on:
   push:
@@ -112,7 +113,7 @@ jobs:
   apple:
     name: iPhone app (unsigned) and Swift package
     needs: check
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -161,6 +162,18 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: AltStore / SideStore source (stable address releases/latest/download/altstore.json)
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          sudo apt-get install -y zsh >/dev/null
+          zsh tools/release.sh --notes "$VERSION" > "$RUNNER_TEMP/ipa-notes.txt"
+          ipa=$(ls dist/*.ipa)
+          python3 tools/altstore-source.py make --ipa "$ipa" --version "$VERSION" --date "$(date -u +%Y-%m-%d)" \
+            --notes-file "$RUNNER_TEMP/ipa-notes.txt" \
+            --download-url "https://github.com/${{ github.repository }}/releases/download/$TAG/$(basename "$ipa")" \
+            --out dist/altstore.json
+          python3 tools/altstore-source.py validate dist/altstore.json
       - name: Checksums
         working-directory: dist
         run: sha256sum -- * > SHA256SUMS && cat SHA256SUMS
@@ -184,15 +197,20 @@ jobs:
             echo "## What changed"
             zsh tools/release.sh --notes "$VERSION"
             echo
-            echo "## Install"
+            echo "## Downloads: which one do I need?"
             echo
-            echo "- **Android phone with the SIMs (A54 app):** \`adb install -r Tether-A54-$VERSION*.apk\`, or open the APK on"
-            echo "  the phone. Then make Tether the default phone app and follow docs/SETUP.md."
-            echo "- **Second Android phone as a client:** install \`Tether-Client-$VERSION*.apk\` the same way."
-            echo "- **iPhone / iPad:** \`Tether-$VERSION-unsigned.ipa\` is not signed. Sideload it with a tool that re-signs"
-            echo "  with your own Apple ID; a free account's signature lasts 7 days. Building from source with Xcode is"
-            echo "  the other way: docs/BUILD.md."
-            echo "- **From source:** check out tag \`v$VERSION\` and follow docs/BUILD.md."
+            echo "| File | Install it on |"
+            echo "| --- | --- |"
+            echo "| \`Tether-A54-$VERSION*.apk\` | **The Android phone with the SIM cards** (any Android 10+ phone, not only an A54). Everyone needs this one. |"
+            echo "| \`Tether-$VERSION-unsigned.ipa\` | **Your iPhone or iPad** (iOS 16+). Sideload it with SideStore, AltStore or Sideloadly and your own Apple ID. |"
+            echo "| \`Tether-Client-$VERSION*.apk\` | **A second Android phone** used instead of an iPhone (only if you have no iPhone). |"
+            echo
+            echo "- **AltStore / SideStore source** (add it once, then install and update from the app):"
+            echo "  \`https://github.com/${{ github.repository }}/releases/latest/download/altstore.json\`"
+            echo "- Step by step: [Install guide](https://github.com/${{ github.repository }}/blob/main/docs/INSTALL.md) ·"
+            echo "  [راهنمای فارسی](https://github.com/${{ github.repository }}/blob/main/docs/fa/README.md)"
+            echo "- A free Apple ID signs the iPhone app for 7 days; refresh it before then (your data and pairing are kept)."
+            echo "- From source: check out tag \`v$VERSION\` and follow docs/BUILD.md."
             echo
             echo "## Verify"
             echo

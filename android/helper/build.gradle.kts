@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "app.tether.helper"
     compileSdk = 36
-    defaultConfig { minSdk = 29 }
+    defaultConfig { minSdk = 26 }
     lint {
         abortOnError = false
         error += "NewApi"

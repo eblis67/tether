@@ -26,6 +26,8 @@ object HelperMain {
         const val HELLO = 1; const val START = 2; const val STOP = 3; const val DOWN = 4; const val UP = 5
         const val INFO = 6; const val PROBE = 7; const val QUIT = 8; const val SELFTEST = 9; const val AUTH = 10; const val CHALLENGE = 12; const val PROOF = 14
         const val NET = 11; const val LOCAL = 15
+        /** App → helper `{"active": bool}`: the bridged call is (no longer) active; the uplink flows only while it is. */
+        const val CALL = 16
     }
 
     @JvmStatic
@@ -130,26 +132,58 @@ object HelperMain {
         @Volatile private var capture: Capture? = null
         @Volatile private var inject: Inject? = null
         @Volatile private var running = false
-        private var threads = ArrayList<Thread>()
+        private val threads = java.util.concurrent.CopyOnWriteArrayList<Thread>()
+        /** Unblock the audio threads' blocking reads and writes (stop() runs them before joining, issue #15). */
+        private val halts = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+        /**
+         * start / stop / the mic setting / a session taking over all hold this (issue #15: they raced). Never held by
+         * the audio threads themselves while stop() joins them, except through [tryLockFor].
+         */
+        private val audioLock = java.util.concurrent.locks.ReentrantLock()
+        /** Bumped by every start and stop: an audio thread of an older call stops on its own. */
+        @Volatile private var callGen = 0
         @Volatile private var localMuted = false
         /** How this call mutes the phone's microphone (see LocalMutes); the uplink check may undo it. */
         @Volatile private var plan = LocalMutes.Plan.NONE
         @Volatile private var check: UplinkCheck? = null
+        /** The mute was put back after its check found VOICE_UPLINK blind (the vendor key is trusted, LocalMutes). */
+        @Volatile private var keptBlind = false
         /** Bumped whenever a check is started or abandoned: an older check thread stops on its own. */
         @Volatile private var checkGen = 0
         private val meter = InjectMeter()
         /** Downlink frames and their non-zero samples since the last take (RedirectGuard's downlink check). */
         private val downMeter = DownMeter()
-        /** The user's "phone mic during bridged calls" and what this phone model remembers of the redirect modes. */
+        /** The same for the path watch. */
+        private val watchMeter = DownMeter()
+        /** The user's "phone mic during bridged calls" and what this phone model remembers of the redirect modes and the mute. */
         @Volatile private var mic = MicPath.Setting.AUTO
         @Volatile private var redirectMemory: Map<MicPath.Redirect, MicPath.Verdict> = emptyMap()
+        @Volatile private var muteMemory: LocalMutes.Memory? = null
+        /** An app that predates `muteMemory` said not to mute (setting "mute" after the mute broke the uplink). */
+        @Volatile private var legacyNoMute = false
         @Volatile private var testLine = false
         /** This call's redirect audio mode (null: none), and whether we asked Android for a mode (withdrawn at stop). */
         @Volatile private var guard: RedirectGuard? = null
         @Volatile private var modeHeld = false
         @Volatile private var redirectGen = 0
+        /** With the default setting: the vendor mute is the next layer once the redirect mode is off for good. */
+        @Volatile private var fallbackPending = false
         /** Guards [plan] changes from the check thread against the session thread (never the object's monitor, see sendLock). */
         private val planLock = Any()
+        /** The call's audio paths are open (the open thread finished); until then a mic change is only noted. */
+        @Volatile private var pathsOpen = false
+
+        /**
+         * The app says whether the bridged call is active (connected). Before that the iPhone's voice is dropped: a real
+         * modem takes nothing from the uplink while dialing, so it only piled up (1 s ahead, 232 of 308 frames dropped
+         * in one call, 2026-11-24). An app that never says counts as active from the start.
+         */
+        @Volatile private var callActive = true
+        @Volatile private var activeSinceMs = -1L
+        /** Bumped when the call becomes active: the up thread restarts its first-second figures. */
+        @Volatile private var activeEpoch = 0
+        /** The app's id of this START, echoed in its INFO (an INFO of an older START is never taken for this one's). */
+        @Volatile private var startId: Any = JSONObject.NULL
 
         @Volatile private var current: Socket? = null
 
@@ -186,13 +220,24 @@ object HelperMain {
                         ShellEnv.log("session ended: $e")
                     } finally {
                         // Only the session that owns the audio may stop it (a newer one may already have started).
-                        synchronized(this) { if (current === s) { stop(); current = null } }
+                        withAudio { if (current === s) { stop(); current = null } }
                         runCatching { s.close() }
                         authDone()
                     }
                     if (quit) exitProcess(0)
                 }, "session").start()
             }
+        }
+
+        private inline fun <T> withAudio(f: () -> T): T { audioLock.lock(); try { return f() } finally { audioLock.unlock() } }
+
+        /** For an audio thread: the audio lock, or false once its call ([gen]) is over (stop() may be joining it). */
+        private fun tryLockFor(gen: Int): Boolean {
+            while (running && callGen == gen) if (audioLock.tryLock(20, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                if (running && callGen == gen) return true
+                audioLock.unlock(); return false
+            }
+            return false
         }
 
         /** Returns true when the app asked us to quit. */
@@ -206,8 +251,7 @@ object HelperMain {
             HelperAuth.writeProof(o, proof)
             s.soTimeout = 0
             // Authenticated: this connection takes over (an older one is closed and stops nothing of ours).
-            synchronized(this) { current?.let { old -> if (old !== s) runCatching { old.close() } }; current = s; stop() }
-            out = o
+            withAudio { current?.let { old -> if (old !== s) runCatching { old.close() } }; current = s; stop(); out = o }
             send(F.HELLO, JSONObject().put("pid", android.os.Process.myPid()).put("uid", android.os.Process.myUid())
                 .put("sdk", android.os.Build.VERSION.SDK_INT).put("version", VERSION)
                 .put("apk", System.getProperty("java.class.path") ?: "").toString().toByteArray())
@@ -218,15 +262,17 @@ object HelperMain {
                 val payload = ByteArray(len).also { input.readFully(it) }
                 when (type) {
                     F.START -> start(JSONObject(String(payload)))
-                    F.STOP -> stop()
+                    F.STOP -> withAudio { stop() }
                     F.UP -> {
+                        if (!callActive) { stats.upBeforeActive++; continue }
                         val sh = ShortArray(len / 2) { (payload[2 * it].toInt() and 0xff or (payload[2 * it + 1].toInt() shl 8)).toShort() }
                         // Frames arrive in bursts (Bluetooth connection events carry 0-3, more after a hold-up): the
                         // buffer keeps them and steers the delay ahead of each frame (queue + track) in quiet frames.
-                        up.push(sh, System.nanoTime(), inject?.pendingFrames() ?: 0)
+                        up.push(sh, System.nanoTime(), inject?.pendingFrames() ?: -1)
                     }
-                    F.PROBE -> { stop(); info(JSONObject().put("probe", CallAudio.probe())) }
-                    F.SELFTEST -> { stop(); info(JSONObject().put("selftest", selfTest(runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject())))) }
+                    F.CALL -> setActive(runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject()).optBoolean("active", true))
+                    F.PROBE -> { withAudio { stop() }; info(JSONObject().put("probe", CallAudio.probe())) }
+                    F.SELFTEST -> { withAudio { stop() }; info(JSONObject().put("selftest", selfTest(runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject())))) }
                     F.LOCAL -> setMicMute(runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject()))
                     F.NET -> {   // {"what": "data"|"hotspot"|"bt", "on": bool} or {} to just read the state
                         val req = runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject())
@@ -246,8 +292,8 @@ object HelperMain {
             }
         }
 
-        /** Its own lock: a takeover holds the object's monitor while stop() joins the audio threads, which may be
-         *  sending right then (on the monitor they could not finish, and every join waited its full 500 ms). */
+        /** Its own lock: a takeover holds the audio lock while stop() joins the audio threads, which may be
+         *  sending right then (on that lock they could not finish, and every join waited its full timeout). */
         private val sendLock = Any()
         private fun send(type: Int, payload: ByteArray) = synchronized(sendLock) {
             out.writeByte(type); out.writeInt(payload.size); out.write(payload); out.flush()
@@ -255,7 +301,23 @@ object HelperMain {
 
         private fun info(o: JSONObject) = runCatching { send(F.INFO, o.toString().toByteArray()) }
 
-        private fun start(cfg: JSONObject) {
+        /** F.CALL: the bridged call became active (connected) or stopped being so (hold, ended). */
+        private fun setActive(active: Boolean) {
+            if (active == callActive) return
+            callActive = active
+            if (active) {
+                activeSinceMs = System.currentTimeMillis()
+                // What the iPhone said while dialing never reaches anyone: start the uplink and its figures afresh.
+                up.clear()
+                stats.activated()
+                activeEpoch++
+                ShellEnv.log("call active: uplink starts now")
+            } else activeSinceMs = -1
+        }
+
+        private fun activeForMs(): Long = if (callActive && activeSinceMs > 0) System.currentTimeMillis() - activeSinceMs else -1
+
+        private fun start(cfg: JSONObject) = withAudio {
             stop()
             val rate = cfg.optInt("rate", 16000)
             this.rate = rate
@@ -263,42 +325,83 @@ object HelperMain {
             if (android.os.Build.VERSION.SDK_INT < CallAudio.MIN_SDK_AUDIO) errors.put("call audio is not available: it needs Android 11 or later")
             val capOrder = cfg.optString("capture", "auto").let { if (it == "auto") CallAudio.captureMethods else listOf(it) }
             val injOrder = cfg.optString("inject", "auto").let { if (it == "auto") CallAudio.injectMethods else listOf(it) }
-            // Right at answer/dial the audio mode may still be NORMAL; the interception API refuses until
-            // Telecom switches to IN_CALL. Wait for it (up to 4 s) before falling back to other methods.
-            val deadline = System.currentTimeMillis() + cfg.optLong("waitMs", 4000)
-            fun <T> open(order: List<String>, kind: String, f: (String) -> T): T? {
-                for (m in order) {
-                    while (true) {
-                        try { return f(m) } catch (t: Throwable) {
-                            val msg = CallAudio.describe(t)
-                            // Polled often: every ms here delays both directions' first audio (the iPhone's first
-                            // words wait in the uplink meanwhile).
-                            if (m == "intercept" && msg.contains("not available in mode") && System.currentTimeMillis() < deadline) {
-                                Thread.sleep(30); continue
-                            }
-                            errors.put("$kind:$m $msg"); break
-                        }
-                    }
-                }
-                return null
-            }
-            capture = open(capOrder, "capture") { CallAudio.openCapture(it, rate) }
             val injectMs = cfg.optInt("injectMs", 40)
-            inject = open(injOrder, "inject") { CallAudio.openInject(it, rate, injectMs) }
+            startId = cfg.opt("id") ?: JSONObject.NULL
+            callActive = cfg.optBoolean("active", true)
+            activeSinceMs = if (callActive) System.currentTimeMillis() else -1
             up = UplinkBuffer(frame = rate / 50, rate = rate)
             running = true
+            pathsOpen = false
+            val gen = ++callGen
             localMuted = true
-            // The call is bridged to the iPhone: silence the Android phone's own earpiece always, its microphone only
-            // when the app asks (the user's setting; see LocalMutes). The downlink is still captured and the injected
-            // uplink still goes out.
+            // The call is bridged to the iPhone: silence the Android phone's own earpiece always (the microphone is
+            // decided once the paths are open, see applyMic). The downlink is still captured, the injected uplink still
+            // goes out.
             mic = MicPath.Setting.of(cfg.optString("mic").takeIf { cfg.has("mic") }, cfg.optBoolean("micMute", false))
             redirectMemory = MicPath.memoryOf(cfg.optJSONObject("redirect"))
+            muteMemory = LocalMutes.Memory.of(cfg.optString("muteMemory").takeIf { cfg.has("muteMemory") })
+            legacyNoMute = !cfg.has("muteMemory") && !cfg.optBoolean("micMute", true)
             testLine = cfg.optBoolean("testLine")
-            plan = LocalMutes.plan(CallAudio.silence, mic == MicPath.Setting.MUTE && cfg.optBoolean("micMute", true), cfg.optBoolean("micCheck", true))
-            val local = CallAudio.localCallAudio(muted = true, mic = plan.vendorMic, errors = errors)
+            plan = LocalMutes.Plan.NONE; keptBlind = false
+            val local = CallAudio.localCallAudio(muted = true, mic = false, errors = errors)
             localNote = local.note; localOk = local.ok
             stats.reset()
             meter.take()
+            // The paths open on their own thread: the session keeps reading (a STOP is never stuck behind a wait for
+            // the call's audio mode, issue #15), and a START never queues up behind another.
+            threads.add(Thread({
+                val t0 = System.currentTimeMillis()
+                val gate = OpenGate()
+                // Nothing of the call's audio exists before the phone routes it (see OpenGate).
+                val waitedMode = CallAudio.audioMode()
+                while (running && callGen == gen && !gate.ready(CallAudio.audioMode(), activeForMs())) Thread.sleep(30)
+                if (!running || callGen != gen) return@Thread
+                fun <T> open(order: List<String>, kind: String, f: (String) -> T): T? {
+                    for (m in order) {
+                        while (running && callGen == gen) {
+                            try { return f(m) } catch (t: Throwable) {
+                                val msg = CallAudio.describe(t)
+                                // Polled often: every ms here delays both directions' first audio.
+                                if (gate.retry(m, msg, CallAudio.audioMode(), System.currentTimeMillis(), activeForMs())) { Thread.sleep(30); continue }
+                                errors.put("$kind:$m $msg"); break
+                            }
+                        }
+                    }
+                    return null
+                }
+                val cap = open(capOrder, "capture") { CallAudio.openCapture(it, rate) }
+                val inj = open(injOrder, "inject") { CallAudio.openInject(it, rate, injectMs) }
+                if (!tryLockFor(gen)) { cap?.stop(); inj?.stop(); return@Thread }
+                try {
+                    capture = cap; inject = inj
+                    cap?.let { c -> halts.add { c.halt() } }
+                    inj?.let { i -> halts.add { i.halt() } }
+                    stats.openWaitMs = System.currentTimeMillis() - t0
+                    // What the capture buffered while the inject side was still being refused is stale (and overran
+                    // its buffer: a 55 ms standing backlog and a slow capture clock on the test line, 2026-11-25).
+                    cap?.drain(rate)
+                    startStreams(rate, gen)
+                    pathsOpen = true
+                    applyMic(rate)
+                    val routedCall = inj?.let { CallAudio.routedToCall(it.routedType(), testLine) }
+                    info(JSONObject().put("id", startId).put("capture", cap?.name ?: JSONObject.NULL).put("inject", inj?.name ?: JSONObject.NULL)
+                        .put("testLineFarEnd", farEnd).put("routed", inj?.routedTo() ?: JSONObject.NULL).put("routedToCall", routedCall ?: JSONObject.NULL)
+                        .put("openWaitMs", stats.openWaitMs).put("openMode", MicPath.Mode.name(CallAudio.audioMode())).put("active", callActive)
+                        .put("earpiece", localNote).put("silent", LocalMutes.silent(plan, localOk, guard?.state == RedirectGuard.State.ON))
+                        .put("mic", micJson())
+                        .put("silence", CallAudio.silence.name.lowercase()).put("telecomMicMute", plan.telecomMic).put("errors", errors)
+                        .put("uplink", uplinkJson(uplinkWhy()))
+                        .put("buffers", JSONObject().put("captureFrames", cap?.bufferFrames() ?: 0)
+                            .put("injectFrames", inj?.bufferFrames() ?: 0).put("injectLatencyMs", inj?.latencyMs() ?: -1)))
+                    ShellEnv.log("call paths open after ${stats.openWaitMs} ms (waited in ${MicPath.Mode.name(waitedMode)}): capture ${cap?.name} inject ${inj?.name}")
+                } finally { audioLock.unlock() }
+            }, "open").apply { start() })
+        }
+
+        @Volatile private var farEnd = false
+
+        /** The audio threads of call [gen], once its paths are open (holding the audio lock). */
+        private fun startStreams(rate: Int, gen: Int) {
             capture?.let { c ->
                 threads.add(Thread({
                     audioPriority("down")
@@ -312,10 +415,11 @@ object HelperMain {
                     // (non-blocking reads), since the estimate comes from timestamps and can be wrong.
                     var windowMin = Int.MAX_VALUE
                     var windowReads = 0
-                    while (running) {
+                    while (running && callGen == gen) {
                         val n = c.read(buf)
                         if (n <= 0) { if (n < 0) break; Thread.sleep(2); continue }   // a stuck record: no busy spin
-                        downMeter.add(n, CallAudio.nonZero(buf, n))
+                        val nz = CallAudio.nonZero(buf, n)
+                        downMeter.add(n, nz); watchMeter.add(n, nz)
                         stats.captureClock.mark(System.nanoTime(), c.capturedFrames())
                         val b = c.backlogFrames()
                         if (b >= 0) {
@@ -334,13 +438,13 @@ object HelperMain {
             // Tether's test line has no network behind it: on its VoIP path nothing reads the injected uplink, and an
             // unread remote submix takes it ~10 % slower than real time (14.4 kHz for 16 kHz on the reference phone,
             // 2026-11-23), which no real call does. Read it as the far end would, so test calls run at the call's clock.
-            val farEnd = cfg.optBoolean("testLine") && inject?.name == "intercept" && ShellEnv.audioManager.mode == android.media.AudioManager.MODE_IN_COMMUNICATION
-            // Opened on its own thread: start() does not wait for it.
+            farEnd = testLine && inject?.name == "intercept" && ShellEnv.audioManager.mode == android.media.AudioManager.MODE_IN_COMMUNICATION
             if (farEnd) threads.add(Thread({
                 runCatching { CallAudio.openCapture("voice_communication", rate) }
                     .onFailure { ShellEnv.log("test line far end: ${CallAudio.describe(it)}") }.getOrNull()?.let { far ->
+                        halts.add { far.halt() }
                         val b = ShortArray(rate / 50)
-                        while (running) { val n = far.read(b); if (n < 0) break; if (n == 0) Thread.sleep(2) }
+                        while (running && callGen == gen) { val n = far.read(b); if (n < 0) break; if (n == 0) Thread.sleep(2) }
                         far.stop()
                     }
             }, "far-end").apply { start() })
@@ -350,12 +454,15 @@ object HelperMain {
                     // silence would sit in the buffer and push every later frame back. The buffer corrects the delay
                     // in quiet frames instead (see UplinkBuffer).
                     audioPriority("up")
-                    val buf = up
                     var writes = 0
-                    while (running) {
+                    var epoch = activeEpoch
+                    while (running && callGen == gen) {
+                        val buf = up
                         val s = buf.take(100) ?: continue
+                        if (epoch != activeEpoch) { epoch = activeEpoch; writes = 0 }
                         if (s.isEmpty()) continue   // a quiet frame cut whole
                         try { inj.write(s) } catch (e: Exception) { break }
+                        stats.upWrites++
                         val level = CallAudio.rms(s, s.size)
                         meter.add(level)
                         if (level >= UplinkCheck.SPEECH_RMS) stats.speechFrames++
@@ -366,27 +473,53 @@ object HelperMain {
                     }
                 }, "up").apply { start() })
             }
-            // With the phone's mic muted, watch whether the iPhone's voice still reaches the call (best effort).
-            val checking = plan.micMuted && plan.check && inject != null
-            if (checking) startCheck(rate)
-            // Default: keep the phone's mic out of the call with a redirect audio mode, where this phone allows one.
-            startRedirect(rate)
-            info(JSONObject().put("capture", capture?.name ?: JSONObject.NULL).put("inject", inject?.name ?: JSONObject.NULL).put("testLineFarEnd", farEnd)
-                .put("routed", inject?.routedTo() ?: JSONObject.NULL).put("earpiece", local.note).put("silent", LocalMutes.silent(plan, local.ok, guard?.state == RedirectGuard.State.ON))
-                .put("mic", micJson())
-                .put("silence", CallAudio.silence.name.lowercase()).put("telecomMicMute", plan.telecomMic).put("errors", errors)
-                .put("uplink", uplinkJson(if (checking || guard?.check != null) null else if (inject == null) "no uplink injection" else if (guard != null) "the redirect mode was checked on this phone before" else if (!plan.micMuted) "the phone's mic is not muted" else "checked on this phone before"))
-                .put("buffers", JSONObject().put("captureFrames", capture?.bufferFrames() ?: 0)
-                    .put("injectFrames", inject?.bufferFrames() ?: 0).put("injectLatencyMs", inject?.latencyMs() ?: -1)))
+            startWatch(gen)
+        }
+
+        /** Once a second: what a person reporting "no audio" needs in the link log (PathWatch). */
+        private fun startWatch(gen: Int) {
+            val w = PathWatch(testLine)
+            threads.add(Thread({
+                var lastPlayed = -1L; var lastWrites = 0
+                watchMeter.take()
+                while (running && callGen == gen) {
+                    repeat(10) { if (running && callGen == gen) Thread.sleep(100) }
+                    if (!running || callGen != gen) break
+                    val (df, dnz) = watchMeter.take()
+                    val inj = inject
+                    val played = inj?.playedFrames() ?: -1
+                    val delta = if (played >= 0 && lastPlayed >= 0) played - lastPlayed else -1
+                    lastPlayed = played
+                    val writes = stats.upWrites
+                    val waiting = inj != null && (writes > lastWrites || up.size > 0)
+                    lastWrites = writes
+                    val e = w.second(PathWatch.Second(callActive, df, dnz, waiting, delta)) ?: continue
+                    val text = PathWatch.text(e, capture?.name, inj?.name, inj?.routedTo())
+                    ShellEnv.log("path: $text")
+                    info(JSONObject().put("path", JSONObject().put("event", e.wire).put("note", text)))
+                }
+            }, "watch").apply { start() })
         }
 
         @Volatile private var localNote = ""
         @Volatile private var localOk = true
 
+        /** Why no uplink check runs this call (null: one does). */
+        private fun uplinkWhy(): String? = when {
+            check != null || guard?.check != null -> null
+            inject == null -> "no uplink injection"
+            guard != null -> "the redirect mode was checked on this phone before"
+            keptBlind -> "this phone's VOICE_UPLINK cannot show the injected voice"
+            !plan.micMuted -> "the phone's mic is not muted"
+            muteMemory == LocalMutes.Memory.UNVERIFIED -> "this phone's VOICE_UPLINK cannot show the injected voice; the vendor's mic key is known to keep it"
+            else -> "checked on this phone before"
+        }
+
         /**
          * The uplink as far as the helper knows: `state` checking | ok | muted-locally-fixed | unverified | off (no local
          * mic mute, nothing to check), `micMuted`, `telecomMicMute` (the app mutes the mic through Telecom), `unmuted`
-         * (the check undid the mute this call), `note`. [why]: the reason when no check runs.
+         * (the check undid the mute this call), `blind` (VOICE_UPLINK shows nothing of the injected voice), `kept` (the
+         * mute was put back anyway: the vendor's key is known to keep it), `note`. [why]: the reason when no check runs.
          */
         private fun uplinkJson(why: String? = null): JSONObject {
             val g = guard
@@ -396,11 +529,13 @@ object HelperMain {
                 inject == null -> UplinkCheck.State.UNVERIFIED.wire
                 g != null -> (if (redirectMemory[g.redirect] == MicPath.Verdict.OK) UplinkCheck.State.OK else UplinkCheck.State.UNVERIFIED).wire
                 !plan.micMuted -> "off"
+                muteMemory == LocalMutes.Memory.UNVERIFIED -> UplinkCheck.State.UNVERIFIED.wire
                 else -> UplinkCheck.State.OK.wire   // muted, and a check on this phone saw the uplink work before
             }
             return JSONObject().put("state", state).put("for", (c?.mitigation ?: if (g != null) UplinkCheck.Mitigation.REDIRECT else UplinkCheck.Mitigation.MUTE).wire)
                 .put("micMuted", plan.micMuted).put("telecomMicMute", plan.telecomMic)
-                .put("vendorMicMute", plan.vendorMic).put("unmuted", c?.unmuted == true).put("note", c?.note?.takeIf { it.isNotEmpty() } ?: why ?: "")
+                .put("vendorMicMute", plan.vendorMic).put("unmuted", c?.unmuted == true && !keptBlind).put("blind", c?.blind == true).put("kept", keptBlind)
+                .put("note", c?.note?.takeIf { it.isNotEmpty() }?.let { if (keptBlind) "$it; the vendor's mic key is known to keep the injected voice: mute put back" else it } ?: why ?: "")
                 .put("local", localNote)
         }
 
@@ -408,8 +543,9 @@ object HelperMain {
 
         /**
          * The phone's own mic in this call (INFO `mic`): `setting` auto | mute | open; `path` off (a redirect mode took it
-         * out of the call) | muted | open; with a redirect mode: `mode`, `state` waiting | on | reverted | stopped,
-         * `verdict` (what this call found out, for the app to remember), `reasserts`, `note`.
+         * out of the call) | muted | open; `layer` (MicPath.Layer) with the default setting; with a redirect mode:
+         * `mode`, `state` waiting | on | reverted | stopped, `verdict` (what this call found out, for the app to
+         * remember), `reasserts`, `note`.
          */
         private fun micJson(): JSONObject {
             val g = guard
@@ -419,34 +555,89 @@ object HelperMain {
                 else -> "open"
             }
             return JSONObject().put("setting", mic.wire).put("path", path).apply {
+                if (mic == MicPath.Setting.AUTO) put("layer", when {
+                    g != null && (g.state == RedirectGuard.State.ON || g.state == RedirectGuard.State.WAITING || fallbackPending) -> MicPath.Layer.REDIRECT.wire
+                    plan.vendorMic -> MicPath.Layer.VENDOR_MUTE.wire
+                    else -> MicPath.Layer.OPEN.wire
+                })
                 if (g != null) {
                     put("mode", g.redirect.wire).put("state", g.state.wire).put("reasserts", g.reasserts).put("note", g.note)
                     g.verdict?.let { put("verdict", it.wire) }
-                } else put("note", when {
-                    mic != MicPath.Setting.AUTO -> "setting ${mic.wire}"
-                    android.os.Build.VERSION.SDK_INT < CallAudio.FULL_SDK_AUDIO -> "no redirect mode before Android 13"
-                    inject?.name != "intercept" -> "no redirect mode without the interception API (inject ${inject?.name ?: "none"})"
-                    else -> "every redirect mode failed on this phone before"
-                })
+                } else put("note", autoNote ?: if (mic != MicPath.Setting.AUTO) "setting ${mic.wire}" else "")
             }
         }
 
+        /** With the default setting and no redirect mode: why, and what the chain does instead. */
+        @Volatile private var autoNote: String? = null
+
         /**
-         * Sets this call's redirect audio mode (MicPath.choose) and watches it once a second (RedirectGuard): the mode
-         * held against Telecom, the downlink alive, and, while the mode is untested on this phone, the iPhone's voice in
-         * VOICE_UPLINK. A revert gives the call back its own mode (the phone's mic open) for the rest of the call.
+         * The phone's mic for this call, from the setting (holding the audio lock, the paths open): the user's choice, or
+         * the automatic chain (MicPath): a redirect mode where this phone allows one, else (and after it is undone) the
+         * vendor's mic-source key, else open.
          */
-        private fun startRedirect(rate: Int) {
+        private fun applyMic(rate: Int) = synchronized(planLock) {
+            checkGen++; check = null
+            redirectGen++; releaseMode(); guard = null
+            fallbackPending = false; autoNote = null; keptBlind = false
+            val errs = JSONArray()
+            val next = when (mic) {
+                MicPath.Setting.OPEN -> LocalMutes.Plan.NONE
+                MicPath.Setting.MUTE -> if (legacyNoMute) LocalMutes.Plan.NONE else LocalMutes.manualPlan(CallAudio.silence, muteMemory)
+                MicPath.Setting.AUTO -> {
+                    val callMode = CallAudio.audioMode()
+                    val r = MicPath.choose(android.os.Build.VERSION.SDK_INT, mic, callMode, inject?.name, CallAudio.screeningSupported(), redirectMemory)
+                    if (r != null) { startRedirect(rate, r); fallbackPending = true; LocalMutes.Plan.NONE }
+                    else {
+                        val p = LocalMutes.autoPlan(CallAudio.silence, muteMemory)
+                        autoNote = MicPath.noRedirectWhy(android.os.Build.VERSION.SDK_INT, inject?.name, callMode, redirectMemory) + "; " + autoMuteNote(p)
+                        p
+                    }
+                }
+            }
+            if (next.vendorMic != plan.vendorMic) CallAudio.vendorMicMute(next.vendorMic, errs)?.let { localNote = CallAudio.mergeLocal(localNote, it) }
+            plan = next
+            if (plan.micMuted && plan.check && inject != null) startCheck(rate)
+        }
+
+        private fun autoMuteNote(p: LocalMutes.Plan): String = when {
+            p.vendorMic -> "the vendor's mic key mutes the mic at its source" + if (p.check) " (uplink checked)" else ""
+            !CallAudio.silence.vendorMicKeys -> "no mic-source key known for this phone (${CallAudio.silence.name.lowercase()}): mic open"
+            muteMemory == LocalMutes.Memory.BREAKS_UPLINK -> "the vendor's mic key silenced the uplink on this phone before: mic open"
+            else -> "the vendor's mic key cannot be checked on this phone and is not known to keep the injected voice: mic open"
+        }
+
+        /** The default chain's next layer once the redirect mode is off for good (called from the redirect thread). */
+        private fun applyFallback(rate: Int, g: RedirectGuard) = synchronized(planLock) {
+            if (!fallbackPending || guard !== g || !running) return@synchronized
+            fallbackPending = false
+            // This call showed VOICE_UPLINK blind: a check of the mute would only undo it, as it did the mode.
+            val mem = if (g.blindUplink && muteMemory == null) LocalMutes.Memory.UNVERIFIED else muteMemory
+            val p = LocalMutes.autoPlan(CallAudio.silence, mem)
+            val errs = JSONArray()
+            if (p.vendorMic) CallAudio.vendorMicMute(true, errs)?.let { localNote = CallAudio.mergeLocal(localNote, it) }
+            plan = p
+            if (p.vendorMic && mem == LocalMutes.Memory.UNVERIFIED) muteMemory = mem
+            autoNote = "${g.redirect.wire} ${g.verdict?.wire ?: g.state.wire}; " + autoMuteNote(p)
+            ShellEnv.log("mic: after ${g.redirect.wire}: ${autoNote}")
+            if (p.micMuted && p.check && inject != null) startCheck(rate)
+        }
+
+        /**
+         * Sets this call's redirect audio mode and watches it once a second (RedirectGuard): the mode held against
+         * Telecom, the downlink alive, and, while the mode is untested on this phone, the iPhone's voice in
+         * VOICE_UPLINK. A revert gives the call back its own mode for the rest of the call; once settled, the default
+         * chain's next layer takes the mic (applyFallback).
+         */
+        private fun startRedirect(rate: Int, r: MicPath.Redirect) {
             val callMode = CallAudio.audioMode()
-            val r = MicPath.choose(android.os.Build.VERSION.SDK_INT, mic, callMode, inject?.name, CallAudio.screeningSupported(), redirectMemory)
-            if (r == null) return
             val g = RedirectGuard(r, waitDownlink = !testLine, speechCheck = MicPath.wantSpeechCheck(redirectMemory[r]))
             guard = g
             val gen = ++redirectGen
+            val call = callGen
             ShellEnv.log("redirect: ${r.wire} for a call in ${MicPath.Mode.name(callMode)} (remembered ${redirectMemory[r]?.wire ?: "nothing"})")
             threads.add(Thread({
                 var cap: Capture? = null
-                if (g.check != null) cap = try { CallAudio.openCapture("voice_uplink", rate) } catch (t: Throwable) {
+                if (g.check != null) cap = try { CallAudio.openCapture("voice_uplink", rate).also { c -> halts.add { c.halt() } } } catch (t: Throwable) {
                     g.uplinkUnavailable("voice_uplink capture: ${CallAudio.describe(t)}"); null
                 }
                 val buf = ShortArray(rate / 50)
@@ -482,7 +673,9 @@ object HelperMain {
                             RedirectGuard.Action.REVERT -> releaseMode()
                             RedirectGuard.Action.NONE -> {}
                         }
-                        val now = "${g.state}|${g.verdict}|${g.note}|${g.check?.state}|${g.reasserts}"
+                        // The next layer takes the mic under the audio lock (it may start a check thread).
+                        if (fallbackPending && g.settled && tryLockFor(call)) try { applyFallback(rate, g) } finally { audioLock.unlock() }
+                        val now = "${g.state}|${g.verdict}|${g.note}|${g.check?.state}|${g.reasserts}|${plan.micMuted}"
                         if (now != last) { last = now; ShellEnv.log("redirect: ${g.state.wire} ${g.verdict?.wire ?: ""} ${g.note}"); reportUplink() }
                     }
                 } finally { cap?.stop() }
@@ -499,14 +692,16 @@ object HelperMain {
 
         /**
          * Captures VOICE_UPLINK next to the call's own audio and feeds [UplinkCheck] once a second. Opened only while the
-         * phone's mic is muted locally (a second capture of the call is one more thing a HAL may mishandle).
+         * phone's mic is muted locally (a second capture of the call is one more thing a HAL may mishandle). When the
+         * check finds the capture blind and the vendor's key is known to keep the injected voice, the mute goes back on.
          */
         private fun startCheck(rate: Int) {
             val c = UplinkCheck()
             check = c
             val gen = ++checkGen
+            val muted = plan
             threads.add(Thread({
-                val cap = try { CallAudio.openCapture("voice_uplink", rate) } catch (t: Throwable) {
+                val cap = try { CallAudio.openCapture("voice_uplink", rate).also { k -> halts.add { k.halt() } } } catch (t: Throwable) {
                     c.fail("voice_uplink capture: ${CallAudio.describe(t)}"); reportUplink(); return@Thread
                 }
                 try {
@@ -525,12 +720,20 @@ object HelperMain {
                         if (act == UplinkCheck.Action.UNMUTE) synchronized(planLock) {
                             if (checkGen != gen) return@synchronized
                             val errs = JSONArray()
-                            if (plan.vendorMic) CallAudio.vendorMicMute(false, errs)?.let { localNote = it }
+                            if (plan.vendorMic) CallAudio.vendorMicMute(false, errs)?.let { localNote = CallAudio.mergeLocal(localNote, it) }
                             plan = LocalMutes.undone(plan)
                             ShellEnv.log("uplink check: ${c.note}")
                             reportUplink()
                         }
-                        if (c.done) { ShellEnv.log("uplink check: ${c.state.wire} (${c.note})"); reportUplink() }
+                        if (c.done) {
+                            if (c.blind && c.unmuted && LocalMutes.keepWhenBlind(muted, CallAudio.silence)) synchronized(planLock) {
+                                if (checkGen != gen) return@synchronized
+                                val errs = JSONArray()
+                                CallAudio.vendorMicMute(true, errs)?.let { localNote = CallAudio.mergeLocal(localNote, it) }
+                                plan = muted.copy(check = false); keptBlind = true
+                            }
+                            ShellEnv.log("uplink check: ${c.state.wire} (${c.note})${if (keptBlind) ", mute put back" else ""}"); reportUplink()
+                        }
                     }
                 } finally { cap.stop() }
             }, "uplink-check").apply { start() })
@@ -538,23 +741,13 @@ object HelperMain {
 
         /** The user changed the phone-mic setting during a call: apply it now (a redirect mode or the mute, with its checks). */
         private fun setMicMute(req: JSONObject) {
-            if (!running) return
-            val setting = MicPath.Setting.of(req.optString("mic").takeIf { req.has("mic") }, req.optBoolean("micMute", false))
-            val want = setting == MicPath.Setting.MUTE && req.optBoolean("micMute", true)
-            synchronized(planLock) {
-                checkGen++   // whatever check runs stops
-                check = null
-                redirectGen++
-                releaseMode()
-                guard = null
-                mic = setting
+            withAudio {
+                if (!running) return
+                mic = MicPath.Setting.of(req.optString("mic").takeIf { req.has("mic") }, req.optBoolean("micMute", false))
                 if (req.has("redirect")) redirectMemory = MicPath.memoryOf(req.optJSONObject("redirect"))
-                val next = LocalMutes.plan(CallAudio.silence, want, req.optBoolean("micCheck", true))
-                val errs = JSONArray()
-                if (next.vendorMic != plan.vendorMic) CallAudio.vendorMicMute(next.vendorMic, errs)?.let { localNote = it }
-                plan = next
-                if (plan.micMuted && plan.check && inject != null) startCheck(rate)
-                startRedirect(rate)
+                muteMemory = LocalMutes.Memory.of(req.optString("muteMemory").takeIf { req.has("muteMemory") })
+                legacyNoMute = !req.has("muteMemory") && !req.optBoolean("micMute", true)
+                if (pathsOpen) applyMic(rate)   // else the open thread applies it once the paths are open
             }
             reportUplink()
         }
@@ -578,7 +771,7 @@ object HelperMain {
                 r.put("callMode", red.optString("callMode"))
             }
             return r.put("silence", CallAudio.silence.name.lowercase()).put("micByTelecom", !CallAudio.silence.vendorMicKeys)
-                .put("micMuted", mic).apply { if (errs.length() > 0) put("errors", errs) }
+                .put("blindSafe", CallAudio.silence.blindSafe).put("micMuted", mic).apply { if (errs.length() > 0) put("errors", errs) }
         }
 
         /** Standing-delay figures for one call (sent with INFO every 5 s and at stop). */
@@ -593,7 +786,15 @@ object HelperMain {
             @Volatile var startUnderruns = -1
             /** Injected frames with speech in them: none in a whole call means the iPhone sent only silence. */
             @Volatile var speechFrames = 0
-            fun reset() { speechFrames = 0; backlogSum = 0; backlogN = 0; backlogMax = 0; queuedSum = 0; queuedN = 0; queuedMax = 0; capDropped = 0; trims = 0; trimMisses = 0; captureClock.reset(); injectClock.reset(); startUnderruns = -1 }
+            /** Uplink frames dropped because the call was not active yet (dialing, ringing, on hold). */
+            @Volatile var upBeforeActive = 0
+            /** Frames written to the inject track (the path watch's "is the uplink waiting"). */
+            @Volatile var upWrites = 0
+            /** How long the paths waited for the call's audio mode / the interception API, ms. */
+            @Volatile var openWaitMs = -1L
+            fun reset() { speechFrames = 0; backlogSum = 0; backlogN = 0; backlogMax = 0; queuedSum = 0; queuedN = 0; queuedMax = 0; capDropped = 0; trims = 0; trimMisses = 0; captureClock.reset(); injectClock.reset(); startUnderruns = -1; upBeforeActive = 0; upWrites = 0; openWaitMs = -1 }
+            /** The call became active: the uplink's figures count from here (dialing is no measure of the call's clock). */
+            fun activated() { injectClock.reset(); startUnderruns = -1; queuedSum = 0; queuedN = 0; queuedMax = 0 }
             fun trim(estimated: Int, dropped: Int) {
                 trims++; capDropped += dropped
                 if (dropped * 2 < estimated) trimMisses++
@@ -607,12 +808,15 @@ object HelperMain {
                     .put("injectQueuedMs", if (queuedN > 0) queuedSum / queuedN else -1).put("injectQueuedMaxMs", queuedMax)
                     .put("captureDroppedMs", capDropped * 1000L / rate).put("captureTrims", trims).put("captureTrimMisses", trimMisses)
                     // Uplink: frames lost to a full buffer (voice), and what the delay steering did (quiet frames cut /
-                    // repeated, speech sped up / slowed down), the delay ahead of an arriving frame and its target.
+                    // repeated, speech sped up / slowed down, late audio dropped after a hold-up), the delay ahead of
+                    // an arriving frame and its target.
                     .put("uplinkFrames", up.arrived).put("uplinkDroppedFrames", up.overflowFrames).put("uplinkSpeechFrames", speechFrames)
-                    .put("uplinkQuietCutMs", ms(up.quietCut)).put("uplinkQuietAddedMs", ms(up.inserted))
+                    .put("uplinkBeforeActiveFrames", upBeforeActive)
+                    .put("uplinkQuietCutMs", ms(up.quietCut)).put("uplinkQuietAddedMs", ms(up.inserted)).put("uplinkLateCutMs", ms(up.lateCut))
                     .put("uplinkSpedUpMs", ms(up.compressed)).put("uplinkSlowedMs", ms(up.stretched))
                     .put("uplinkAheadMs", ms(up.levelAvg)).put("uplinkAheadMaxMs", ms(up.levelMax)).put("uplinkTargetMs", ms(up.target)).put("uplinkSinkExtraMs", ms(up.sinkExtra))
                     .put("captureClockHz", captureClock.hz()).put("injectClockHz", injectClock.hz()).put("injectUnderrunsFirstSecond", startUnderruns)
+                    .put("openWaitMs", openWaitMs)
             }
         }
         /** Samples per second of a sample clock, from its first and latest position after a short settling time. */
@@ -629,20 +833,26 @@ object HelperMain {
         private val stats = Stats()
         @Volatile private var rate = 16000
 
+        /** Holding the audio lock. The audio threads are woken first (their blocking reads and writes return), then joined. */
         private fun stop() {
             if (running) info(JSONObject().put("stats", stats.json(rate, up).put("injectUnderruns", inject?.underruns() ?: -1)
                 .put("injectBufferFrames", inject?.bufferFrames() ?: -1).put("uplink", uplinkJson()).put("mic", micJson())))
             running = false
+            callGen++
             checkGen++
             redirectGen++
+            pathsOpen = false
+            for (h in halts) runCatching { h() }
             threads.forEach { it.join(1500) }
             threads.clear()
+            halts.clear()
             releaseMode()   // before anything else of the call stops: the phone's own call path comes back first
-            guard = null
+            guard = null; fallbackPending = false
             capture?.stop(); capture = null
             inject?.stop(); inject = null
             if (localMuted) { localMuted = false; CallAudio.localCallAudio(muted = false, mic = false, errors = JSONArray()) }
-            plan = LocalMutes.Plan.NONE; check = null
+            plan = LocalMutes.Plan.NONE; check = null; keptBlind = false
+            callActive = true; activeSinceMs = -1
         }
     }
 

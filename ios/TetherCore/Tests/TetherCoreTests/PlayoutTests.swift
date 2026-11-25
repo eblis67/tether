@@ -64,6 +64,27 @@ final class PlayoutTests: XCTestCase {
         XCTAssertEqual(pull(b, 160).real, 160)
     }
 
+    /// Concealment continues exactly the newest 10 ms played, in order, also when the render thread took the audio in
+    /// pieces shorter than 10 ms (the kept samples are shifted within their own buffer: an overlapping copy, #15).
+    func testConcealmentContinuesTheLastTenMillisecondsAfterShortPulls() {
+        let b = PlayoutBuffer(rate: 16000)
+        // Loud and every sample distinct (never a quiet frame, never steered).
+        let pcm = (0..<640).map { (i: Int) -> Int16 in Int16((i % 2 == 0 ? 1 : -1) * (6000 + 7 * i)) }
+        push(b, pcm)
+        var played: [Float] = []
+        while played.count + 37 <= 640 { played += pull(b, 37).out }     // 17 pulls of 37: always the shifting path
+        played += pull(b, 640 - played.count).out                          // the last 11 samples
+        XCTAssertEqual(played.count, 640)
+        XCTAssertEqual(played, pcm.map { Float($0) / 32768 }, "all of it played as queued")
+        let (real, out) = pull(b, 160)                                     // nothing left: concealment
+        XCTAssertEqual(real, 0)
+        let fadeLen: Float = 16000 * 0.06
+        for i in 0..<160 {
+            let g = max(0, 1 - Float(i) / fadeLen)
+            XCTAssertEqual(out[i], played[480 + i] * g, accuracy: 1e-6, "sample \(i) continues the newest 10 ms in order")
+        }
+    }
+
     func testShortGapsDeepenTheBufferAndCleanPlayoutShrinksIt() {
         let b = PlayoutBuffer(rate: 16000)
         push(b, tone(640)); _ = pull(b, 640)

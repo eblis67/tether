@@ -44,6 +44,8 @@ class UplinkCheck(private val maxWindows: Int = 90, val mitigation: Mitigation =
     @Volatile var note = ""; private set
     /** Ended by [fail] (no capture), not by what it heard. */
     @Volatile var failed = false; private set
+    /** Ended because the capture heard the iPhone neither with nor without the mitigation: VOICE_UPLINK is blind here. */
+    @Volatile var blind = false; private set
     val done: Boolean get() = state != State.CHECKING
 
     private var windows = 0
@@ -67,6 +69,7 @@ class UplinkCheck(private val maxWindows: Int = 90, val mitigation: Mitigation =
                 note = "the uplink stayed silent for $SILENT_WINDOWS s of iPhone speech with ${mitigation.text}: undone"
                 return Action.UNMUTE
             }
+            blind = true
             finish(State.UNVERIFIED, "the uplink capture stays silent without ${mitigation.text} too: this phone's VOICE_UPLINK does not show the injected voice")
         }
         return Action.NONE

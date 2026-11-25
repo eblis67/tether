@@ -2,10 +2,10 @@
 
 | You want to | Go to |
 | --- | --- |
-| Ask how to build, set up or use Tether | [Discussions › Q&A](https://github.com/amirwmr/tether/discussions) |
+| Ask how to build, set up or use Tether | The [FAQ](docs/FAQ.md) ([فارسی](docs/fa/faq.md)), then [a question](https://github.com/amirwmr/tether/issues/new?template=question.yml) |
 | Report something broken | [A bug report](https://github.com/amirwmr/tether/issues/new?template=bug_report.yml) |
 | Say how Tether works on your phones | [A device report](https://github.com/amirwmr/tether/issues/new?template=device_report.yml) |
-| Suggest a feature | [A feature request](https://github.com/amirwmr/tether/issues/new?template=feature_request.yml), or Discussions first for bigger ideas |
+| Suggest a feature | [A feature request](https://github.com/amirwmr/tether/issues/new?template=feature_request.yml) |
 | Report a security problem | Privately, see [SECURITY.md](SECURITY.md) |
 
 Before asking, check [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) and the open issues.

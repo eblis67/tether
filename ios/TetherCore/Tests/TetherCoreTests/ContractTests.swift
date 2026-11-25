@@ -110,11 +110,13 @@ final class ContractTests: XCTestCase {
         XCTAssertEqual(s.sims[0].country, "us"); XCTAssertEqual(s.sims[1].net, "5G"); XCTAssertEqual(s.sims[1].service, "none")
         XCTAssertEqual(s.helper.silent, "earpiece"); XCTAssertEqual(s.tools?.ussd, true)
         XCTAssertEqual(s.helper.mic, "auto"); XCTAssertEqual(s.helper.micPath, "off");
+        XCTAssertEqual(s.helper.audio, "full"); XCTAssertFalse(s.helper.audioUnavailable)
         XCTAssertEqual(s.helper.micMute, false); XCTAssertEqual(s.helper.uplink, "ok"); XCTAssertEqual(s.helper.capture, "intercept"); XCTAssertEqual(s.tools?.ringer, true)
         XCTAssertEqual(s.ringer, "vibrate"); XCTAssertEqual(s.dnd, false)
         XCTAssertEqual(s.clients?.map(\.kind), ["iphone", "android"]); XCTAssertTrue(s.clients![0].isSelf)
         let o = try body("status", "old", as: StatusBody.self)
         XCTAssertNil(o.helper.mic, "an Android phone before the mic setting: the old switch"); XCTAssertNil(o.helper.micPath)
+        XCTAssertNil(o.helper.audio); XCTAssertFalse(o.helper.audioUnavailable, "no field: nothing to warn about")
         XCTAssertNil(o.sims[0].country); XCTAssertNil(o.sims[0].net); XCTAssertTrue(o.sims[0].hasService)
         XCTAssertNil(o.helper.micMute, "an Android phone without the mic setting: no switch"); XCTAssertNil(o.helper.uplink); XCTAssertNil(o.helper.capture)
         XCTAssertNil(o.helper.silent); XCTAssertNil(o.tools); XCTAssertNil(o.ringer); XCTAssertNil(o.dnd); XCTAssertNil(o.clients)

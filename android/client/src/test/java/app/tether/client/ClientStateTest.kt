@@ -171,6 +171,120 @@ class ClientStateTest {
         assertEquals("the half-received pages of the old link do not count", listOf(2L, 3L), s.sms.map { it.id }.sorted())
     }
 
+    @Test fun invalidIdListsNeverDeleteEitherKindOfHistory() {
+        batch(sms(1), sms(2))
+        calls(call(1, 1))
+        val invalid = listOf(
+            JSONObject.NULL, "not an array", JSONObject(),
+            JSONArray().put(JSONArray().put("not an id").put(2)),
+            ranges(longArrayOf(2, 1)),
+            ranges(longArrayOf(2, 2), longArrayOf(1, 1)),
+        )
+        for (value in invalid) {
+            for (key in listOf("sms", "calls")) {
+                rx(T.SYNC_IDS, JSONObject().put("sms", ranges()).put("calls", ranges()).put(key, value))
+                assertEquals(2, s.sms.size)
+                assertEquals(1, s.recents.size)
+            }
+        }
+    }
+
+    @Test fun aMalformedMiddlePageCancelsDeletionsUntilTheNextSync() {
+        batch(sms(1), sms(2), sms(3))
+        calls(call(1, 1), call(2, 1))
+        syncIds(ranges(longArrayOf(1, 1)), ranges(longArrayOf(1, 1)), more = true)
+        rx(T.SYNC_IDS, JSONObject().put("sms", JSONObject.NULL).put("calls", ranges()).put("more", true))
+        syncIds(ranges(longArrayOf(3, 3)), ranges())
+        assertEquals(listOf(1L, 2L, 3L), s.sms.map { it.id }.sorted())
+        assertEquals(2, s.recents.size)
+
+        syncIds(ranges(longArrayOf(2, 2)), ranges())
+        assertEquals(listOf(2L), s.sms.map { it.id })
+        assertTrue(s.recents.isEmpty())
+        syncIds(ranges(), ranges())
+        assertTrue(s.sms.isEmpty())
+    }
+
+    @Test fun outOfOrderIdPagesNeverDelete() {
+        batch(sms(1), sms(2), sms(3))
+        syncIds(ranges(longArrayOf(3, 3)), ranges(), more = true)
+        syncIds(ranges(longArrayOf(1, 1)), ranges())
+        assertEquals(listOf(1L, 2L, 3L), s.sms.map { it.id }.sorted())
+    }
+
+    private fun assertHistory(vararg ids: Long) {
+        assertEquals("SMS ids", ids.toList(), s.sms.map { it.id }.sorted())
+        assertEquals("call history ids", ids.toList(), s.recents.map { it.id }.sorted())
+    }
+
+    private fun malformedFirstPageDoesNotReconcile(more: Any) {
+        batch(sms(1), sms(2), sms(3))
+        calls(call(1, 1), call(2, 1), call(3, 1))
+        val first = ranges(longArrayOf(1, 1))
+        rx(T.SYNC_IDS, JSONObject().put("sms", first).put("calls", first).put("more", more))
+        assertHistory(1, 2, 3)
+
+        val tail = ranges(longArrayOf(3, 3))
+        syncIds(tail, tail)
+        assertHistory(1, 2, 3)
+
+        val keep = ranges(longArrayOf(2, 2))
+        syncIds(keep, keep)
+        assertHistory(2)
+    }
+
+    @Test fun nullMoreDoesNotFinalizeAPartialPage() = malformedFirstPageDoesNotReconcile(JSONObject.NULL)
+    @Test fun zeroMoreDoesNotFinalizeAPartialPage() = malformedFirstPageDoesNotReconcile(0)
+    @Test fun oneMoreDoesNotFinalizeAPartialPage() = malformedFirstPageDoesNotReconcile(1)
+    @Test fun stringFalseMoreDoesNotFinalizeAPartialPage() = malformedFirstPageDoesNotReconcile("false")
+    @Test fun stringTrueMoreDoesNotAllowReconciliation() = malformedFirstPageDoesNotReconcile("true")
+    @Test fun objectMoreDoesNotFinalizeAPartialPage() = malformedFirstPageDoesNotReconcile(JSONObject())
+    @Test fun arrayMoreDoesNotFinalizeAPartialPage() = malformedFirstPageDoesNotReconcile(JSONArray())
+
+    @Test fun malformedMoreAfterAValidPageInvalidatesTheWholeCycle() {
+        batch(sms(1), sms(2), sms(3))
+        calls(call(1, 1), call(2, 1), call(3, 1))
+        val first = ranges(longArrayOf(1, 1))
+        syncIds(first, first, more = true)
+        assertHistory(1, 2, 3)
+
+        val middle = ranges(longArrayOf(2, 2))
+        rx(T.SYNC_IDS, JSONObject().put("sms", middle).put("calls", middle).put("more", "false"))
+        assertHistory(1, 2, 3)
+        val tail = ranges(longArrayOf(3, 3))
+        syncIds(tail, tail)
+        assertHistory(1, 2, 3)
+    }
+
+    @Test fun malformedMoreAndIdListsCannotLetTheTailDelete() {
+        batch(sms(1), sms(2))
+        calls(call(1, 1), call(2, 1))
+        rx(T.SYNC_IDS, JSONObject().put("sms", JSONObject.NULL).put("calls", "invalid").put("more", 0))
+        assertHistory(1, 2)
+        syncIds(ranges(), ranges())
+        assertHistory(1, 2)
+
+        // A missing marker is a valid final page, including for a legitimate empty set.
+        rx(T.SYNC_IDS, JSONObject().put("sms", ranges()).put("calls", ranges()))
+        assertHistory()
+    }
+
+    @Test fun linkDownClearsAnInvalidIdsCycle() {
+        batch(sms(1), sms(2), sms(3))
+        calls(call(1, 1), call(2, 1), call(3, 1))
+        val first = ranges(longArrayOf(1, 1))
+        syncIds(first, first, more = true)
+        rx(T.SYNC_IDS, JSONObject().put("sms", JSONObject.NULL).put("calls", first).put("more", "true"))
+        assertHistory(1, 2, 3)
+        s.linkDown()
+
+        val keep = ranges(longArrayOf(2, 2))
+        syncIds(keep, keep, more = true)
+        assertHistory(1, 2, 3)
+        syncIds(ranges(), ranges(), more = false)
+        assertHistory(2)
+    }
+
     // ------------------------------------------------------------------ sending texts
 
     @Test fun sendResultsAndThePlaceholder() {

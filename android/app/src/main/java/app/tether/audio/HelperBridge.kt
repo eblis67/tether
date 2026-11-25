@@ -23,7 +23,8 @@ class HelperBridge(private val ctx: Context) {
         const val TAG = "Tether"
         const val HELLO = 1; const val START = 2; const val STOP = 3; const val DOWN = 4; const val UP = 5
         const val INFO = 6; const val PROBE = 7; const val QUIT = 8; const val SELFTEST = 9; const val AUTH = 10
-        const val NET = 11; const val CHALLENGE = 12; const val PROOF = 14; const val LOCAL = 15
+        const val NET = 11; const val CHALLENGE = 12; const val PROOF = 14; const val LOCAL = 15; const val CALL = 16
+        private const val PREF_BLOCKED = "audio_blocked_fingerprint"
         /** Largest frame we accept from the helper (a 20 ms PCM frame is 640 bytes; JSON infos are small). */
         const val MAX_FRAME = 1 shl 20
 
@@ -62,6 +63,13 @@ class HelperBridge(private val ctx: Context) {
     @Volatile var onDown: ((ShortArray) -> Unit)? = null
     /** A call's start INFO (methods, mutes, errors). */
     @Volatile var onInfo: ((JSONObject) -> Unit)? = null
+    /** A path-watch finding during a call (INFO `path`: `event`, `note`). */
+    @Volatile var onPath: ((JSONObject) -> Unit)? = null
+    /**
+     * Id of the last START sent; its start INFO echoes it. [lastInfo] is cleared with every START, so until this call's
+     * paths are open (the helper waits for the call's audio mode) nothing of the previous call is taken for this one's.
+     */
+    @Volatile var startId = 0; private set
     /** Every uplink report (also the one inside the start INFO). */
     @Volatile var onUplink: ((JSONObject) -> Unit)? = null
     @Volatile var onChange: (() -> Unit)? = null
@@ -126,6 +134,7 @@ class HelperBridge(private val ctx: Context) {
                             lastUplink = null; lastMic = null
                             Log.i(TAG, "helper call-audio stats: $lastStats")
                         } else if (o.has("capture") || o.has("inject")) {
+                            if (o.has("id") && o.optInt("id", -1) != startId) { Log.i(TAG, "start info of an older start dropped"); continue }
                             lastInfo = o
                             lastUplink = o.optJSONObject("uplink")
                             lastMic = o.optJSONObject("mic")
@@ -134,6 +143,8 @@ class HelperBridge(private val ctx: Context) {
                             lastUplink?.let { u -> onUplink?.invoke(u) }
                             lastMic?.let { m -> onMic?.invoke(m) }
                             onChange?.invoke()
+                        } else if (o.has("path")) {
+                            o.optJSONObject("path")?.let { pth -> Log.i(TAG, "helper path: $pth"); onPath?.invoke(pth) }
                         } else if (o.has("uplink") || o.has("mic")) {
                             o.optJSONObject("uplink")?.let { u -> lastUplink = u; Log.i(TAG, "helper uplink: $u"); onUplink?.invoke(u) }
                             o.optJSONObject("mic")?.let { m -> lastMic = m; Log.i(TAG, "helper mic: $m"); onMic?.invoke(m) }
@@ -174,14 +185,23 @@ class HelperBridge(private val ctx: Context) {
      * call (see LocalMutes); [micCheck]: then watch the uplink; [redirect]: what this phone remembers of the redirect modes.
      */
     fun start(rate: Int, capture: String = "auto", inject: String = "auto", injectMs: Int = 40, testLine: Boolean = false,
-              mic: String = "auto", micMute: Boolean = false, micCheck: Boolean = true, redirect: JSONObject = JSONObject()) =
-        send(START, JSONObject().put("rate", rate).put("capture", capture).put("inject", inject).put("injectMs", injectMs)
+              mic: String = "auto", micMute: Boolean = false, micCheck: Boolean = true, redirect: JSONObject = JSONObject(),
+              muteMemory: String? = null, active: Boolean = true): Boolean {
+        val id = ++startId
+        lastInfo = null; lastUplink = null; lastMic = null
+        return send(START, JSONObject().put("id", id).put("rate", rate).put("capture", capture).put("inject", inject).put("injectMs", injectMs)
             .put("testLine", testLine).put("mic", mic).put("micMute", micMute).put("micCheck", micCheck).put("redirect", redirect)
+            .put("muteMemory", muteMemory ?: JSONObject.NULL).put("active", active)
             .toString().toByteArray())
+    }
 
     /** The phone-mic setting changed during a bridged call. */
-    fun local(mic: String, micMute: Boolean, micCheck: Boolean, redirect: JSONObject = JSONObject()) =
-        send(LOCAL, JSONObject().put("mic", mic).put("micMute", micMute).put("micCheck", micCheck).put("redirect", redirect).toString().toByteArray())
+    fun local(mic: String, micMute: Boolean, micCheck: Boolean, redirect: JSONObject = JSONObject(), muteMemory: String? = null) =
+        send(LOCAL, JSONObject().put("mic", mic).put("micMute", micMute).put("micCheck", micCheck).put("redirect", redirect)
+            .put("muteMemory", muteMemory ?: JSONObject.NULL).toString().toByteArray())
+
+    /** The bridged call is now active (connected) or no longer: the helper passes the uplink only while it is. */
+    fun call(active: Boolean) = send(CALL, JSONObject().put("active", active).toString().toByteArray())
 
     fun stop() = send(STOP)
 
@@ -340,6 +360,18 @@ class HelperBridge(private val ctx: Context) {
         else -> if (atStart == "none") "none" else "earpiece"
     }
 
-    /** "full" on Android 13+ (interception API), "fallback" on 11-12 (voice-call capture, incall-music inject), "unavailable" on 10. */
-    fun audioLevel(): String = audioLevelFor(android.os.Build.VERSION.SDK_INT)
+    /**
+     * "full" on Android 13+ (interception API), "fallback" on 11-12 (voice-call capture, incall-music inject),
+     * "unavailable" on 8-10, "blocked" when this phone's software gave Tether no call audio in a real call
+     * ([audioBlocked]).
+     */
+    fun audioLevel(): String = if (audioBlocked()) "blocked" else audioLevelFor(android.os.Build.VERSION.SDK_INT)
+
+    /**
+     * This firmware gives Tether no call audio (the downlink capture read only zeros in a real call, issue #13):
+     * remembered by build fingerprint, so a system update or a self-test that hears call audio clears it.
+     */
+    fun audioBlocked(): Boolean = app.tether.link.AudioOwner.blocked(prefs.getString(PREF_BLOCKED, null), android.os.Build.FINGERPRINT)
+    fun rememberAudioBlocked() = prefs.edit().putString(PREF_BLOCKED, android.os.Build.FINGERPRINT).apply()
+    fun forgetAudioBlocked() { if (prefs.contains(PREF_BLOCKED)) prefs.edit().remove(PREF_BLOCKED).apply() }
 }

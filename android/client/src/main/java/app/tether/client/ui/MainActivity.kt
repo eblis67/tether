@@ -73,6 +73,7 @@ class MainActivity : Activity() {
         }
         root.addView(bar)
         setContentView(root)
+        fitSystemBars(root)
         handleIntent(intent)
         askPermissions()
     }
@@ -156,6 +157,12 @@ class MainActivity : Activity() {
                 setPadding(dp(12), dp(8), dp(12), dp(8))
                 background = GradientDrawable().apply { setColor(col(R.color.surface)); cornerRadius = dp(10).toFloat() }
                 setOnClickListener { app.state.problem = null; render() }
+            })
+        }
+        app.micWarning?.takeIf { app.identity.isPaired }?.let { w ->
+            banner.addView(label(getString(micText(w)), R.color.warn, 14f).apply {
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                background = GradientDrawable().apply { setColor(col(R.color.surface)); cornerRadius = dp(10).toFloat() }
             })
         }
         app.calls.calls.firstOrNull()?.let { c ->
@@ -403,6 +410,11 @@ class MainActivity : Activity() {
             BleCentral.State.HANDSHAKING, BleCentral.State.CONNECTING -> getString(R.string.state_connecting)
         }, if (connected) R.color.ok else R.color.muted))
         if (st != null) phone.addView(label(getString(R.string.battery, st.optInt("battery"), if (st.optBoolean("charging")) " ⚡" else ""), R.color.muted, 14f))
+        // The Android phone cannot bridge call audio (Android 8-10, or its software gives none): calls stay on it.
+        when (st?.optJSONObject("helper")?.optString("audio")) {
+            "unavailable" -> phone.addView(label(getString(R.string.audio_unavailable), R.color.warn, 13f))
+            "blocked" -> phone.addView(label(getString(R.string.audio_blocked), R.color.warn, 13f))
+        }
         for (sim in s.sims) {
             val bars = "▂▄▆█".take(sim.signal.coerceIn(0, 4)).padEnd(4, '·')
             val line = listOfNotNull(sim.name.ifEmpty { getString(R.string.sim_n, sim.slot + 1) }, sim.carrier.takeIf { it.isNotEmpty() && it != sim.name },
@@ -413,6 +425,8 @@ class MainActivity : Activity() {
             val names = (0 until a.length()).map { a.getJSONObject(it) }.map { (if (it.optBoolean("self")) "● " else "○ ") + it.optString("name") + if (it.optBoolean("audio")) " ♪" else "" }
             if (names.size > 1) phone.addView(label(getString(R.string.clients, names.joinToString("  ")), R.color.muted, 13f))
         }
+        // Not paired yet: how to start, in plain words.
+        if (!app.identity.isPaired) phone.addView(label(getString(R.string.pair_guide), R.color.muted, 13f))
         phone.addView(row(
             pill(getString(if (app.identity.isPaired) R.string.pair_again else R.string.pair)) { startActivity(Intent(this, PairActivity::class.java)) },
             *(if (app.identity.isPaired) arrayOf(pill(getString(R.string.unpair), secondary = true, colorId = R.color.bad) {

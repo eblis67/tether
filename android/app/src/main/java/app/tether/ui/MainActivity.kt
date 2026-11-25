@@ -30,8 +30,11 @@ import app.tether.R
 import app.tether.TetherApp
 import app.tether.adb.Adb
 import app.tether.adb.ConnectOrder
+import app.tether.core.PairingCode
+import app.tether.helper.CallAudio
 import app.tether.helper.LocalMutes
 import app.tether.helper.MicPath
+import app.tether.link.LinkLog
 import app.tether.link.LinkService
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -43,6 +46,7 @@ class MainActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private var qrUntil = 0L
     private var qrBitmap: Bitmap? = null
+    private var qrLegacy = false
     private val listener: () -> Unit = { main.post { render() } }
 
     /** Runtime permissions this Android version knows: Bluetooth ones from 12, notifications from 13. */
@@ -125,15 +129,20 @@ class MainActivity : Activity() {
         }
         val remaining = (qrUntil - System.currentTimeMillis()) / 1000
         if (qrUntil > 0 && remaining > 0 && app.keys.currentToken() != null) {
-            link.addView(label(getString(R.string.pair_hint), R.color.text))
+            link.addView(label(getString(if (qrLegacy) R.string.pair_hint_old else R.string.pair_hint), R.color.text))
             link.addView(ImageView(this).apply {
                 setImageBitmap(qrBitmap); adjustViewBounds = true
                 layoutParams = LinearLayout.LayoutParams(dp(260), dp(260)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(8) }
             })
             link.addView(label(getString(R.string.pair_expires, remaining), R.color.muted).apply { gravity = Gravity.CENTER })
+            // Cellular 1.1 scans only the tether1: form; the same code (same token) in that form.
+            link.addView(button(getString(if (qrLegacy) R.string.pair_new_code else R.string.pair_old_app), secondary = true) {
+                qrLegacy = !qrLegacy; drawQr(app.keys.openPairingCurrent() ?: return@button); render()
+            })
         } else if (qrUntil > 0) {
             qrUntil = 0
             qrBitmap = null
+            qrLegacy = false
         }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(button(getString(R.string.pair_iphone)) { showQr() })
@@ -141,17 +150,26 @@ class MainActivity : Activity() {
 
         // Setup
         val setup = card(getString(R.string.section_setup))
-        setup.addView(step(getString(R.string.step_permissions), missingPerms().isEmpty(), getString(R.string.action_grant)) {
+        setup.addView(label(getString(R.string.setup_intro), R.color.muted, 13f))
+        setup.addView(step(getString(R.string.step_n, 1, getString(R.string.step_permissions)), missingPerms().isEmpty(), getString(R.string.action_grant),
+            help = getString(R.string.help_permissions)) {
             requestPermissions(missingPerms(), 1)
         })
-        setup.addView(step(getString(R.string.step_dialer), app.sims.isDialer(), getString(R.string.action_set)) {
-            startActivityForResult(getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER), 2)
+        setup.addView(step(getString(R.string.step_n, 2, getString(R.string.step_dialer)), app.sims.isDialer(), getString(R.string.action_set),
+            help = getString(R.string.help_dialer)) {
+            startActivityForResult(if (android.os.Build.VERSION.SDK_INT >= 29) getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER)
+                else Intent(android.telecom.TelecomManager.ACTION_CHANGE_DEFAULT_DIALER)
+                    .putExtra(android.telecom.TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, packageName), 2)
         })
         val pm = getSystemService(PowerManager::class.java)
-        setup.addView(step(getString(R.string.step_battery), pm.isIgnoringBatteryOptimizations(packageName), getString(R.string.action_set)) {
+        setup.addView(step(getString(R.string.step_n, 3, getString(R.string.step_battery)), pm.isIgnoringBatteryOptimizations(packageName), getString(R.string.action_set),
+            help = getString(R.string.help_battery)) {
             startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
         })
-        setup.addView(step(getString(R.string.step_adb), Adb.hasSecureSettings(this) && app.prefs.getBoolean("adb_paired", false), getString(R.string.action_pair)) {
+        val adbDone = Adb.hasSecureSettings(this) && app.prefs.getBoolean("adb_paired", false)
+        // Wireless debugging exists from Android 11; before that only TCP adb (below) can start the helper.
+        if (android.os.Build.VERSION.SDK_INT >= 30) setup.addView(step(getString(R.string.step_n, 4, getString(R.string.step_adb)), adbDone, getString(R.string.action_pair),
+            help = getString(R.string.help_adb)) {
             Adb.showPairingNotification(this)
             runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
         })
@@ -164,6 +182,7 @@ class MainActivity : Activity() {
         if (tcpOn) setup.addView(button(getString(R.string.action_turn_off), secondary = true) {
             app.prefs.edit().putBoolean(Adb.PREF_LEGACY, false).apply(); Adb.reset(); render()
         })
+        if (!app.keys.isPaired && qrUntil == 0L) setup.addView(label(getString(R.string.help_pair_next), R.color.accent, 14f))
 
         // Audio
         val audio = card(getString(R.string.section_audio))
@@ -171,6 +190,7 @@ class MainActivity : Activity() {
         when (app.hub.helper.audioLevel()) {
             "unavailable" -> audio.addView(label(getString(R.string.audio_needs_android11), R.color.warn, 13f))
             "fallback" -> audio.addView(label(getString(R.string.audio_android11_12), R.color.muted, 13f))
+            "blocked" -> audio.addView(label(getString(R.string.audio_blocked), R.color.warn, 13f))
         }
         val h = app.hub.audio.helperStatus()
         val running = h.optString("state") == "running"
@@ -199,13 +219,16 @@ class MainActivity : Activity() {
                 app.hub.audio.redirectMemory().let { m -> m[MicPath.Redirect.CALL_REDIRECT]?.usable == false &&
                     (m[MicPath.Redirect.CALL_SCREENING]?.usable ?: false) == false })
             val blocked = mic == MicPath.Setting.MUTE && app.hub.audio.memory() == LocalMutes.Memory.BREAKS_UPLINK
+            // Without a redirect mode the default setting's next step: the maker's own mic switch, where this phone has one that holds.
+            val vendor = autoFailed && LocalMutes.autoPlan(CallAudio.silence, app.hub.audio.memory()).vendorMic
             audio.addView(label(getString(when {
+                vendor -> R.string.mic_auto_vendor
                 autoFailed -> R.string.mic_auto_unavailable
                 mic == MicPath.Setting.AUTO -> R.string.mic_auto_note
                 blocked -> R.string.mic_mute_blocked
                 mic == MicPath.Setting.MUTE -> R.string.mic_mute_on
                 else -> R.string.mic_open_note
-            }), if (blocked || autoFailed) R.color.warn else R.color.muted, 13f))
+            }), if (blocked || (autoFailed && !vendor)) R.color.warn else R.color.muted, 13f))
             h.optString("micPath").takeIf { it.isNotEmpty() }?.let { p ->
                 audio.addView(label(when (p) {
                     "off" -> getString(R.string.mic_now_off, app.hub.helper.lastMic?.optString("mode") ?: "")
@@ -233,6 +256,38 @@ class MainActivity : Activity() {
         audio.addView(button(getString(R.string.action_selftest), secondary = true) {
             Thread { app.hub.selftest() }.start()
         })
+        audio.addView(button(getString(R.string.link_log), secondary = true) { showLinkLog() })
+    }
+
+    /**
+     * The link log (the same lines as `tools/dbg.sh linklog`: link, call-audio and mic events, no message text, no
+     * numbers), with Share and Copy, so a bug report needs no computer. A header says which app, phone and Android.
+     */
+    private fun showLinkLog() {
+        LinkLog.init(this)
+        val body = LinkLog.tail(600)
+        val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
+        val header = "Tether $version · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · " +
+            "Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})"
+        val text = header + "\n\n" + body.ifEmpty { getString(R.string.link_log_empty) }
+        val view = TextView(this).apply {
+            this.text = text; textSize = 11f; typeface = Typeface.MONOSPACE; setTextIsSelectable(true)
+            textDirection = View.TEXT_DIRECTION_LTR; textAlignment = View.TEXT_ALIGNMENT_VIEW_START
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+        }
+        AlertDialog.Builder(this).setTitle(R.string.link_log).setView(ScrollView(this).apply { addView(view) })
+            .setPositiveButton(R.string.action_share) { _, _ ->
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, "Tether link log").putExtra(Intent.EXTRA_TEXT, text)
+                runCatching { startActivity(Intent.createChooser(send, getString(R.string.link_log))) }
+            }
+            .setNeutralButton(R.string.action_copy) { _, _ ->
+                getSystemService(android.content.ClipboardManager::class.java)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("Tether link log", text))
+                Toast.makeText(this, R.string.copied, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     /** Explains the steps, then (on Enable) connects to adbd's TCP mode, grants what the app needs and starts the helper. */
@@ -259,13 +314,20 @@ class MainActivity : Activity() {
     }
 
     private fun showQr() {
-        val code = app.keys.openPairing()
-        val size = 720
-        val m = QRCodeWriter().encode(code.encode(), BarcodeFormat.QR_CODE, size, size, mapOf(EncodeHintType.MARGIN to 1))
-        val px = IntArray(size * size) { if (m[it % size, it / size]) Color.BLACK else Color.WHITE }
-        qrBitmap = Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888)
+        qrLegacy = false
+        drawQr(app.keys.openPairing())
         qrUntil = app.keys.pairingExpiry
         render()
+    }
+
+    /** The QR code holds the `tether://pair?c=…` link (the iPhone's Camera opens it in Cellular), or for Cellular 1.1
+     *  the `tether1:` form of the same code. */
+    private fun drawQr(code: PairingCode) {
+        val size = 720
+        val m = QRCodeWriter().encode(if (qrLegacy) code.encode() else code.link(), BarcodeFormat.QR_CODE, size, size,
+            mapOf(EncodeHintType.MARGIN to 1))
+        val px = IntArray(size * size) { if (m[it % size, it / size]) Color.BLACK else Color.WHITE }
+        qrBitmap = Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888)
     }
 
     // ------------------------------------------------------------------ tiny view helpers
@@ -302,11 +364,14 @@ class MainActivity : Activity() {
         setOnClickListener { onClick() }
     }
 
-    private fun step(title: String, done: Boolean, action: String, detail: String? = null, onClick: () -> Unit): View {
+    private fun step(title: String, done: Boolean, action: String, detail: String? = null, help: String? = null,
+                     onClick: () -> Unit): View {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, dp(6)) }
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
         texts.addView(label(title, R.color.text, 16f))
         texts.addView(label(detail ?: getString(if (done) R.string.done else R.string.missing), if (done) R.color.ok else R.color.warn, 13f))
+        // What to do, in plain words, until the step is done.
+        if (!done && help != null) texts.addView(label(help, R.color.muted, 13f))
         row.addView(texts)
         if (!done) row.addView(button(action) { onClick() })
         return row

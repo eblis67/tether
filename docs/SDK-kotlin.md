@@ -10,7 +10,7 @@ The Android phone app (`android/app`) and the Android client (`android/client`) 
 ## Install
 
 Coordinates: `com.github.amirwmr.tether:tether-core:<version>`. The version is the repository's `VERSION` file
-(a release tag on JitPack); builds without one are `1.1.0-SNAPSHOT`.
+(a release tag on JitPack); builds without one are `<VERSION>-SNAPSHOT`.
 
 **JitPack** (released tags):
 
@@ -27,7 +27,7 @@ dependencies { implementation("com.github.amirwmr.tether:tether-core:<tag>") }
 cd android && ./gradlew -Ptether.libraryOnly=true :core:publishToMavenLocal
 ```
 
-then add `mavenLocal()` to your repositories and depend on `com.github.amirwmr.tether:tether-core:1.1.0-SNAPSHOT`
+then add `mavenLocal()` to your repositories and depend on `com.github.amirwmr.tether:tether-core:1.2.0-SNAPSHOT`
 (or the version in `VERSION`). `-Ptether.libraryOnly=true` (or `TETHER_LIBRARY_ONLY=true`) configures only the library.
 
 Dependencies it brings: Concentus (pure-Java Opus, BSD) and `org.json:json`.
@@ -51,7 +51,7 @@ Package `app.tether.core`:
 | Type | What it is |
 | --- | --- |
 | `Record`, `RecordReader`, `Kind`, `Reject`, `FramingException` | Framing (§2): `len ‖ kind ‖ body`; the reader turns a byte stream into records |
-| `PairingCode` | The QR payload `tether1:<key>.<token>.<name>`: `parse`, `encode` |
+| `PairingCode` | The pairing code `tether1:<key>.<token>.<name>` and its QR link form `tether://pair?c=…`: `parse` (both), `encode`, `link` |
 | `P256` | Key generation, X9.63 encoding, ECDH, SHA-256, HKDF |
 | `CentralHandshake` | The client's side: `hello()`, `receive(ack)` → session + FIN, `verifyFinish` |
 | `PeripheralHandshake` | The phone's side: `receiveHello(record, isKnown, token)`, `receiveFinish` |
@@ -78,6 +78,13 @@ val (channel, bytes) = session.open(reader.next()!!)
 
 API reference (Dokka): `cd android && ./gradlew -Ptether.libraryOnly=true :core:dokkaGenerate`, then open
 `android/core/build/dokka/html/index.html`. The published artifact carries it as its javadoc jar.
+
+## Writing a client
+
+The rules a client must follow (two pairing-code forms, an empty PSM means GATT, the microphone only once the call is
+active, `status.helper.audio`, audio gaps with Bluetooth tethering) are the same for every language:
+[SDK-swift.md › Writing a client](SDK-swift.md#writing-a-client-what-the-phone-expects). The Android client
+(`android/client`) is a complete Kotlin implementation of them.
 
 ## Examples
 

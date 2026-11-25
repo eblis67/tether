@@ -26,7 +26,7 @@ android {
 
     defaultConfig {
         applicationId = "app.tether.android"
-        minSdk = 29
+        minSdk = 26
         targetSdk = 36
         versionCode = tetherVersionCode
         versionName = tetherVersion

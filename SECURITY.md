@@ -24,7 +24,7 @@ those two devices can read or inject anything on the link, and no third party is
 
 ## What it does not protect against
 
-- **TCP debugging, if you enable it** (Android 10, or a phone without Wireless debugging): `adb tcpip` makes the
+- **TCP debugging, if you enable it** (Android 8 to 10, or a phone without Wireless debugging): `adb tcpip` makes the
   phone's adbd listen on **every network interface**, including Wi-Fi, the hotspot and Bluetooth tethering, guarded
   only by the approval of a computer's RSA key. Anyone on those networks who can get you to accept a key prompt, or
   who holds an already approved key, gets a shell. Tether never turns this mode on by itself and connects only to

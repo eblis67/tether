@@ -88,7 +88,12 @@ private func hex(_ v: Any?) -> Data { Data(hex: v as! String)! }
         #expect(code.token == hex(p["token"]))
         #expect(code.deviceName == p["name"] as! String)
         #expect(code.string == p["string"] as! String)
+        #expect(code.link == p["link"] as! String)
+        #expect(PairingCode.parse(p["link"] as! String) == code)
         #expect(PairingCode.parse("tether1:abc") == nil)
+        #expect(PairingCode.parse("tether://pair?c=abc") == nil)
+        #expect(PairingCode.parse("tether://pair?x=1") == nil)
+        #expect(PairingCode.parse("tether://dial?number=%2B10000000001") == nil)
         #expect(PairingCode.parse("https://example.com") == nil)
     }
 

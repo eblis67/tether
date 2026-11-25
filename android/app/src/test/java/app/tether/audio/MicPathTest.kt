@@ -56,10 +56,36 @@ class MicPathTest {
 
     @Test fun workingModesAreKeptAndOnlyAnUntestedOneIsCheckedWithSpeech() {
         assertEquals(Redirect.CALL_REDIRECT, choose(memory = mapOf(Redirect.CALL_REDIRECT to Verdict.OK)))
-        assertEquals(Redirect.CALL_REDIRECT, choose(memory = mapOf(Redirect.CALL_REDIRECT to Verdict.UNVERIFIED)))
         assertTrue(MicPath.wantSpeechCheck(null))
         assertFalse(MicPath.wantSpeechCheck(Verdict.OK))
-        assertFalse("a blind uplink: checking again only undoes a working mode", MicPath.wantSpeechCheck(Verdict.UNVERIFIED))
+    }
+
+    @Test fun aModeWhoseUplinkCouldNotBeSeenIsNotUsedAutomatically() {
+        // Issue #15: "unverified" used to be usable, so a phone with a blind VOICE_UPLINK went into the mode on every
+        // later call without any check; had the mode silenced the uplink, nobody would have heard the iPhone.
+        assertFalse(Verdict.UNVERIFIED.usable)
+        assertNull(choose(memory = mapOf(Redirect.CALL_REDIRECT to Verdict.UNVERIFIED)))
+        // The phone's uplink cannot be seen: the next untested mode could not be checked either (Poco F3 / X3 Pro).
+        assertNull(choose(screening = true, memory = mapOf(Redirect.CALL_REDIRECT to Verdict.UNVERIFIED)))
+        assertNull(choose(screening = true, memory = mapOf(Redirect.CALL_SCREENING to Verdict.UNVERIFIED)))
+        assertEquals("a mode that passed a check stays usable", Redirect.CALL_SCREENING,
+            choose(screening = true, memory = mapOf(Redirect.CALL_REDIRECT to Verdict.UNVERIFIED, Redirect.CALL_SCREENING to Verdict.OK)))
+        assertEquals("a blind uplink on the VoIP test line says nothing about real calls", Redirect.CALL_REDIRECT,
+            choose(memory = mapOf(Redirect.COMMUNICATION_REDIRECT to Verdict.UNVERIFIED)))
+        assertTrue(MicPath.noRedirectWhy(34, "intercept", Mode.IN_CALL, mapOf(Redirect.CALL_REDIRECT to Verdict.UNVERIFIED))
+            .contains("call_screening not tried (the uplink cannot be checked)"))
+    }
+
+    @Test fun whyNoRedirectModeIsSaid() {
+        assertEquals("no redirect mode before Android 13", MicPath.noRedirectWhy(32, "telephony_tx", Mode.IN_CALL, emptyMap()))
+        assertTrue(MicPath.noRedirectWhy(34, "telephony_tx", Mode.IN_CALL, emptyMap()).contains("without the interception API"))
+        assertEquals("redirect modes not used on this phone: call_redirect breaks-downlink, call_screening breaks-downlink",
+            MicPath.noRedirectWhy(34, "intercept", Mode.IN_CALL, mapOf(Redirect.CALL_REDIRECT to Verdict.BREAKS_DOWNLINK, Redirect.CALL_SCREENING to Verdict.BREAKS_DOWNLINK)))
+    }
+
+    @Test fun callModes() {
+        for (m in listOf(Mode.IN_CALL, Mode.IN_COMMUNICATION, Mode.CALL_SCREENING, Mode.CALL_REDIRECT, Mode.COMMUNICATION_REDIRECT)) assertTrue(Mode.isCall(m))
+        for (m in listOf(Mode.NORMAL, Mode.RINGTONE, -1)) assertFalse(Mode.isCall(m))
     }
 
     @Test fun memoryRoundTripSkipsWhatItDoesNotKnow() {

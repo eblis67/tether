@@ -1,8 +1,11 @@
 import Foundation
 
-/// QR payload: `tether1:<S_P>.<token>.<name>` (base64url, no padding).
+/// Pairing code: `tether1:<S_P>.<token>.<name>` (base64url, no padding), shown as a QR code since 1.2 in its link form
+/// `tether://pair?c=<S_P>.<token>.<name>`, which the iPhone's Camera app offers to open in the app. Both forms parse.
 public struct PairingCode: Equatable, Sendable {
     public static let prefix = "tether1:"
+    /// The link form's start (the QR code since 1.2).
+    public static let linkPrefix = "tether://pair?c="
     public var peripheralKey: Data
     public var token: Data
     public var deviceName: String
@@ -17,10 +20,34 @@ public struct PairingCode: Equatable, Sendable {
         Self.prefix + peripheralKey.base64URL() + "." + token.base64URL() + "." + Data(deviceName.utf8).base64URL()
     }
 
+    /// The link form (what the QR code holds since 1.2).
+    public var link: String {
+        Self.linkPrefix + peripheralKey.base64URL() + "." + token.base64URL() + "." + Data(deviceName.utf8).base64URL()
+    }
+
+    /// True for a `tether:` pairing link (`tether://pair?…` or `tether:pair?…`), valid or not.
+    public static func isPairLink(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return t.hasPrefix("tether://pair?") || t.hasPrefix("tether:pair?") || t.hasPrefix("tether://pair/?")
+    }
+
+    /// Parses either form: `tether1:…` (the code, and the QR code of 1.1 phones) or `tether://pair?c=…`.
     public static func parse(_ s: String) -> PairingCode? {
         let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isPairLink(trimmed) {
+            guard let q = trimmed.split(separator: "?", maxSplits: 1).last else { return nil }
+            for item in q.split(separator: "&") {
+                let kv = item.split(separator: "=", maxSplits: 1)
+                if kv.count == 2, kv[0] == "c" { return parseBody(String(kv[1]).removingPercentEncoding ?? String(kv[1])) }
+            }
+            return nil
+        }
         guard trimmed.hasPrefix(prefix) else { return nil }
-        let parts = trimmed.dropFirst(prefix.count).split(separator: ".", omittingEmptySubsequences: false)
+        return parseBody(String(trimmed.dropFirst(prefix.count)))
+    }
+
+    private static func parseBody(_ body: String) -> PairingCode? {
+        let parts = body.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 3,
               let key = Data(base64URL: String(parts[0])), key.count == 65, key.first == 0x04,
               let token = Data(base64URL: String(parts[1])), token.count == 16,

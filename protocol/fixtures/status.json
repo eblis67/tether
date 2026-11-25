@@ -42,7 +42,8 @@
         "micMute": false,
         "uplink": "ok",
         "mic": "auto",
-        "micPath": "off"
+        "micPath": "off",
+        "audio": "full"
       },
       "wifi": true,
       "adbWifi": true,
@@ -141,7 +142,8 @@
         "micMute": false,
         "uplink": "ok",
         "mic": "auto",
-        "micPath": "off"
+        "micPath": "off",
+        "audio": "full"
       },
       "wifi": true,
       "adbWifi": true,

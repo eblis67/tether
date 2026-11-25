@@ -8,8 +8,13 @@ Tether puts an Android phone's calls, text messages, contacts and call history o
 Android phone, over an end-to-end encrypted Bluetooth link with no server and no account.
 [Source on GitHub](https://github.com/amirwmr/tether).
 
+**[راهنمای فارسی](fa/README.md)** · [پرسش‌های رایج](fa/faq.md)
+
 ## Use it
 
+- [Install guide](INSTALL.md): download, install the Android app, sideload the iPhone app (SideStore, AltStore,
+  Sideloadly, TrollStore), pair, first call
+- [FAQ](FAQ.md): Android to Android, iPhone to iPhone, Android versions, the iPhone's Phone and Messages apps
 - [Build](BUILD.md): building and installing both apps
 - [Set up](SETUP.md): first run, permissions, Wireless debugging, pairing
 - [Usage](USAGE.md): calls, messages, contacts, internet sharing, notifications

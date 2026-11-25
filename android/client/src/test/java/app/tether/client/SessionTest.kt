@@ -72,7 +72,9 @@ class SessionTest {
         val pc = vectors.getJSONObject("pairing_code")
         val code = PairingCode.parse(pc.getString("string"))!!
         assertEquals(pc.getString("name"), code.deviceName)
+        assertEquals(pc.getString("name"), PairingCode.parse(pc.getString("link"))!!.deviceName)
         assertNull(PairingCode.parse("tether1:not-a-code"))
+        assertNull(PairingCode.parse("tether://pair?c=not-a-code"))
     }
 
     private fun pairedClient(chunk: Int = 4096): Pair<FakePhone, TestClient> {

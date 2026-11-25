@@ -25,7 +25,8 @@ fun main() {
     // 1. The phone opens pairing: a long-term P-256 key and a one-time token, shown as a QR code.
     val phoneKey = P256.generate()
     val token = ByteArray(16).also { SecureRandom().nextBytes(it) }
-    val qr = PairingCode(P256.encode(phoneKey.public), token, "Demo phone").encode()
+    // Since 1.2 the QR code holds the link form (tether://pair?c=…); typed codes are tether1:…; parse reads both.
+    val qr = PairingCode(P256.encode(phoneKey.public), token, "Demo phone").link()
     println("pairing code: ${qr.take(24)}…")
 
     // 2. The client scans it and starts the handshake with its own long-term key.

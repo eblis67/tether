@@ -132,6 +132,9 @@ class Keys(private val ctx: Context) {
         return PairingCode(staticPublic, token, deviceName())
     }
 
+    /** The open pairing code again (same token), e.g. to show it in another form; null once it expired. */
+    fun openPairingCurrent(): PairingCode? = currentToken()?.let { PairingCode(staticPublic, it, deviceName()) }
+
     fun currentToken(): ByteArray? =
         pairingToken?.takeIf { System.currentTimeMillis() < pairingExpiry }
 

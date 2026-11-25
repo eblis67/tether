@@ -105,6 +105,7 @@
     }
   ],
   "pairing_code" : {
+    "link" : "tether://pair?c=BPiBumkbMKCDJlFXF-N0A03uUgFXuUBQRw78P4rwAIMrBPwnPKTQe9zwK3zHUu4mroCUjfMTmSJguDjLjT-ZZpM.k9VBiMNdvA_zm6gM8bX7cw.QW5kcm9pZCBwaG9uZSDCtyDYqtiz2Ko",
     "name" : "Android phone · تست",
     "S_P" : "04f881ba691b30a08326515717e374034dee520157b94050470efc3f8af000832b04fc273ca4d07bdcf02b7cc752ee26ae80948df313992260b838cb8d3f996693",
     "string" : "tether1:BPiBumkbMKCDJlFXF-N0A03uUgFXuUBQRw78P4rwAIMrBPwnPKTQe9zwK3zHUu4mroCUjfMTmSJguDjLjT-ZZpM.k9VBiMNdvA_zm6gM8bX7cw.QW5kcm9pZCBwaG9uZSDCtyDYqtiz2Ko",

@@ -33,7 +33,8 @@ import com.google.zxing.qrcode.QRCodeReader
 
 /**
  * Pairing: scans the QR code the Android phone shows (Tether › Pair, valid 5 minutes) with the camera and ZXing, or
- * takes the code typed or pasted by hand ("tether1:…").
+ * takes the code typed or pasted by hand. Both forms parse: the `tether://pair?c=…` link
+ * (the QR code since 1.2) and `tether1:…` (1.1 phones, typed codes).
  */
 class PairActivity : Activity() {
     private val camThread = HandlerThread("pair-camera").apply { start() }
@@ -53,6 +54,7 @@ class PairActivity : Activity() {
         root.addView(label(getString(R.string.pair_title), size = 22f, bold = true))
         hint = label(getString(R.string.pair_scan_hint), R.color.muted, 14f)
         root.addView(hint)
+        root.addView(label(getString(R.string.pair_guide), R.color.muted, 13f))
         preview = TextureView(this)
         root.addView(FrameLayout(this).apply { addView(preview) }, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(12); bottomMargin = dp(12) })
         val manual = EditText(this).apply { hint = getString(R.string.pair_manual_hint); setTextColor(col(R.color.text)); setHintTextColor(col(R.color.muted)); setSingleLine() }
@@ -60,6 +62,7 @@ class PairActivity : Activity() {
         root.addView(row(pill(getString(R.string.pair)) { use(manual.text.toString()) }, pill(getString(android.R.string.cancel), secondary = true) { finish() },
             gravity = Gravity.CENTER_VERTICAL))
         setContentView(root)
+        fitSystemBars(root)
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) requestPermissions(arrayOf(Manifest.permission.CAMERA), 1)
     }
 

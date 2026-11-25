@@ -1,6 +1,5 @@
 import AVFoundation
 import Foundation
-import os
 @_spi(TetherApp) import TetherCore
 
 /// 20 ms mono voice codec.
@@ -124,9 +123,11 @@ final class CallAudio: @unchecked Sendable {
     private var captureAcc: [Int16] = []
     private var seq: UInt16 = 0
     private var lastSeq: UInt16?
-    private var flagsUnfair = os_unfair_lock()
     /// Flags shared with the real-time render thread: an unfair lock held for a few instructions (no NSLock there).
-    private func flags<T>(_ body: () -> T) -> T { os_unfair_lock_lock(&flagsUnfair); defer { os_unfair_lock_unlock(&flagsUnfair) }; return body() }
+    /// Its lock word lives in its own allocation (TetherCore's UnfairLock): an `os_unfair_lock` stored property passed
+    /// as `&property` from several threads may be copied or moved by Swift, and then it no longer excludes anything.
+    private let flagsLock = UnfairLock()
+    private func flags<T>(_ body: () -> T) -> T { flagsLock.withLock(body) }
     private var _muted = false
     private var _ringback = false
     private var ringPhase = 0.0
@@ -149,11 +150,24 @@ final class CallAudio: @unchecked Sendable {
     /// Debug (-TetherAudioTrace): every 2 s of a call, one console line with the playout's level, target and arrival spread.
     static let trace = ProcessInfo.processInfo.arguments.contains("-TetherAudioTrace")
     private var pumps = 0
+    /// The unit tests' host (the same check as AppModel.runningTests, readable off the main actor).
+    private static let underTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     init(model: AppModel, link: TetherLink) {
         self.model = model
         self.link = link
         CallAudio.current = self
+        // For the app's lifetime (both can come at any point of a call).
+        let s = AVAudioSession.sharedInstance()
+        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: s, queue: nil) { [weak self] n in
+            let type = (n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+            guard let self, let type else { return }
+            self.q.async { self.interrupted(began: type == .began) }
+        }
+        NotificationCenter.default.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: s, queue: nil) { [weak self] _ in
+            guard let self else { return }
+            self.q.async { self.mediaServicesReset() }
+        }
     }
 
     var muted: Bool {
@@ -166,6 +180,28 @@ final class CallAudio: @unchecked Sendable {
         get { flags { _ringback } }
         set { flags { _ringback = newValue; if newValue { heardRemote = false } } }
     }
+    /// The microphone goes to the Android phone only while a call is connected (CallUplink; audio queue). Before, the
+    /// captured audio is dropped: dialing for 30 s used to send 1500 frames nobody heard.
+    private var uplinkOpen = false
+    /// Frames not sent while the call was not connected yet (for the Link log).
+    private var heldBack = 0
+    /// Microphone check while connected (#14): samples captured, whether any was not digital silence, and whether the
+    /// silence was reported. A refused microphone captures exact zeros without any error.
+    private var micSamples = 0
+    private var micHeard = false
+    private var micSilentReported = false
+
+    /// From the call controller after every call update.
+    func setUplink(open: Bool) {
+        q.async {
+            guard open != self.uplinkOpen else { return }
+            self.uplinkOpen = open
+            // Only what is captured from now on is sent: no stale audio from while it was closed.
+            self.captureAcc.removeAll()
+            if open { LinkJournal.shared.add("call audio: uplink open (\(self.heldBack) frames held back before the call connected)") }
+        }
+    }
+
     /// Our ringback should sound now (dialing, and nothing audible from the far end yet).
     var ringbackAudible: Bool { flags { _ringback && !heardRemote } }
 
@@ -173,7 +209,13 @@ final class CallAudio: @unchecked Sendable {
         let s = AVAudioSession.sharedInstance()
         // Hands-free (HFP) Bluetooth and car kits for calls; A2DP has no microphone. No .defaultToSpeaker: the
         // receiver is the default and the speaker is an override the user picks.
-        do { try s.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP]) }
+        // .allowBluetoothHFP is the iOS 26 SDK's name for .allowBluetooth (same value); older Xcodes only know the old one.
+        #if compiler(>=6.2)
+        let handsFree: AVAudioSession.CategoryOptions = .allowBluetoothHFP
+        #else
+        let handsFree: AVAudioSession.CategoryOptions = .allowBluetooth
+        #endif
+        do { try s.setCategory(.playAndRecord, mode: .voiceChat, options: [handsFree]) }
         catch { NSLog("[audio] category: %@", "\(error)") }
         try? s.setPreferredSampleRate(16000)
         try? s.setPreferredIOBufferDuration(0.01) // 10 ms I/O buffer
@@ -221,7 +263,11 @@ final class CallAudio: @unchecked Sendable {
     }
 
     @MainActor func stop() {
-        q.async { self.unobserveSessionRoute(); self.stopLocked(); self.coder = nil; self.remote = nil; self.ringback = false; self.muted = false; self.seq = 0 }
+        q.async {
+            self.unobserveSessionRoute(); self.stopLocked(); self.coder = nil; self.remote = nil; self.ringback = false; self.muted = false; self.seq = 0
+            self.uplinkOpen = false; self.heldBack = 0
+            self.micSamples = 0; self.micHeard = false; self.micSilentReported = false
+        }
     }
 
     /// Voice processing (echo cancellation) could not start with the current devices: run without it.
@@ -231,6 +277,8 @@ final class CallAudio: @unchecked Sendable {
     /// far end keeps playing after the switch (only the graph, its formats and converters are new).
     private func startLocked(rebuild: Bool = false) {
         guard !running else { return }
+        // The unit tests' host has no call and must not open the microphone: everything but the engine runs.
+        if Self.underTests { return }
         let rate = coder?.rate ?? 16000
         let input = engine.inputNode
         do { try input.setVoiceProcessingEnabled(!noVoiceProcessing) } catch { NSLog("[audio] voice processing: %@", "\(error)") }
@@ -297,9 +345,9 @@ final class CallAudio: @unchecked Sendable {
         captureAcc.removeAll()
         // `seq` keeps counting across engine restarts (route changes): the Android phone drops frames whose number goes back.
         if !rebuild { lastArrival = 0; jitterSum = 0; stats = Stats() }
-        // Read the same way as in routeEvent (the session's values): the engine nodes report other channel counts with
-        // voice processing, and the mismatch made every route event look like a format change.
-        builtFormat = Self.sessionFormat()
+        // Read the same way as in routeEvent (from the engine itself, #15): mixing the engine's and the session's
+        // values made every route event look like a format change (other channel counts with voice processing).
+        builtFormat = engineFormat()
         rebuildRetries = 0
         running = true
         let p = DispatchSource.makeTimerSource(queue: q)
@@ -324,22 +372,27 @@ final class CallAudio: @unchecked Sendable {
     /// Route change or engine configuration change while a call's session is active (TetherCore decides).
     private func routeEvent(configurationChanged: Bool) {
         guard sessionRouteObserver != nil || configurationChanged else { return }   // not after stop()
-        let now = Self.sessionFormat()
+        let now = engineFormat()
         let t = DispatchTime.now().uptimeNanoseconds
         rebuildTimes.removeAll { t - $0 > 3_000_000_000 }
-        switch EngineDecision.onRouteEvent(sessionActive: sessionActive, running: running, configurationChanged: configurationChanged,
-                                           built: builtFormat, now: now, engineRunning: running && engine.isRunning,
-                                           recentRebuilds: rebuildTimes.count) {
+        apply(EngineDecision.onRouteEvent(sessionActive: sessionActive, running: running, configurationChanged: configurationChanged,
+                                          built: builtFormat, now: now, engineRunning: running && engine.isRunning,
+                                          recentRebuilds: rebuildTimes.count),
+              why: String(format: "%@ changed (%.0f Hz in)", configurationChanged ? "configuration" : "route", now.inputRate), at: t)
+    }
+
+    private func apply(_ decision: EngineRebuild, why: String, at t: UInt64) {
+        switch decision {
         case .keep: return
         case .rebuild:
             rebuildTimes.append(t)
-            NSLog("[audio] %@ changed: rebuilding the engine (%.0f Hz in)", configurationChanged ? "configuration" : "route", now.inputRate)
+            NSLog("[audio] %@: rebuilding the engine", why)
             stopLocked(rebuild: true)
             engine = AVAudioEngine()   // a fresh graph: the old one keeps stale I/O formats after a hands-free switch
             startLocked(rebuild: true)
             if !running { retryLater() }
         case .restart:
-            do { try engine.start(); NSLog("[audio] configuration changed, same formats: engine started again") }
+            do { try engine.start(); NSLog("[audio] %@, same formats: engine started again", why) }
             catch {
                 NSLog("[audio] engine restart failed (%@): rebuilding", "\(error)")
                 rebuildTimes.append(t)
@@ -352,14 +405,43 @@ final class CallAudio: @unchecked Sendable {
         }
     }
 
+    /// Siri, an alarm or another app's audio interrupted the session: iOS stopped the engine; at the end it runs again
+    /// (the same engine, or a fresh one if it is gone). The call and its playout carry on.
+    private func interrupted(began: Bool) {
+        guard sessionActive else { return }
+        LinkJournal.shared.add("call audio: interruption \(began ? "began" : "ended")")
+        // Nothing played meanwhile: what queued up is stale, the far end starts afresh (re-primed) when it ends.
+        if !began { playout.reset() }
+        apply(EngineDecision.onInterruption(began: began, sessionActive: sessionActive, running: running, engineRunning: running && engine.isRunning),
+              why: "interruption ended", at: DispatchTime.now().uptimeNanoseconds)
+    }
+
+    /// mediaserverd restarted: every audio object is invalid. The session's category is set again and the engine built
+    /// afresh; the call itself stays up.
+    private func mediaServicesReset() {
+        LinkJournal.shared.add("call audio: media services were reset\(sessionActive ? ", rebuilding" : "")")
+        CallAudio.configureSession()
+        guard EngineDecision.onMediaServicesReset(sessionActive: sessionActive) == .rebuild else { engine = AVAudioEngine(); return }
+        try? AVAudioSession.sharedInstance().setActive(true)   // the reset deactivated it; the call is still CallKit's
+        rebuildRetries = 0
+        stopLocked(rebuild: true)
+        engine = AVAudioEngine()
+        startLocked(rebuild: true)
+        if !running { retryLater() }
+    }
+
     /// When the engine was rebuilt for a route event in the last 3 s (a loop guard, see EngineDecision).
     private var rebuildTimes: [UInt64] = []
 
-    /// The audio session's current formats, as the engine decisions compare them.
-    private static func sessionFormat() -> EngineFormat {
-        let s = AVAudioSession.sharedInstance()
-        return EngineFormat(inputRate: s.isInputAvailable ? s.sampleRate : 0, inputChannels: s.isInputAvailable ? max(1, s.inputNumberOfChannels) : 0,
-                            outputRate: s.sampleRate, outputChannels: s.outputNumberOfChannels)
+    /// The formats the engine itself uses (its input node's output, its output node's hardware side), as the engine
+    /// decisions compare them. No input on the route (a hands-free device still connecting): input 0, retried shortly.
+    private func engineFormat() -> EngineFormat {
+        let o = engine.outputNode.outputFormat(forBus: 0)
+        guard AVAudioSession.sharedInstance().isInputAvailable else {
+            return EngineFormat(inputRate: 0, inputChannels: 0, outputRate: o.sampleRate, outputChannels: Int(o.channelCount))
+        }
+        let i = engine.inputNode.outputFormat(forBus: 0)
+        return EngineFormat(inputRate: i.sampleRate, inputChannels: Int(i.channelCount), outputRate: o.sampleRate, outputChannels: Int(o.channelCount))
     }
 
     /// The new route has no input yet (Bluetooth hands-free takes a moment): try again shortly, ~2 s at most.
@@ -415,8 +497,10 @@ final class CallAudio: @unchecked Sendable {
         // Call statistics in the Link log: what a real call measured on this iPhone.
         let spreadMs = Double(playout.jitterFloor) / playRate * 1000
         if playout.concealedFrames > 0 { NSLog("[audio] %d lost frames filled by Opus concealment", playout.concealedFrames) }
-        LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout delay %.0f ms (target %.0f, arrival spread asks %.0f), concealed %.0f ms, underruns %d, drained %.0f ms, added %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm, io %.1f ms, out latency %.1f ms",
-                                      rtt, snapshot.delayMs, snapshot.playoutMs, spreadMs, concealedMs, snapshot.underruns, snapshot.trimmedMs, snapshot.addedMs, snapshot.lost,
+        if !micHeard, Double(micSamples) >= 2 * (captureMono?.sampleRate ?? 48000) { LinkJournal.shared.add("call audio: the microphone captured only silence in this call") }
+        LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout delay %.0f ms (target %.0f, arrival spread asks %.0f), concealed %.0f ms, underruns %d, drained %.0f ms (speech %.0f ms), added %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm, io %.1f ms, out latency %.1f ms",
+                                      rtt, snapshot.delayMs, snapshot.playoutMs, spreadMs, concealedMs, snapshot.underruns, snapshot.trimmedMs,
+                                      Double(playout.speechTrimmed) / playRate * 1000, snapshot.addedMs, snapshot.lost,
                                       snapshot.frames, snapshot.jitterMs, snapshot.worstGapMs, playout.driftPpm, snapshot.ioBufferMs, snapshot.outputLatencyMs))
         DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.lastAudioStats = snapshot } }
     }
@@ -466,6 +550,7 @@ final class CallAudio: @unchecked Sendable {
         let n = captureRing.available
         guard n > 0, let buf = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: AVAudioFrameCount(n)) else { return }
         buf.frameLength = AVAudioFrameCount(captureRing.read(into: buf.floatChannelData![0], n))
+        if uplinkOpen && !micHeard { checkMicrophone(buf.floatChannelData![0], Int(buf.frameLength), rate: mono.sampleRate) }
         let ratio = format.sampleRate / mono.sampleRate
         guard let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(Double(buf.frameLength) * ratio) + 16) else { return }
         var fed = false
@@ -477,6 +562,11 @@ final class CallAudio: @unchecked Sendable {
         captureAcc.append(contentsOf: UnsafeBufferPointer(start: out.int16ChannelData![0], count: Int(out.frameLength)))
         let frame = Int(coder.rate / 50)
         if Self.echoTest { captureAcc.removeAll(); return }
+        if !uplinkOpen {
+            heldBack += captureAcc.count / frame
+            captureAcc.removeAll()
+            return
+        }
         let silent = muted
         while captureAcc.count >= frame {
             let chunk = silent ? [Int16](repeating: 0, count: frame) : Array(captureAcc.prefix(frame))
@@ -484,6 +574,29 @@ final class CallAudio: @unchecked Sendable {
             if let payload = coder.encode(chunk) {
                 link.sendAudio(AudioFrame(codec: coder.id, seq: seq, payload: payload))
                 seq &+= 1
+            }
+        }
+    }
+
+    /// Notes whether the microphone delivers anything but digital silence while the call is connected; after
+    /// MicPolicy.silentAfterSeconds of nothing it says so (Link log, call screen), and takes it back when sound comes.
+    private func checkMicrophone(_ p: UnsafePointer<Float>, _ n: Int, rate: Double) {
+        for i in 0..<n where p[i] != 0 { micHeard = true; break }
+        micSamples += n
+        if micHeard {
+            if micSilentReported {
+                LinkJournal.shared.add("microphone: sound again")
+                DispatchQueue.main.async { MainActor.assumeIsolatedCompat { if AppModel.shared.micWarning == .silent { AppModel.shared.micWarning = nil } } }
+            }
+            return
+        }
+        guard !micSilentReported, MicPolicy.captureSilent(samples: micSamples, rate: rate, anySound: false) else { return }
+        micSilentReported = true
+        DispatchQueue.main.async {
+            MainActor.assumeIsolatedCompat {
+                let access = Microphone.access
+                LinkJournal.shared.add("microphone: only silence for \(Int(MicPolicy.silentAfterSeconds)) s of the connected call (permission \(access.rawValue)): the other side hears nothing")
+                AppModel.shared.micWarning = MicPolicy.warning(access: access, captureSilent: true)
             }
         }
     }

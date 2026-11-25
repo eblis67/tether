@@ -3,6 +3,7 @@ package app.tether.core
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -118,7 +119,25 @@ class ProtocolTest {
         assertArrayEquals(pc.hex("token"), code.token)
         assertEquals(pc.getString("name"), code.deviceName)
         assertEquals(pc.getString("string"), code.encode())
+        assertEquals(pc.getString("link"), code.link())
         assertNull(PairingCode.parse("tether1:zz"))
+    }
+
+    /** The QR code's link form (1.2) and the old `tether1:` form (1.1 phones, typed codes) both parse. */
+    @Test fun pairingLinkForms() {
+        val pc = vectors.getJSONObject("pairing_code")
+        val body = pc.getString("string").removePrefix(PairingCode.PREFIX)
+        for (s in listOf(pc.getString("link"), " " + pc.getString("link") + "\n", "tether:pair?c=$body",
+            "TETHER://PAIR?v=2&c=$body", pc.getString("string"))) {
+            val c = PairingCode.parse(s) ?: throw AssertionError(s)
+            assertArrayEquals(pc.hex("S_P"), c.peripheralKey)
+            assertArrayEquals(pc.hex("token"), c.token)
+            assertEquals(pc.getString("name"), c.deviceName)
+        }
+        assertTrue(PairingCode.isPairLink(pc.getString("link")))
+        assertFalse(PairingCode.isPairLink(pc.getString("string")))
+        for (bad in listOf("tether://pair?c=zz", "tether://pair?x=1", "tether://pair", "tether://pair?c=$body.x",
+            "tether://dial?number=1", "https://example.com/?c=$body")) assertNull(bad, PairingCode.parse(bad))
     }
 
     @Test fun g711Vector() {

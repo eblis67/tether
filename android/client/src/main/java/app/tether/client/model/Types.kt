@@ -71,10 +71,28 @@ data class BlockLists(val blocked: List<String> = emptyList(), val muted: List<L
     }
 }
 
-/** sync.ids: inclusive, sorted id ranges [[first, last], …]; binary search. A malformed range never deletes. */
+/** sync.ids: inclusive, sorted id ranges [[first, last], …]; binary search. */
 object IdRanges {
-    fun parse(a: JSONArray?): List<LongArray> = if (a == null) emptyList() else (0 until a.length()).map { i ->
-        val r = a.optJSONArray(i); if (r == null || r.length() != 2) LongArray(0) else longArrayOf(r.getLong(0), r.getLong(1))
+    fun parse(a: JSONArray?, after: Long?): List<LongArray>? {
+        if (a == null) return null
+        val ranges = ArrayList<LongArray>(a.length())
+        var previousEnd = after
+        for (i in 0 until a.length()) {
+            val range = a.optJSONArray(i) ?: return null
+            if (range.length() != 2) return null
+            val first = integerId(range.opt(0)) ?: return null
+            val last = integerId(range.opt(1)) ?: return null
+            if (first > last || (previousEnd != null && first <= previousEnd)) return null
+            ranges.add(longArrayOf(first, last))
+            previousEnd = last
+        }
+        return ranges
+    }
+
+    private fun integerId(value: Any?): Long? = when (value) {
+        is Int -> value.toLong()
+        is Long -> value
+        else -> null
     }
 
     fun contains(ranges: List<LongArray>, id: Long): Boolean {
@@ -82,7 +100,6 @@ object IdRanges {
         while (lo <= hi) {
             val mid = (lo + hi) / 2
             val r = ranges[mid]
-            if (r.size != 2) return true
             if (id < r[0]) hi = mid - 1 else if (id > r[1]) lo = mid + 1 else return true
         }
         return false

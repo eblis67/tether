@@ -8,11 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		017D715AD23C03826CD36889 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68E92BEFCE1B8F4B1907491F /* RootView.swift */; };
+		0495A3D4CF6843C9FDDD63B8 /* Microphone.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4EB3B6C93FA845AAA2D6E18 /* Microphone.swift */; };
 		187B1AB6C8C6133973A2AA03 /* TetherCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5B13539DC145074D842B8CFA /* TetherCore */; };
 		20B14AA41895FB70238242E7 /* snapshot-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = A086C56F3615B86DD44C390C /* snapshot-v1.json */; };
 		256006FB7F2EC3765F36E276 /* TetherCore in Frameworks */ = {isa = PBXBuildFile; productRef = C92CF67A40D9E6FD78EB89D6 /* TetherCore */; };
 		54D0515C0A7A58779C5E47F5 /* SnapshotStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44EB8871E1AD4DF58F2C4C14 /* SnapshotStoreTests.swift */; };
 		57085CB17AE572C13A7581F0 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 8E8CD87AE84C4513E44FBE37 /* InfoPlist.strings */; };
+		57FF2B3E613740BE96639B0E /* CallControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BD318D5A6CCF4E6B1A32F9 /* CallControllerTests.swift */; };
 		59E68ACF2F32F076A914B45E /* Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E080E7A804FAA834C5B422C /* Notifications.swift */; };
 		603FD7C492722E6BCC58DF92 /* TetherApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59E78B07440A9F776F7720DC /* TetherApp.swift */; };
 		83B205328808D1436E1B8387 /* LinkJournalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C567AA851BD82FCD74E3DFEA /* LinkJournalTests.swift */; };
@@ -35,6 +37,7 @@
 		E6A8FCAC1B885D30583D39F2 /* RichText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 037EF8B195543E690E67E6E9 /* RichText.swift */; };
 		E93D3DA259746DD05104C371 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4C01CCD9ED68CA7601027F9B /* Localizable.strings */; };
 		E94D17DD6D42BF34C5B5A9AC /* Signing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888EDF1A791F4ABFC8A4EE65 /* Signing.swift */; };
+		EBED63E7B47F9E8C559E4FE2 /* MicrophoneTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE2741A875314A0305E68074 /* MicrophoneTests.swift */; };
 		F5C87C5424AE219E0C83D698 /* CallController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CBB9A44039858F32A499F1B /* CallController.swift */; };
 		F5F980AA00C9F35EA8DBD777 /* DisplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81CED4113375A394DEACC546 /* DisplayTests.swift */; };
 		F83746016A4CFC2C0CEDAA6F /* CallAudioRowsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E49921D93B25D04604D39D0B /* CallAudioRowsTests.swift */; };
@@ -55,6 +58,7 @@
 /* Begin PBXFileReference section */
 		037EF8B195543E690E67E6E9 /* RichText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichText.swift; sourceTree = "<group>"; };
 		1B8B6670F2FFC88848754BEC /* ContactsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactsViews.swift; sourceTree = "<group>"; };
+		23BD318D5A6CCF4E6B1A32F9 /* CallControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallControllerTests.swift; sourceTree = "<group>"; };
 		27B65CC0FCBA237E0DB09A99 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		2F2CA052180B01BD2A5B6260 /* Tether.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Tether.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3722EE0161E63C93D7E8603D /* ExtensionRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionRouterTests.swift; sourceTree = "<group>"; };
@@ -90,6 +94,8 @@
 		D07D9884FDEFAA158C1A7DF1 /* Tether.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tether.entitlements; sourceTree = "<group>"; };
 		D8299BCD38C963DC339407E1 /* PhoneViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneViews.swift; sourceTree = "<group>"; };
 		E49921D93B25D04604D39D0B /* CallAudioRowsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallAudioRowsTests.swift; sourceTree = "<group>"; };
+		E4EB3B6C93FA845AAA2D6E18 /* Microphone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Microphone.swift; sourceTree = "<group>"; };
+		FE2741A875314A0305E68074 /* MicrophoneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -137,6 +143,7 @@
 			children = (
 				A7DDE2E11FA91B8017FCCFAF /* CallIntents.swift */,
 				522AC4E6B519039B26F69B68 /* DemoData.swift */,
+				E4EB3B6C93FA845AAA2D6E18 /* Microphone.swift */,
 				7E080E7A804FAA834C5B422C /* Notifications.swift */,
 				888EDF1A791F4ABFC8A4EE65 /* Signing.swift */,
 				59E78B07440A9F776F7720DC /* TetherApp.swift */,
@@ -149,10 +156,12 @@
 			children = (
 				89E9230950F516251A08C469 /* AppModelReceivedTests.swift */,
 				E49921D93B25D04604D39D0B /* CallAudioRowsTests.swift */,
+				23BD318D5A6CCF4E6B1A32F9 /* CallControllerTests.swift */,
 				AB1D0F65D7009320B615590F /* ContactLabelTests.swift */,
 				81CED4113375A394DEACC546 /* DisplayTests.swift */,
 				3722EE0161E63C93D7E8603D /* ExtensionRouterTests.swift */,
 				C567AA851BD82FCD74E3DFEA /* LinkJournalTests.swift */,
+				FE2741A875314A0305E68074 /* MicrophoneTests.swift */,
 				6854E54209D961EA1D57080D /* RouterTests.swift */,
 				44EB8871E1AD4DF58F2C4C14 /* SnapshotStoreTests.swift */,
 				B322450F8CAE816DA2C624CA /* TestSupport.swift */,
@@ -367,10 +376,12 @@
 			files = (
 				A5120646391E346F5BC0F6FF /* AppModelReceivedTests.swift in Sources */,
 				F83746016A4CFC2C0CEDAA6F /* CallAudioRowsTests.swift in Sources */,
+				57FF2B3E613740BE96639B0E /* CallControllerTests.swift in Sources */,
 				916C565D48ECFEDC9E18052B /* ContactLabelTests.swift in Sources */,
 				F5F980AA00C9F35EA8DBD777 /* DisplayTests.swift in Sources */,
 				F96DDCAC7F2163E7969993A5 /* ExtensionRouterTests.swift in Sources */,
 				83B205328808D1436E1B8387 /* LinkJournalTests.swift in Sources */,
+				EBED63E7B47F9E8C559E4FE2 /* MicrophoneTests.swift in Sources */,
 				BBA8E43F55388B4A3CC4527D /* RouterTests.swift in Sources */,
 				54D0515C0A7A58779C5E47F5 /* SnapshotStoreTests.swift in Sources */,
 				CDC5C5E97CB33E31B3A938AB /* TestSupport.swift in Sources */,
@@ -391,6 +402,7 @@
 				FAE810BB4A344D52557B9E5D /* InCallView.swift in Sources */,
 				9A394F51878AC0F2FC796A3D /* LinkViews.swift in Sources */,
 				BACD7C8A46DAF4950934C08E /* MessagesViews.swift in Sources */,
+				0495A3D4CF6843C9FDDD63B8 /* Microphone.swift in Sources */,
 				59E68ACF2F32F076A914B45E /* Notifications.swift in Sources */,
 				D72AB016847427FC1CDBCA98 /* PhoneViews.swift in Sources */,
 				E6A8FCAC1B885D30583D39F2 /* RichText.swift in Sources */,
@@ -521,7 +533,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1010099;
+				CURRENT_PROJECT_VERSION = 1020299;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -540,7 +552,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -587,7 +599,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1010099;
+				CURRENT_PROJECT_VERSION = 1020299;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -600,7 +612,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -13,7 +13,9 @@ import app.tether.TetherApp
 class TetherScreeningService : CallScreeningService() {
     override fun onScreenCall(details: Call.Details) {
         val num = details.handle?.schemeSpecificPart ?: ""
-        val blocked = details.callDirection == Call.Details.DIRECTION_INCOMING &&
+        // Before Android 10 only incoming calls are screened (and the direction field does not exist).
+        val incoming = android.os.Build.VERSION.SDK_INT < 29 || details.callDirection == Call.Details.DIRECTION_INCOMING
+        val blocked = incoming &&
             runCatching { (application as TetherApp).lists.isBlocked(num) }.getOrDefault(false)
         if (blocked) Log.i(CallRegistry.TAG, "screening: blocked caller rejected")
         respondToCall(details, CallResponse.Builder()

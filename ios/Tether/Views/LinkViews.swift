@@ -28,6 +28,8 @@ struct LinkView: View {
                     .padding(.vertical, 6)
                 }
 
+                if !model.isPaired { SetupGuideSection { scanning = true } }
+
                 Section {
                     Label {
                         Text("Tether keeps the link in the background and when the screen is locked. Swiping Tether away in the app switcher stops it until you open it again: iOS does not relaunch a force-quit app for Bluetooth.")
@@ -108,6 +110,13 @@ struct LinkView: View {
                     }
                     Section {
                         LabeledContent("Audio helper", value: s.helper.state == "running" ? String(localized: "Running") : String(localized: "Stopped"))
+                        if s.helper.audioUnavailable {
+                            Text("Call audio is not available on this Android phone: it needs Android 11 or later. Calls are still answered, placed and ended here, but you hear and speak on the Android phone.")
+                                .font(.footnote).foregroundStyle(.orange)
+                        } else if s.helper.audioBlocked {
+                            Text("This Android phone's software gives Tether no call audio (the call sounds like silence to it). Calls are still answered, placed and ended here, but you hear and speak on the Android phone. A system update, or a self-test during a call that hears the call, turns call audio back on.")
+                                .font(.footnote).foregroundStyle(.orange)
+                        }
                         if let m = s.helper.method { LabeledContent("Inject method", value: m) }
                         if let m = s.helper.capture { LabeledContent("Capture method", value: m) }
                         if let q = s.helper.silent {
@@ -128,12 +137,15 @@ struct LinkView: View {
                             Toggle("Mute the Android phone's microphone", isOn: Binding(get: { on }, set: { model.setPhoneMicMute($0) }))
                                 .tint(.green).disabled(!model.linkState.isConnected)
                         }
+                        let micWarning = CallAudioRows.micWarning(denied: CallAudioRows.microphoneDenied(), last: model.micWarning)
                         if let u = s.helper.uplink {
-                            LabeledContent("Your voice in the call", value: CallAudioRows.uplinkText(u))
+                            LabeledContent("Your voice in the call", value: CallAudioRows.voiceText(u, mic: micWarning))
                         }
-                        if CallAudioRows.microphoneDenied() {
-                            Text("Tether may not use this iPhone's microphone, so the other side hears nothing. Allow it in Settings › Privacy & Security › Microphone.")
-                                .font(.footnote).foregroundStyle(.red)
+                        if let w = micWarning {
+                            Text(Microphone.text(w)).font(.footnote).foregroundStyle(.red)
+                            if w == .denied, let url = URL(string: UIApplication.openSettingsURLString) {
+                                Link("Open Settings", destination: url).font(.footnote)
+                            }
                         }
                         if let a = model.lastAudioStats {
                             LabeledContent("Last call") {
@@ -192,7 +204,7 @@ struct LinkView: View {
                         Button("Unpair", role: .destructive) { confirmUnpair = true }
                     }
                 } footer: {
-                    Text("On the Android phone, open Tether and tap Pair iPhone, then scan the code (or paste it). Calls, messages, contacts and call history stay between your devices; there is no server.")
+                    Text("On the Android phone, open Tether and tap Pair iPhone, then scan the code with the Camera or here (or paste it). Calls, messages, contacts and call history stay between your devices; there is no server.")
                 }
                 #if DEBUG
                 DeveloperSection()
@@ -243,7 +255,34 @@ struct LinkView: View {
     }
 }
 
-/// The Android phone's VPN (any VPN app) and "Share VPN": its proxy lets this device use that VPN.
+/// First run (not paired): what to install on the Android phone, how to show and scan the code, and which
+/// permissions the iPhone will ask for and why.
+struct SetupGuideSection: View {
+    let scan: () -> Void
+
+    var body: some View {
+        Section {
+            step(1, "Install Tether on the Android phone that holds your SIMs and do its Setup steps (permissions, default phone app, battery, wireless debugging).")
+            step(2, "On the Android phone, open Tether and tap Pair iPhone. A QR code appears for 5 minutes.")
+            step(3, "Point this iPhone's Camera at the code and tap Open in Cellular, or tap the button below and scan it here.")
+            step(4, "Allow what the iPhone asks: Bluetooth (the link to the phone), Microphone (your voice in calls) and Notifications (calls and new texts).")
+            Button { scan() } label: { Label("Scan Pairing Code", systemImage: "qrcode.viewfinder") }
+        } header: {
+            Text("Set up")
+        } footer: {
+            Text("Keep both phones close while pairing. Nothing goes through a server.")
+        }
+    }
+
+    private func step(_ n: Int, _ text: LocalizedStringKey) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(n.formatted()).font(.subheadline.weight(.bold)).foregroundStyle(.teal).frame(minWidth: 18)
+            Text(text).font(.subheadline)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 #if DEBUG
 /// Debug builds only: try the extensions (protocol §7) against the linked Android phone. Not translated on purpose.
 struct DeveloperSection: View {
@@ -265,6 +304,7 @@ struct DeveloperSection: View {
 }
 #endif
 
+/// The Android phone's VPN (any VPN app) and "Share VPN": its proxy lets this device use that VPN.
 struct VPNSection: View {
     @Environment(\.appModel) private var model
 
@@ -424,7 +464,7 @@ struct PhoneLinksSection: View {
     }
 }
 
-/// How long this build's free signature still lasts (renewed by running tools/reinstall-ios.sh on the Mac).
+/// How long this build's signature still lasts (refreshed in the sideloading tool, or tools/reinstall-ios.sh for own builds).
 struct SigningSection: View {
     var body: some View {
         if let expiry = Signing.expiry, let days = Signing.daysLeft {
@@ -439,7 +479,7 @@ struct SigningSection: View {
             } header: {
                 Text("Renewal")
             } footer: {
-                Text("A free Apple account's signature lasts 7 days. Renew it by running tools/reinstall-ios.sh on your Mac with this device unlocked and connected.")
+                Text("Refresh the app before this date in the tool you installed it with (SideStore, AltStore or Sideloadly). A free Apple account's signature lasts 7 days.")
             }
         }
     }
@@ -477,6 +517,21 @@ enum CallAudioRows {
         case "off": return String(localized: "Not muted by the phone")
         default: return String(localized: "Not checked")
         }
+    }
+
+    /// The Android phone's uplink check sees only that audio reaches the network; it cannot hear that what this iPhone
+    /// sends is silence. With the microphone refused or silent the row never says the voice gets through (#14).
+    static func voiceText(_ u: String, mic: MicWarning?) -> String {
+        switch mic {
+        case .denied: return String(localized: "Does not reach: microphone off on this iPhone")
+        case .silent: return String(localized: "Does not reach: no sound from this iPhone's microphone")
+        case nil: return uplinkText(u)
+        }
+    }
+
+    /// The warning to show: the permission as it is now, else what the last call found.
+    static func micWarning(denied: Bool, last: MicWarning?) -> MicWarning? {
+        denied ? .denied : last == .silent ? .silent : nil
     }
 
     /// This iPhone refused Tether the microphone: every call's uplink is silent.
@@ -571,7 +626,7 @@ struct NetToggle: View {
     }
 }
 
-/// Full-screen QR scanner for the `tether1:` pairing code: the camera fills the screen with only Cancel, a short
+/// Full-screen QR scanner for the pairing code (`tether://pair?c=…` since 1.2, `tether1:…` from 1.1 phones): the camera fills the screen with only Cancel, a short
 /// instruction and "Enter Code Manually" over it (no text field or other content behind the camera); typing the
 /// code is its own screen, so the keyboard never comes up behind the scanner.
 struct PairingView: View {

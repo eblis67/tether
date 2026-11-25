@@ -46,8 +46,8 @@ object Net {
         o.put("vpn", java.io.File("/sys/class/net").list()?.any { Regex("tun\\d+").matches(it) } == true)
         o.put("airplane", sh("settings", "get", "global", "airplane_mode_on") == "1")
         // What this phone can tether at all (the iPhone hides switches it lacks). "tetherable…Regexs: []" means no;
-        // a missing line (unknown dumpsys format) counts as yes.
-        fun can(key: String) = teth.lineSequence().firstOrNull { it.trim().startsWith("$key:") }
+        // a missing line (unknown dumpsys format) counts as yes. Before Android 11 the switches cannot work (see tether).
+        fun can(key: String) = android.os.Build.VERSION.SDK_INT >= 30 && teth.lineSequence().firstOrNull { it.trim().startsWith("$key:") }
             ?.substringAfter(":")?.trim()?.let { it != "[]" && it.isNotEmpty() } ?: true
         o.put("can", org.json.JSONObject().put("hotspot", can("tetherableWifiRegexs")).put("bt", can("tetherableBluetoothRegexs")))
         o.put("rat", org.json.JSONArray((0..1).mapNotNull { slot -> ratOf(slot)?.let { org.json.JSONObject().put("slot", slot).put("mode", it) } }))

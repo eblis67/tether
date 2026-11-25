@@ -11,7 +11,7 @@ All integers are big-endian unless stated otherwise.
 | Item | UUID | Notes |
 |---|---|---|
 | Service | `5ABF5C3C-2BF1-4B1C-9E8E-5D153F835BD5` | Advertised (service UUID only, no name). |
-| PSM characteristic | `6C0D1EB1-67F4-4181-9752-9CC90D6EFF88` | Read. Value: L2CAP PSM as `uint16` **little-endian**. |
+| PSM characteristic | `6C0D1EB1-67F4-4181-9752-9CC90D6EFF88` | Read. Value: L2CAP PSM as `uint16` **little-endian**; empty when the phone has no L2CAP listener (Android 8 and 9), and the central then uses the GATT transport at once. |
 | RX characteristic (fallback) | `214E1CD9-F397-4A0F-BB6C-ED1D8C7A38A5` | Write-without-response, central → peripheral. |
 | TX characteristic (fallback) | `7BA52139-0888-4234-A49D-0271E0F2A647` | Notify, peripheral → central. |
 | Wake characteristic | `9A3F1C52-7E0B-4D8A-B1E6-2C5D4F7A8E31` | Notify. The central always subscribes. The peripheral sends a 1-byte notification right before urgent traffic (ringing, call end, new SMS); a GATT notification reliably wakes a suspended iOS app, which then drains the L2CAP channel. |
@@ -95,6 +95,17 @@ tether1:<base64url(S_P)>.<base64url(token)>.<base64url(utf8 device name)>
 
 `token` is 16 random bytes. Base64url is without padding.
 
+Since 1.2 the QR code holds the same three fields as a link, so the iPhone's Camera app offers to open it in the app:
+
+```
+tether://pair?c=<base64url(S_P)>.<base64url(token)>.<base64url(utf8 device name)>
+```
+
+Readers accept both forms (`tether1:` is what 1.1 phones show and what is typed or pasted), ignore other query items,
+and match `tether://pair` and `tether:pair` without regard to case. The Android app can still show the `tether1:`
+form of the same code for 1.1 iPhone apps, whose scanner reads only that. A link opened from outside the app never
+pairs by itself: the app asks first. The link holds the token: never log it. `vectors.json` › `pairing_code` has both.
+
 **HELLO** body (C → P), 148 bytes:
 
 ```
@@ -169,7 +180,7 @@ numbers are as stored on the Android phone.
 | Type | Dir | Body |
 |---|---|---|
 | `ping` / `pong` | both | `{ts}` |
-| `status` | P→C | `{device, battery, charging, sims:[{slot, sub, name, carrier, number?, signal, net?, service?, roaming?, country?}], defaultSub?, dialer, helper:{state, method?, capture?, up, down, silent?, micMute?, uplink?, mic?, micPath?}, wifi, adbWifi, clients?:[{name, kind, self?, audio?}]}` (`helper.method` / `capture`: the call-audio inject / capture method of the current or last call; `silent` "full" \| "earpiece" \| "none": how silent the Android phone itself is during a bridged call; `micMute`: the setting "mute the Android phone's microphone during bridged calls", absent from builds without it (clients hide the switch; newer builds keep sending it, true only when `mic` is "mute"); `mic`: the setting "the Android phone's microphone during bridged calls", "auto" (default: a redirect audio mode takes the phone's mic and earpiece out of the call where the phone allows it, else the mic stays on) \| "mute" \| "open", absent from builds before it (clients then show the `micMute` switch); `micPath`: during a bridged call, what the phone's own mic does, "off" (out of the call) \| "muted" \| "open"; `uplink`: whether the client's voice reaches the call, "checking" \| "ok" \| "muted-locally-fixed" (the phone's mic mute silenced it and was undone; calls on this phone start without it) \| "unverified" \| "off" (no local mic mute this call): this call's check, else what the phone remembers; `clients`: every connected client; `self` marks the receiver, `audio` the one call audio goes to; per SIM: `signal` 0–4, `net` "5G" \| "LTE+" \| "LTE" \| "H+" \| "H" \| "3G" \| "E" \| "2G", `service` "in" \| "none" \| "emergency" \| "off", `roaming`, `country` the SIM's lowercase ISO 3166 code (else the network's; optional, for grouping national numbers on display). Pushed again within ~2 s of a signal / network change). Optional, from builds with the phone tools: `tools:{ussd, find, ringer}` (clients hide the matching controls when absent), `ringer` "normal" \| "vibrate" \| "silent", `dnd` (Do Not Disturb access granted). Optional, from builds with extensions (§7): `caps:["<id>/<major>"]` (the Android phone's extensions), `ext:{"<id>": {…}}` (their status fields, only those the receiving client agreed) |
+| `status` | P→C | `{device, battery, charging, sims:[{slot, sub, name, carrier, number?, signal, net?, service?, roaming?, country?}], defaultSub?, dialer, helper:{state, method?, capture?, up, down, silent?, micMute?, uplink?, mic?, micPath?, audio?}, wifi, adbWifi, clients?:[{name, kind, self?, audio?}]}` (`helper.method` / `capture`: the call-audio inject / capture method of the current or last call; `audio`: what call audio the phone's Android version allows, "full" (13+) \| "fallback" (11–12, best effort) \| "unavailable" (8–10: calls are controlled from the client, their audio stays on the phone; clients say so; since 1.2.2 "blocked": this phone's software gave no call audio in a real call (the downlink capture read only zeros), so its calls are not bridged until a system update or a self-test that hears the call; clients say so); `silent` "full" \| "earpiece" \| "none": how silent the Android phone itself is during a bridged call; `micMute`: the setting "mute the Android phone's microphone during bridged calls", absent from builds without it (clients hide the switch; newer builds keep sending it, true only when `mic` is "mute"); `mic`: the setting "the Android phone's microphone during bridged calls", "auto" (default: a redirect audio mode takes the phone's mic and earpiece out of the call where the phone allows it, else the vendor's own mic-source key mutes it where the phone has one that is known or checked to keep the client's voice, else the mic stays on) \| "mute" \| "open", absent from builds before it (clients then show the `micMute` switch); `micPath`: during a bridged call, what the phone's own mic does, "off" (out of the call) \| "muted" \| "open"; `uplink`: whether the client's voice reaches the call, "checking" \| "ok" \| "muted-locally-fixed" (the phone's mic mute silenced it and was undone; calls on this phone start without it) \| "unverified" \| "off" (no local mic mute this call): this call's check, else what the phone remembers; `clients`: every connected client; `self` marks the receiver, `audio` the one call audio goes to; per SIM: `signal` 0–4, `net` "5G" \| "LTE+" \| "LTE" \| "H+" \| "H" \| "3G" \| "E" \| "2G", `service` "in" \| "none" \| "emergency" \| "off", `roaming`, `country` the SIM's lowercase ISO 3166 code (else the network's; optional, for grouping national numbers on display). Pushed again within ~2 s of a signal / network change). Optional, from builds with the phone tools: `tools:{ussd, find, ringer}` (clients hide the matching controls when absent), `ringer` "normal" \| "vibrate" \| "silent", `dnd` (Do Not Disturb access granted). Optional, from builds with extensions (§7): `caps:["<id>/<major>"]` (the Android phone's extensions), `ext:{"<id>": {…}}` (their status fields, only those the receiving client agreed) |
 | `sync` | C→P | `{sms: lastId, calls: lastId, contacts: version, codecs: ["opus", "pcmu"], client?: {kind: "iphone" \| "android", name}, caps?: ["<id>/<major>"]}` (0 / "" for a full sync; `codecs` = what the client can decode/encode, best first; `client` names it in the Android phone's device list; `kind` "android" is the Android client, see §5.1; `caps`: the client's extensions, §7.2, absent when it has none) |
 | `sms.batch` | P→C | `{items:[Sms], more}` |
 | `sms.new` | P→C | `{item: Sms}` |
@@ -237,12 +248,17 @@ the same time; a client reconnecting replaces only its own old link. Pairing a n
 the others. Messages, call-log rows, status and call events go to every connected client.
 
 Call audio has exactly one **owner**:
-- the client that sends `call.answer` or `call.dial` for the call, or `call.take` later;
-- if nobody claimed it (answered on the Android phone itself): the client used most recently, else the iPhone.
+- the client that sends `call.answer` or `call.dial` for the call, or `call.take` later (remembered by the client's
+  key while calls go on, so a client that reconnects mid-call gets the audio back);
+- nobody when no client claimed it (answered or dialed on the Android phone itself, or with a headset or car connected
+  to it): the call stays on the Android phone, nothing is bridged and nothing there is muted. Clients see it as
+  `elsewhere` with `where` = the Android phone's name and may `call.take` it. (Before 1.2.2 such a call went to the
+  client used most recently, else the iPhone, which left a call taken on the phone without audio there.)
 
 `audio.start` / `audio.stop` and audio frames go to the owner only; audio frames from other clients are
 ignored. Every `call.state` is sent per client: for non-owners, an answered / dialing / held call carries
-`elsewhere: true, where: <owner name>`. A client that receives `elsewhere` ends its local ringing or call
+`elsewhere: true, where: <owner name>` (the Android phone's name when the call has no owner, or when the phone gives
+no call audio: `helper.audio` "blocked"). A client that receives `elsewhere` ends its local ringing or call
 (CallKit reason *answered elsewhere*) and offers **Move here**, which sends `call.take`. On a change of
 owner the peripheral sends `audio.stop` to the old owner, `audio.start` to the new one, and the current
 state of every call to all clients.
@@ -298,15 +314,16 @@ Frames: `type: u8 ‖ len: u32 ‖ payload`.
 | type | Dir | Payload |
 |---|---|---|
 | 1 HELLO | H→A | JSON `{pid, uid, sdk, version, apk}` (`apk`: the helper's class path; a different one means a stale helper, relaunched) |
-| 2 START | A→H | JSON `{rate, capture, inject, injectMs?, testLine?, mic?, micMute?, micCheck?, redirect?}` (`auto` tries every method in order; `injectMs`: cap of the uplink playback buffer, default 40; `mic`: auto \| mute \| open, absent: "mute" when `micMute` is true, else "auto"; `micMute`: with "mute", mute the phone's own microphone this call, default false; `micCheck`: then watch the uplink, default true; `redirect`: `{mode: verdict}` what this phone model showed of the redirect modes, so a failed one is skipped) |
+| 2 START | A→H | JSON `{id?, rate, capture, inject, injectMs?, testLine?, mic?, micMute?, micCheck?, redirect?, muteMemory?, active?}` (`id`: echoed in this start's INFO; `auto` tries every method in order, but nothing opens before the phone is in a call's audio mode (or the call has been active 3 s), and the interception API refusing for the mode is retried quietly meanwhile; `injectMs`: cap of the uplink playback buffer, default 40; `mic`: auto \| mute \| open, absent: "mute" when `micMute` is true, else "auto"; `micMute`: with "mute", mute the phone's own microphone this call, default false; `micCheck`: then watch the uplink, default true; `redirect`: `{mode: verdict}` what this phone model showed of the redirect modes, so a failed or unverified one is skipped; `muteMemory`: what this phone model showed of the mic mute, ok \| muted-locally-fixed \| unverified (its VOICE_UPLINK shows nothing) or null; `active`: the call is already active, default true) |
 | 3 STOP | A→H | – |
 | 4 DOWN | H→A | PCM 16-bit LE mono, 20 ms |
 | 5 UP | A→H | PCM 16-bit LE mono, 20 ms |
-| 6 INFO | H→A | JSON `{capture, inject, routed, earpiece, silent, silence, telecomMicMute, uplink, mic, errors}` at a call's audio start (`silence`: how the phone's own earpiece / mic are silenced: samsung, qualcomm, mediatek, other; `silent`: full, earpiece, none; `telecomMicMute` true: the app mutes the mic through Telecom, never otherwise), `{uplink: {state, micMuted, telecomMicMute, vendorMicMute, unmuted, note, local}}` whenever the mic mute or the uplink check changes (`state` as status `helper.uplink`; `unmuted`: the check undid the mute), `{mic: {setting, path, mode?, state?, verdict?, reasserts?, note}}` with the start INFO and whenever the redirect mode changes (`path` off \| muted \| open; `state` waiting \| on \| reverted \| stopped; `verdict` as in `selftest.result`, for the app to remember; the `uplink` report then has `for: "redirect"`, else `for: "mute"`), or `{stats}` at stop; replies `{probe}`, `{selftest}`, `{net}` (a reply after its request timed out is dropped) |
+| 6 INFO | H→A | JSON `{id?, capture, inject, routed, routedToCall?, openWaitMs?, openMode?, active?, earpiece, silent, silence, telecomMicMute, uplink, mic, errors}` once a call's audio paths are open (`routedToCall`: the track plays into the call's uplink; `openWaitMs`: how long the paths waited for the call's audio mode; `silence`: how the phone's own earpiece / mic are silenced: samsung, samsung_qualcomm, qualcomm, mediatek, other; `silent`: full, earpiece, none; `telecomMicMute` true: the app mutes the mic through Telecom, never otherwise), `{uplink: {state, micMuted, telecomMicMute, vendorMicMute, unmuted, blind?, kept?, note, local}}` whenever the mic mute or the uplink check changes (`state` as status `helper.uplink`; `unmuted`: the check undid the mute; `blind`: the check heard the client neither with the mute nor without it; `kept`: the mute was put back anyway, the vendor's key being known to keep the injected voice), `{mic: {setting, path, layer?, mode?, state?, verdict?, reasserts?, note}}` with the start INFO and whenever the redirect mode changes (`path` off \| muted \| open; `layer` with the "auto" setting: redirect \| vendor-mute \| open; `state` waiting \| on \| reverted \| stopped; `verdict` as in `selftest.result`, for the app to remember; the `uplink` report then has `for: "redirect"`, else `for: "mute"`), `{path: {event, note}}` when a call's path looks dead (`event` down-nothing \| down-zeros \| up-stuck: the downlink capture delivers nothing or only zeros, or the phone takes nothing from the injection, while the call is active), or `{stats}` at stop; replies `{probe}`, `{selftest}`, `{net}` (a reply after its request timed out is dropped) |
 | 7 PROBE | A→H | – (answers INFO `{probe: …}`) |
 | 8 QUIT | A→H | – (helper exits) |
 | 9 SELFTEST | A→H | – or JSON `{methods?, micMute?, redirect?}` (answers INFO `{selftest: …}`; needs a live call; `micMute`: the vendor's mic key is on during the test; without it the redirect modes are tested too unless `redirect` is false) |
-| 15 LOCAL | A→H | JSON `{mic?, micMute, micCheck?, redirect?}`: the mic setting changed during a bridged call (answers INFO `{uplink, mic}`) |
+| 15 LOCAL | A→H | JSON `{mic?, micMute, micCheck?, redirect?, muteMemory?}`: the mic setting changed during a bridged call (answers INFO `{uplink, mic}`) |
+| 16 CALL | A→H | JSON `{active}`: the bridged call became active (connected) or stopped being so (hold, end); the helper drops uplink frames while it is not active and starts the uplink afresh when it becomes active |
 | 11 NET | A→H | JSON `{what?, on?, sub?, …}` (network switches; no `what` only reads; answers INFO `{net: …}`) |
 | 10 AUTH | A→H | 16-byte nonce ‖ 32-byte HMAC (see above) |
 | 12 CHALLENGE | H→A | 16-byte nonce |

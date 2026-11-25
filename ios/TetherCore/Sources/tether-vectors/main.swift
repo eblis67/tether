@@ -65,7 +65,7 @@ let pcm: [Int16] = [0, 1, -1, 100, -100, 1000, -1000, 8000, -8000, 32767, -32768
 let out: [String: Any] = [
     "version": 1,
     "handshakes": [handshakeVector(mode: .pair), handshakeVector(mode: .resume)],
-    "pairing_code": ["string": pairing.string, "S_P": pairing.peripheralKey.hex,
+    "pairing_code": ["string": pairing.string, "link": pairing.link, "S_P": pairing.peripheralKey.hex,
                      "token": pairing.token.hex, "name": pairing.deviceName],
     "g711": ["pcm": pcm.map(Int.init), "ulaw": G711.encode(pcm).hex,
              "decoded": G711.decode(G711.encode(pcm)).map(Int.init)],

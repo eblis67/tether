@@ -34,7 +34,8 @@ class LinkService : Service() {
     override fun onCreate() {
         super.onCreate()
         app = application as TetherApp
-        startForeground(NOTIF_LINK, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIF_LINK, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        else startForeground(NOTIF_LINK, notification())   // Android 8-9: no service types
         running = this
         app.hub.startBackground()
         app.hub.addListener(uiListener)

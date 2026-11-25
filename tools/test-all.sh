@@ -37,6 +37,8 @@ step() {   # step <name> <command...>: runs it, keeps going on failure, prints t
 step "whitespace (git diff --check)" git diff --check HEAD
 step "script syntax" sh -c 'sh -n tools/dbg.sh && sh -n tools/lib.sh && zsh -n tools/reinstall-ios.sh && zsh -n tools/device-test.sh && zsh -n tools/check-private.sh && zsh -n tools/release.sh'
 step "privacy scan (tracked changes)" tools/check-private.sh
+step "AltStore source (generate + validate)" python3 tools/altstore-source.py selftest
+step "docs links" python3 tools/check-docs-links.py
 
 gradle_tasks=(:core:testDebugUnitTest :app:testDebugUnitTest :helper:testDebugUnitTest :client:testDebugUnitTest)
 (( quick )) || gradle_tasks+=(:app:lintRelease :client:lintRelease :app:assembleRelease :helper:assembleRelease :client:assembleRelease)
@@ -51,8 +53,9 @@ fi
 if (( ios )) && [[ $(uname) == Darwin ]] && command -v xcodebuild >/dev/null; then
   if command -v xcodegen >/dev/null; then
     step "iOS project (xcodegen)" sh -c 'cd ios && xcodegen generate --quiet'
-    step "iOS app build (device, unsigned)" sh -c "cd ios && xcodebuild -project Tether.xcodeproj -scheme Tether \
-      -destination 'generic/platform=iOS' -derivedDataPath build-gen -skipMacroValidation CODE_SIGNING_ALLOWED=NO build -quiet"
+    # Release, as the published IPA is built (the unit tests build Debug): code behind #if DEBUG cannot hide a break.
+    step "iOS app build (Release, device, unsigned)" sh -c "cd ios && xcodebuild -project Tether.xcodeproj -scheme Tether \
+      -configuration Release -destination 'generic/platform=iOS' -derivedDataPath build-gen -skipMacroValidation CODE_SIGNING_ALLOWED=NO build -quiet"
     if grep -q 'TetherTests' ios/project.yml; then
       # A throw-away simulator, so the tests never touch a simulator you use.
       sim_type=$(xcrun simctl list devicetypes | grep -m1 -oE 'iPhone [0-9]+ \(' | sed 's/ ($//')

@@ -75,21 +75,39 @@ jobs:
         working-directory: examples/kotlin-jvm
         run: ./gradlew --console=plain run | tee out.txt && grep -qx ok out.txt
 
+  # One macOS job for everything Apple: GitHub's macOS runners are scarce at busy times ("not acquired by Runner"),
+  # so CI asks for one per push instead of two.
   apple:
-    name: Swift package and iPhone app
-    runs-on: macos-latest
-    timeout-minutes: 45
+    name: Apple (Swift SDK, docs, examples, iPhone app)
+    runs-on: macos-15
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      - name: Swift package TetherCore
-        working-directory: ios/TetherCore
+      - name: Swift SDK tests (the root package runs the same tests as ios/TetherCore)
         run: swift test
+      - name: Builds for iOS, tvOS, watchOS, visionOS (each one whose SDK the runner has)
+        run: |
+          for p in iOS:iphoneos tvOS:appletvos watchOS:watchos visionOS:xros; do
+            name=${p%%:*}; sdk=${p##*:}
+            if ! xcodebuild -showsdks | grep -q -- "-sdk $sdk"; then echo "$name: SDK not installed, skipped"; continue; fi
+            xcodebuild -scheme Tether -destination "generic/platform=$name" -derivedDataPath build-sdk \
+              -skipMacroValidation build -quiet
+          done
+      - name: Documentation (DocC)
+        run: swift package generate-documentation --target TetherCore --warnings-as-errors
+      - name: Example Loopback
+        working-directory: examples/swift/Loopback
+        run: swift run
+      - name: Example MacCentral (build only, it needs Bluetooth)
+        working-directory: examples/swift/MacCentral
+        run: swift build
       - name: XcodeGen
         run: brew install xcodegen && cd ios && xcodegen generate --quiet
-      - name: iPhone app build (unsigned)
+      # Release, as the published IPA is built: the unit tests below build Debug, so both configurations are checked.
+      - name: iPhone app build (Release, unsigned)
         working-directory: ios
         run: >
-          xcodebuild -project Tether.xcodeproj -scheme Tether -destination 'generic/platform=iOS'
+          xcodebuild -project Tether.xcodeproj -scheme Tether -configuration Release -destination 'generic/platform=iOS'
           -derivedDataPath build-gen -skipMacroValidation CODE_SIGNING_ALLOWED=NO build -quiet
       - name: iPhone app unit tests
         working-directory: ios
@@ -113,31 +131,6 @@ jobs:
         working-directory: examples/swift/Loopback
         run: swift run
 
-  swift-sdk-apple:
-    name: Swift SDK on Apple platforms, docs, examples
-    runs-on: macos-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - name: Swift SDK (root package), tests
-        run: swift test
-      - name: Builds for iOS, tvOS, watchOS, visionOS (each one whose SDK the runner has)
-        run: |
-          for p in iOS:iphoneos tvOS:appletvos watchOS:watchos visionOS:xros; do
-            name=${p%%:*}; sdk=${p##*:}
-            if ! xcodebuild -showsdks | grep -q -- "-sdk $sdk"; then echo "$name: SDK not installed, skipped"; continue; fi
-            xcodebuild -scheme Tether -destination "generic/platform=$name" -derivedDataPath build-sdk \
-              -skipMacroValidation build -quiet
-          done
-      - name: Documentation (DocC)
-        run: swift package generate-documentation --target TetherCore --warnings-as-errors
-      - name: Example Loopback
-        working-directory: examples/swift/Loopback
-        run: swift run
-      - name: Example MacCentral (build only, it needs Bluetooth)
-        working-directory: examples/swift/MacCentral
-        run: swift build
-
   hygiene:
     name: Whitespace, scripts, privacy patterns
     runs-on: ubuntu-latest
@@ -147,4 +140,5 @@ jobs:
       - run: git diff --check $(git hash-object -t tree /dev/null) HEAD -- . ':!ios/TetherCore/Sources/COpus'
       - run: sh -n tools/dbg.sh && sh -n tools/lib.sh
       - run: sudo apt-get install -y zsh >/dev/null && zsh -n tools/reinstall-ios.sh && zsh -n tools/device-test.sh && zsh -n tools/test-all.sh && zsh -n tools/release.sh
+      - run: python3 tools/altstore-source.py selftest && python3 tools/check-docs-links.py
       - run: zsh tools/check-private.sh --all

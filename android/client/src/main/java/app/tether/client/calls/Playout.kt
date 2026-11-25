@@ -8,10 +8,13 @@ import java.util.Locale
  *   re-buffering; only ~100 ms without audio un-primes it;
  * - the level is steered in quiet frames (inaudible): above [target] a quiet frame is written short (clock drift,
  *   bursts, the delay a gap left behind); below it, while the far clock runs measurably slow, a quiet frame is written
- *   longer. Speech is never cut or stretched; a hard trim only catches a huge burst;
+ *   longer. Speech is never cut or stretched: after a stall (with Bluetooth tethering on, up to ~0.9 s, its frames then
+ *   arriving in one burst) the backlog plays late and its delay goes in the following pauses; only a backlog over
+ *   [MAX_BACKLOG_SECONDS] loses its oldest audio;
  * - [target] follows the spread of frame arrival times over the last ~10 s (up at once, down slowly), grows by 5 ms
  *   with every concealed gap (more after a real underrun) and shrinks after ~3 s clean, never below that spread.
- *   The spread is measured around the far clock's own rate (a drift line), so drift does not widen it.
+ *   The spread is measured around the far clock's own rate (a drift line), so drift does not widen it; a stall's
+ *   burst is left out of it (no buffer covers a stall, and it held the target at its maximum for ~10 s).
  * [push] runs on the decode thread, [pull] on the playback thread.
  */
 class PlayoutBuffer(rate: Int, val hiPercentile: Double = 0.998) {
@@ -19,12 +22,16 @@ class PlayoutBuffer(rate: Int, val hiPercentile: Double = 0.998) {
     val minTarget = (rate * 0.03).toInt()     // 30 ms
     val maxTarget = (rate * 0.12).toInt()     // 120 ms
     @Volatile var target = (rate * 0.04).toInt(); private set   // start at 40 ms
-    private val ring = FloatArray(rate)       // 1 s
+    /** The most audio kept queued (samples, [MAX_BACKLOG_SECONDS]). */
+    val maxBacklog = (rate * MAX_BACKLOG_SECONDS).toInt()
+    private val ring = FloatArray((rate * (MAX_BACKLOG_SECONDS + 0.25)).toInt())   // the ceiling plus a frame never overwrites
     private var r = 0; private var w = 0; private var count = 0
     private val lock = Any()
     private var primed = false
     @Volatile var underruns = 0; private set
     @Volatile var trimmed = 0; private set
+    /** Of [trimmed], samples that were not quiet frames (a backlog over [MAX_BACKLOG_SECONDS] cut from its oldest end). */
+    @Volatile var speechTrimmed = 0; private set
     @Volatile var concealedSamples = 0; private set
     /** Samples added by writing quiet frames longer (the level was below target). */
     @Volatile var inserted = 0; private set
@@ -49,6 +56,10 @@ class PlayoutBuffer(rate: Int, val hiPercentile: Double = 0.998) {
     private var firstArrival = 0L
     private var startupArrivals = 100
     private var expectedSamples = 0
+    // Stall detection (decode thread): the last frame's time and delay in the window, and the delay before a stall
+    // while its burst is still arriving.
+    private var lastNoted = 0.0; private var lastDelay = 0.0
+    private var stallBase: Double? = null
     /** The target the arrival statistics ask for (samples); [target] never shrinks below it and jumps up to it. */
     @Volatile var jitterFloor = (rate * 0.03).toInt(); private set
     /** Lost frames filled in by the decoder's concealment (pushed with `concealed`). */
@@ -101,9 +112,15 @@ class PlayoutBuffer(rate: Int, val hiPercentile: Double = 0.998) {
             if (add > 0) writeLocked(f, add)
             var live = before + n + add
             var skip = f.size - n
-            if (live > tgt + maxTarget) { skipLocked(live - tgt); skip += live - tgt; live = tgt }   // a huge burst: cut now
+            // A backlog beyond the ceiling (a stall of most of a second, then its frames in one burst) loses its oldest
+            // audio. Below it nothing is cut from speech: every word still comes, a little late; the delay goes again
+            // in the next pauses (quiet frames written short, above).
+            var cut = 0
+            val ceiling = maxOf(tgt + maxTarget, maxBacklog)
+            if (live > ceiling) { cut = live - ceiling; skipLocked(cut); skip += cut; live = ceiling }
             if (!primed && live >= tgt) primed = true
             trimmed += skip
+            speechTrimmed += cut
             inserted += add
         }
     }
@@ -165,11 +182,21 @@ class PlayoutBuffer(rate: Int, val hiPercentile: Double = 0.998) {
     private fun noteArrival(samples: Int, missing: Int, at: Long) {
         // The first ~2 s are no measure of the link: the connection interval is still being shortened for the call.
         if (startupArrivals > 0) { startupArrivals--; return }
-        if (firstArrival == 0L || at < firstArrival) { firstArrival = at; expectedSamples = 0; delayCount = 0; delayNext = 0 }
+        if (firstArrival == 0L || at < firstArrival) { firstArrival = at; expectedSamples = 0; delayCount = 0; delayNext = 0; lastNoted = 0.0; stallBase = null }
         expectedSamples += missing * samples
         val t = (at - firstArrival).toDouble() / 1e6
         val d = t - expectedSamples.toDouble() * 1000 / rate.toDouble()
         expectedSamples += samples
+        // A stall far longer than any buffer could cover (no frame for over STALL_MS, then its frames in one burst)
+        // says nothing about the link's usual spread: its late frames are left out of the window.
+        if (lastNoted > 0 && t - lastNoted > STALL_MS) stallBase = lastDelay
+        lastNoted = t
+        stallBase?.let { base ->
+            // The burst: every frame later than the spread already covers (it ends with the first one in time).
+            if (d > base + jitterFloor * 1000.0 / rate) return
+            stallBase = null
+        }
+        lastDelay = d
         delays[delayNext] = d
         times[delayNext] = t
         delayNext = (delayNext + 1) % delays.size
@@ -209,6 +236,10 @@ class PlayoutBuffer(rate: Int, val hiPercentile: Double = 0.998) {
     companion object {
         /** A far clock slower than this (ppm) is made up for in quiet frames; the 10 s estimate wanders by up to ~800 ppm. */
         const val SLOW_CLOCK_PPM = 3000.0
+        /** No frame for this long (ms) is a stall, not jitter (the arrival statistics leave its burst out). */
+        const val STALL_MS = 250.0
+        /** The most audio kept queued (s): beyond it the oldest is cut, speech or not. */
+        const val MAX_BACKLOG_SECONDS = 0.8
         /** Room beyond the arrival spread: the playback thread takes 10 ms at a time. */
         const val MARGIN_MS = 10.0
 

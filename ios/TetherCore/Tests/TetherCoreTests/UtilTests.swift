@@ -21,6 +21,22 @@ final class UtilTests: XCTestCase {
     }
 
     /// A scanned code that is damaged or of another shape is refused, never half-used.
+    func testPairingLinkForms() {
+        let c = code()
+        XCTAssertTrue(c.link.hasPrefix("tether://pair?c="))
+        XCTAssertEqual(PairingCode.parse(c.link), c)
+        XCTAssertEqual(PairingCode.parse(" " + c.link + "\n"), c)
+        let body = String(c.string.dropFirst(PairingCode.prefix.count))
+        XCTAssertEqual(PairingCode.parse("tether:pair?c=" + body), c)
+        XCTAssertEqual(PairingCode.parse("TETHER://PAIR?v=2&c=" + body), c)
+        XCTAssertEqual(PairingCode.parse(URL(string: c.link)!.absoluteString), c)
+        XCTAssertTrue(PairingCode.isPairLink(c.link))
+        XCTAssertFalse(PairingCode.isPairLink(c.string))
+        XCTAssertFalse(PairingCode.isPairLink("tether://dial?number=1"))
+        XCTAssertNil(PairingCode.parse("tether://pair?c=" + body + ".x"))
+        XCTAssertNil(PairingCode.parse("tether://pair"))
+    }
+
     func testPairingCodeRejectsDamage() {
         let c = code()
         let parts = c.string.dropFirst(PairingCode.prefix.count).split(separator: ".", omittingEmptySubsequences: false).map(String.init)

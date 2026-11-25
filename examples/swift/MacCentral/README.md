@@ -7,7 +7,7 @@ app uses (discovery, L2CAP with a GATT fallback, handshake, keep-alive, reconnec
 
 ```sh
 swift build
-.build/debug/MacCentral pair "tether1:…" 60     # the pairing code as text (see below)
+.build/debug/MacCentral pair "tether://pair?c=…" 60     # the pairing code as text (see below)
 .build/debug/MacCentral run 120                 # later: reconnect with the stored identity
 .build/debug/MacCentral unpair                  # forget the phone
 ```
@@ -28,8 +28,8 @@ pairing with My phone
 
 Notes:
 
-- The pairing code is the text inside the QR code on the phone's Tether › Pair screen (`tether1:…`); read it with
-  any QR scanner and paste it.
+- The pairing code is the text inside the QR code on the phone's Tether › Pair screen (`tether://pair?c=…` since
+  1.2; the older `tether1:…` form works too); read it with any QR scanner and paste it.
 - macOS asks once for Bluetooth access. The binary carries its usage string in an embedded Info.plist (see
   `Package.swift`); when you start it from a terminal, the permission is asked for (and listed under) that terminal app.
 - The client identity (a P-256 key and the paired phone's public key) is kept in
@@ -43,5 +43,5 @@ Notes:
 In your own package, depend on the SDK by URL instead of the relative path in this example's `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/amirwmr/tether", from: "1.1.0")
+.package(url: "https://github.com/amirwmr/tether", from: "1.2.0")
 ```

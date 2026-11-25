@@ -11,7 +11,7 @@ Android phone, over an end-to-end encrypted Bluetooth link. No server, no accoun
   <a href="https://github.com/amirwmr/tether/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amirwmr/tether/ci.yml?branch=main&label=CI"></a>
   <a href="https://github.com/amirwmr/tether/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/amirwmr/tether?include_prereleases&sort=semver"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <img alt="Android 10+" src="https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white">
+  <img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-3DDC84?logo=android&logoColor=white">
   <img alt="iOS 16+" src="https://img.shields.io/badge/iOS-16%2B-000000?logo=apple&logoColor=white">
   <img alt="SDKs: macOS and Linux" src="https://img.shields.io/badge/SDKs-macOS%20%7C%20Linux-555555">
   <br>
@@ -23,12 +23,22 @@ Android phone, over an end-to-end encrypted Bluetooth link. No server, no accoun
 
 <p align="center">
   <a href="#download">Download</a> ·
-  <a href="docs/SETUP.md">Set up</a> ·
+  <a href="docs/INSTALL.md">Install guide</a> ·
+  <a href="docs/FAQ.md">FAQ</a> ·
+  <a href="docs/fa/README.md">فارسی</a> ·
   <a href="#build-on-tether">Build on Tether</a> ·
   <a href="#documentation">Docs</a> ·
   <a href="docs/ROADMAP.md">Roadmap</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
+
+<div dir="rtl" lang="fa">
+
+**فارسی:** تتر تماس‌ها، پیامک‌ها، مخاطبین و تاریخچهٔ تماس گوشی اندرویدیِ سیم‌کارت‌دار شما را روی آیفون (یا یک گوشی
+اندرویدی دیگر) می‌آورد؛ از طریق بلوتوث، با رمزنگاری سرتاسری، بدون سرور و بدون حساب کاربری. برای نصب به مک نیاز
+ندارید. [راهنمای کامل فارسی: دانلود، نصب، راه‌اندازی](docs/fa/README.md) · [پرسش‌های رایج](docs/fa/faq.md)
+
+</div>
 
 ## What it is, and why
 
@@ -106,24 +116,31 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); the wire format is [protoc
 
 ## Download
 
-Builds are published on [GitHub Releases](https://github.com/amirwmr/tether/releases):
+**Step-by-step guide: [docs/INSTALL.md](docs/INSTALL.md)** · [راهنمای فارسی](docs/fa/README.md) · [FAQ](docs/FAQ.md)
 
-| File | For |
+Get the files from the [latest release](https://github.com/amirwmr/tether/releases/latest):
+
+| File | Install it on |
 | --- | --- |
-| Tether APK | The Android phone with the SIM cards (becomes its default phone app) |
-| Tether Client APK | A second Android phone used as a client |
-| Unsigned IPA | iPhone / iPad, for sideloading: sign it with your own Apple account (free accounts expire after 7 days) |
+| `Tether-A54-<version>.apk` | **The Android phone with the SIM cards** (any Android 8+ phone; it becomes the default phone app). Everyone needs this one |
+| `Tether-<version>-unsigned.ipa` | **Your iPhone or iPad** (iOS 16+), sideloaded with your own Apple ID: [SideStore, AltStore, Sideloadly or TrollStore](docs/INSTALL.md#4-install-the-iphone-app). No Mac needed |
+| `Tether-Client-<version>.apk` | **A second Android phone** in your hand instead of an iPhone |
 
-Prefer to build it yourself? See [Quick start](#quick-start) and [docs/BUILD.md](docs/BUILD.md).
+**AltStore / SideStore source** (add it once, then install and update from the app):
+`https://github.com/amirwmr/tether/releases/latest/download/altstore.json`
+
+With a free Apple ID the iPhone app has to be refreshed every 7 days (data and pairing are kept). Prefer to build it
+yourself? See [Quick start](#quick-start) and [docs/BUILD.md](docs/BUILD.md).
 
 ## What you need
 
 | | |
 | --- | --- |
-| Android phone | Android 10 or later with Bluetooth LE advertising. Call audio needs Android 11 or later (full support on 13+) and a build that lets the shell user capture call audio; see [features by Android version](docs/devices/android-versions.md). Tether becomes its default phone app. |
+| Android phone | Android 8.0 or later with Bluetooth LE advertising (Android 8–9 link over GATT only). Call audio needs Android 11 or later (full support on 13+) and a build that lets the shell user capture call audio; see [features by Android version](docs/devices/android-versions.md). Tether becomes its default phone app. |
 | iPhone or iPad | iOS 16 or later. |
 | Or a second Android phone | Android 10 or later with Bluetooth LE, for the Android client. |
-| Mac | Xcode with an Apple account (free is enough), [XcodeGen](https://github.com/yonaskolb/XcodeGen), JDK 17 and the Android SDK, to build both apps. |
+| A computer | Only for the iPhone, once: a Mac or a Windows PC to set up the sideloading tool. To build the apps yourself: a Mac with Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen), JDK 17 and the Android SDK. |
+| Not possible | An iPhone as the SIM phone: iOS lets no app control the iPhone's own calls and texts. |
 
 ## Quick start
 
@@ -159,6 +176,7 @@ Built something on Tether? Open a pull request that adds it here.
 
 | | |
 | --- | --- |
+| [INSTALL.md](docs/INSTALL.md) · [FAQ.md](docs/FAQ.md) · [فارسی](docs/fa/README.md) | Download and install without building, sideloading the iPhone app, first call; common questions |
 | [BUILD.md](docs/BUILD.md) | Building and installing both apps; Apple accounts, the 7-day signature, team and bundle id |
 | [SETUP.md](docs/SETUP.md) | First run on both phones, permissions, Wireless debugging, pairing, the Link switches |
 | [USAGE.md](docs/USAGE.md) | Calls, messages, contacts, internet sharing, Share VPN, notifications |
@@ -184,8 +202,10 @@ what you see (open an issue with your phone model, Android version and the Link 
 | iPad (iOS 16+) | Builds and lays out in the simulator; untested on a device |
 | Other Samsung phones, Android 13+ | Expected to work like the A54, including taking the phone's own microphone and earpiece out of a bridged call (redirect audio mode, checked during each call; see [Troubleshooting](docs/TROUBLESHOOTING.md#the-other-side-cannot-hear-me)) |
 | Other Android 13+ phones | Calls, messages, contacts and switches expected to work. Call audio works only if the build lets the shell user use the call-audio interception API; the phone's own earpiece is muted during a bridged call (voice-call stream, or each vendor's own audio controls; from their sources, untested on devices; the Link tab shows "Android phone silent"); its microphone is taken out of the call with Android's redirect audio mode where the phone allows it (checked during each call and by the self-test), else it stays on |
+| Samsung Galaxy A73 5G, Android 16 (user report, #13) | Calls, texts and switches work; this firmware gives Tether no call audio (the capture reads silence, the injection is not routed to the call), so calls stay on the phone (from 1.2.2 automatically) |
 | Android 11-12 | Everything, with call audio on a best-effort path (voice-call capture); untested |
 | Android 10 | Everything except call audio; the helper needs the TCP adb path; untested |
+| Android 8-9 | Everything except call audio; link over GATT only; the helper only via TCP adb; tested in the emulator, untested on devices |
 | Single-SIM phones | Expected to work; SIM choices are hidden |
 | Phones without Wi-Fi hotspot or Bluetooth tethering | Those switches are hidden |
 | Bluetooth tethering between the same two phones | Works; the link then runs over its GATT transport (see [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)) |
@@ -205,7 +225,10 @@ Bluetooth's own pairing is not used or trusted. Nothing leaves the two devices. 
   (protocol §5.1); that combination is untested on devices.
 - Bluetooth range: the phones need to stay within a few metres.
 - MMS, RCS, group messages, video calls and visual voicemail are not supported.
-- iOS apps signed with a free Apple account expire after 7 days; rebuild with `tools/reinstall-ios.sh`.
+- iOS apps signed with a free Apple account expire after 7 days: refresh them in SideStore / AltStore / Sideloadly,
+  or rebuild with `tools/reinstall-ios.sh`.
+- Texts cannot appear in the iPhone's Messages app (iOS allows no app to do that); calls can optionally appear in the
+  Phone app's Recents. See the [FAQ](docs/FAQ.md#can-it-fully-integrate-with-the-iphones-phone-and-messages-apps).
 
 ## Legal
 
@@ -222,7 +245,7 @@ translations are welcome too: start with [CONTRIBUTING.md](CONTRIBUTING.md) and 
 
 ## Community and support
 
-Questions and ideas go to [Discussions](https://github.com/amirwmr/tether/discussions), bugs to
+Questions go to [a question issue](https://github.com/amirwmr/tether/issues/new?template=question.yml) (after the [FAQ](docs/FAQ.md)), ideas and bugs to
 [Issues](https://github.com/amirwmr/tether/issues/new/choose); see [SUPPORT.md](SUPPORT.md) for what to include.
 Security problems: privately, as described in [SECURITY.md](SECURITY.md).
 

@@ -12,7 +12,7 @@ plugins {
 group = "com.github.amirwmr.tether"
 // The release version comes from the repository's VERSION file; without one this is a snapshot.
 version = rootProject.file("../VERSION").takeIf { it.exists() }?.readText()?.trim()?.takeIf { it.isNotEmpty() }
-    ?: "1.1.0-SNAPSHOT"
+    ?: "1.2.0-SNAPSHOT"
 
 kotlin {
     jvmToolchain(17)

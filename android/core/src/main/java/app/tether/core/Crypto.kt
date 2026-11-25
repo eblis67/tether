@@ -283,17 +283,41 @@ class CentralHandshake(
     }
 }
 
-/** QR payload `tether1:<S_P>.<token>.<name>`. */
+/**
+ * Pairing code `tether1:<S_P>.<token>.<name>`; the QR code holds its link form `tether://pair?c=<S_P>.<token>.<name>`
+ * (since 1.2: the iPhone's Camera app offers to open it in the app). [parse] accepts both.
+ */
 data class PairingCode(val peripheralKey: ByteArray, val token: ByteArray, val deviceName: String) {
-    fun encode() = PREFIX + Bytes.b64url(peripheralKey) + "." + Bytes.b64url(token) + "." +
+    private fun body() = Bytes.b64url(peripheralKey) + "." + Bytes.b64url(token) + "." +
         Bytes.b64url(deviceName.toByteArray(Charsets.UTF_8))
+
+    fun encode() = PREFIX + body()
+
+    /** The link form, for the QR code. */
+    fun link() = LINK_PREFIX + body()
 
     companion object {
         const val PREFIX = "tether1:"
+        const val LINK_PREFIX = "tether://pair?c="
+
+        fun isPairLink(s: String): Boolean {
+            val t = s.trim().lowercase()
+            return t.startsWith("tether://pair?") || t.startsWith("tether:pair?") || t.startsWith("tether://pair/?")
+        }
+
         fun parse(s: String): PairingCode? {
             val t = s.trim()
+            if (isPairLink(t)) {
+                val q = t.substringAfter('?')
+                val c = q.split('&').map { it.split('=', limit = 2) }.firstOrNull { it.size == 2 && it[0] == "c" } ?: return null
+                return parseBody(try { java.net.URLDecoder.decode(c[1], "UTF-8") } catch (e: IllegalArgumentException) { return null })
+            }
             if (!t.startsWith(PREFIX)) return null
-            val parts = t.removePrefix(PREFIX).split(".")
+            return parseBody(t.removePrefix(PREFIX))
+        }
+
+        private fun parseBody(body: String): PairingCode? {
+            val parts = body.split(".")
             if (parts.size != 3) return null
             return try {
                 val k = Bytes.unb64url(parts[0])

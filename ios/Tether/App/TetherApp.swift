@@ -55,9 +55,25 @@ final class Router {
         let number: String
     }
 
-    /// tel: / telprompt: (as the default calling app) and tether:// links. Any web page can open these, so they
-    /// never dial by themselves: the number is shown and the owner taps Call.
+    /// A pairing link (`tether://pair?c=…`, the Android phone's QR code opened from the Camera app) waiting for
+    /// the owner's tap ("Pair with …?").
+    var pairRequest: PairRequest?
+
+    struct PairRequest: Identifiable, Equatable {
+        let id = UUID()
+        let code: PairingCode
+    }
+
+    /// tel: / telprompt: (as the default calling app), tether:// call links and tether://pair links. Any web page
+    /// can open these, so they never dial or pair by themselves: the owner confirms.
     func open(url: URL) {
+        if PairingCode.isPairLink(url.absoluteString) {
+            tab = .link
+            // Never log the link: it holds the pairing token.
+            if let code = PairingCode.parse(url.absoluteString) { pairRequest = PairRequest(code: code) }
+            else { AppModel.shared.lastError = String(localized: "That pairing code is incomplete. Show a new code on the Android phone and scan it again.") }
+            return
+        }
         guard let n = DialLink.number(from: url) else { return }
         ask(n)
     }
@@ -126,6 +142,7 @@ struct TetherApp: App {
                 if p == .active {
                     let m = AppModel.shared
                     m.requestSync()
+                    Microphone.askIfNeeded(paired: m.isPaired, foreground: true)
                     // Coming back to the app during a call opens the call screen, like the Phone app.
                     if let c = m.callScreen, c.state != "ended", c.state != "ringing" {
                         m.callScreenDismissed = false

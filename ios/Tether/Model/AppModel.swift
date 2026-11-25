@@ -115,6 +115,8 @@ final class AppModel {
     var remoteCalls: [CallInfo] = []
     /// Figures from the last call's audio (Link tab).
     var lastAudioStats: CallAudio.Stats?
+    /// This iPhone's microphone is refused or delivered only silence in the current / last call (call screen, Link tab).
+    var micWarning: MicWarning?
     private var pendingSms: [Int: Sms] = [:]
 
     private(set) var nameIndex: [String: String] = [:]
@@ -590,6 +592,8 @@ final class AppModel {
             lastError = nil
             requestSync()
             flushOutbox()
+            // Paired and linked: ask for the microphone now, not when a call is answered from the lock screen.
+            Microphone.askIfNeeded(paired: isPaired, foreground: appActive)
         }
         if !s.isConnected && wasConnected {
             extensionPort.isUp = false

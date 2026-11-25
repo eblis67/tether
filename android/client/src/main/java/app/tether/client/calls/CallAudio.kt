@@ -28,7 +28,13 @@ import kotlin.math.sqrt
  * It runs while a local call is up ([engine]); until the far end is heard on an outgoing call, a local ringback plays
  * (on VoLTE the downlink is silent while dialing). The codec comes from the Android phone's audio.start.
  */
-class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (String) -> Unit) : AudioPort {
+class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (String) -> Unit,
+                private val hasMicPermission: () -> Boolean = { true }, private val onMic: () -> Unit = {}) : AudioPort {
+    private val gate = UplinkGate { log(it) }
+    /** The recorder could not be created or did not initialise (cleared when the call audio stops). */
+    @Volatile var recorderFailed = false; private set
+    /** The recorder delivered only digital silence in the connected call (cleared when sound comes or the audio stops). */
+    @Volatile var captureSilent = false; private set
     @Volatile private var codec: VoiceCodec? = null
     @Volatile private var playRate = 16000
     @Volatile private var playout = PlayoutBuffer(16000)
@@ -57,6 +63,14 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
         get() = ringbackOn && !heardRemote
         set(v) { ringbackOn = v; if (v) heardRemote = false }
 
+    /** From the call tracker after every call update: the microphone goes out only while a call here is connected. */
+    fun setUplink(open: Boolean) = gate.set(open)
+
+    /** The microphone permission was just granted (call screen): a recorder that was not started comes up now. */
+    fun micPermissionChanged() = synchronized(lock) {
+        if (running && recThread?.isAlive != true && hasMicPermission()) { recorderFailed = false; startRecorderLocked(playRate, playout) }
+    }
+
     /** A local call is up (dialing, ringing answered, active, held): the engine runs. */
     fun engine(on: Boolean) = synchronized(lock) {
         wanted = on
@@ -81,6 +95,7 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
         if (running) stopLocked()
         codec?.release(); codec = null
         ringbackOn = false; muted = false; seq = 0
+        gate.reset(); captureSilent = false; recorderFailed = false
     }
 
     /** Link thread: the arrival is stamped as the frame comes off the link, not when the decode thread gets to it. */
@@ -165,6 +180,16 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
                 }
             } finally { runCatching { track.stop() }; track.release() }
         }, "call-play").apply { start() }
+        startRecorderLocked(rate, buffer)
+        log("call audio started @ $rate Hz")
+    }
+
+    private fun startRecorderLocked(rate: Int, buffer: PlayoutBuffer) {
+        if (!hasMicPermission()) {
+            log("microphone: permission not granted at call start: the other side will hear nothing")
+            onMic(); return
+        }
+        recorderFailed = false
         recThread = Thread({
             Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
             val frame = rate / 50
@@ -172,8 +197,8 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
             val rec = try {
                 AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, rate, AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT, maxOf(min, frame * 2 * 4))
-            } catch (t: Throwable) { log("microphone not opened: $t"); return@Thread }
-            if (rec.state != AudioRecord.STATE_INITIALIZED) { log("microphone not available"); rec.release(); return@Thread }
+            } catch (t: Throwable) { log("microphone not opened: $t"); recorderFailed = true; onMic(); return@Thread }
+            if (rec.state != AudioRecord.STATE_INITIALIZED) { log("microphone not available"); recorderFailed = true; onMic(); rec.release(); return@Thread }
             val fx = listOfNotNull(
                 if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(rec.audioSessionId) else null,
                 if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(rec.audioSessionId) else null,
@@ -181,6 +206,7 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
             ).onEach { runCatching { it.enabled = true } }
             log("microphone open @ $rate Hz; effects: ${fx.joinToString { it.javaClass.simpleName }.ifEmpty { "none" }}")
             val pcm = ShortArray(frame)
+            val detector = SilenceDetector(rate)
             try {
                 rec.startRecording()
                 while (running && playout === buffer) {
@@ -189,13 +215,27 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
                     if (got < frame) continue
                     val k = codec ?: continue
                     if (k.rate != rate) continue
+                    // Not connected yet (dialing, ringing, held): the microphone is read and dropped, nothing is sent.
+                    when (gate.admit()) {
+                        UplinkGate.Admit.HOLD -> continue
+                        UplinkGate.Admit.OPENED -> detector.reset()
+                        UplinkGate.Admit.SEND -> Unit
+                    }
+                    when (detector.feed(pcm, frame)) {
+                        SilenceDetector.Event.SILENT -> {
+                            captureSilent = true
+                            log("microphone: only silence for ${MicPolicy.SILENT_AFTER_SECONDS.toInt()} s of the connected call (permission granted): the other side hears nothing")
+                            onMic()
+                        }
+                        SilenceDetector.Event.SOUND -> { captureSilent = false; log("microphone: sound again"); onMic() }
+                        null -> Unit
+                    }
                     val input = if (muted) ShortArray(frame) else pcm
                     // `seq` keeps counting across restarts (rate changes): the Android phone drops frames whose number goes back.
                     for (payload in k.encode(input)) send(AudioFrame(k.id, seq++ and 0xffff, payload))
                 }
             } finally { runCatching { rec.stop() }; fx.forEach { runCatching { it.release() } }; rec.release() }
         }, "call-rec").apply { start() }
-        log("call audio started @ $rate Hz")
     }
 
     private fun stopLocked() {
@@ -205,9 +245,9 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
         val b = playout
         val ms = 1000.0 / playRate
         log(String.format(Locale.ROOT, "call audio: playout delay %.0f ms (target %.0f, arrival spread asks %.0f), underruns %d, " +
-            "concealed %.0f ms (%d frames by the decoder), trimmed %.0f ms, added %.0f ms, lost %d of %d frames, " +
+            "concealed %.0f ms (%d frames by the decoder), trimmed %.0f ms (speech %.0f ms), added %.0f ms, lost %d of %d frames, " +
             "arrival jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm",
             b.meanBuffered * ms, b.target * ms, b.jitterFloor * ms, b.underruns, b.concealedSamples * ms, b.concealedFrames,
-            b.trimmed * ms, b.inserted * ms, lost, frames, if (frames > 1) jitterSum / (frames - 1) else 0.0, worstGap, b.driftPpm))
+            b.trimmed * ms, b.speechTrimmed * ms, b.inserted * ms, lost, frames, if (frames > 1) jitterSum / (frames - 1) else 0.0, worstGap, b.driftPpm))
     }
 }

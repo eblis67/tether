@@ -14,15 +14,17 @@ you need on other platforms, with another transport, or on the phone side.
 
 ### The pairing code
 
-The phone shows its public key, a one-time 16-byte token and its name as a QR code, `tether1:<key>.<token>.<name>`
-(base64url):
+The phone shows its public key, a one-time 16-byte token and its name as a QR code. Since 1.2 the QR code holds the
+link form `tether://pair?c=<key>.<token>.<name>` (the iPhone's Camera app opens it in the app); typed or pasted codes,
+and 1.1 phones, use `tether1:<key>.<token>.<name>` (base64url in both):
 
 ```swift
 let phoneKey = TetherPrivateKey()
 let token = randomBytes(16)
 let code = PairingCode(peripheralKey: phoneKey.publicKey.x963Representation,
                        token: token, deviceName: "My phone")
-print(code.string)   // tether1:BMFZ…
+print(code.link)     // tether://pair?c=BMFZ…  (the QR code)
+print(code.string)   // tether1:BMFZ…          (typed or pasted)
 ```
 
 The client parses what it scanned. ``PairingCode/parse(_:)`` returns `nil` for anything damaged or of another shape:

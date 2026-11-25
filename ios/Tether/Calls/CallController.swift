@@ -85,6 +85,8 @@ final class CallController: NSObject {
 
     /// The user's speaker choice for the current call; applied whenever the audio session is (re)activated.
     private var speakerWanted = false
+    /// CallKit has activated the call's audio session (didActivate until didDeactivate).
+    private(set) var audioSessionActive = false
     /// Calls ended from our own call screen: CallKit's end action that follows must not act twice.
     private var endedHere = Set<UUID>()
     /// Android phone call ids hung up here: late updates for them must not bring the call back (TetherCore, tested).
@@ -121,8 +123,10 @@ final class CallController: NSObject {
         let hasReceiver = UIDevice.current.userInterfaceIdiom == .phone
         let options = AudioRoutes.options(inputs: available, hasReceiver: hasReceiver)
         let kind = AudioRoutes.current(outputs: outs.map(\.type))
-        let onSpeaker = AudioRoutes.speakerOn(outputs: outs.map(\.type))
-        speakerWanted = onSpeaker
+        // Before CallKit activates the session the route is not the call's yet: a speaker choice made while connecting
+        // is kept (and shown) until didActivate applies it; resetting it here lost it (#15).
+        speakerWanted = AudioRoutes.speakerWanted(previous: speakerWanted, sessionActive: audioSessionActive, outputs: outs.map(\.type))
+        let onSpeaker = audioSessionActive ? AudioRoutes.speakerOn(outputs: outs.map(\.type)) : speakerWanted
         var screen = model.callScreen
         screen?.speaker = onSpeaker
         screen?.route = kind
@@ -329,6 +333,12 @@ final class CallController: NSObject {
             break
         }
         updateScreen(uuid)
+        updateUplink()
+    }
+
+    /// The microphone goes out only while a call here is connected (CallUplink).
+    private func updateUplink() {
+        model.audio.setUplink(open: CallUplink.open(callStates: info.values.map(\.state)))
     }
 
     /// Reports outgoing progress to CallKit once per stage, and only after CallKit performed the start action.
@@ -361,6 +371,7 @@ final class CallController: NSObject {
     }
 
     private func cleanup(_ uuid: UUID, flash: Bool = true) {
+        defer { updateUplink() }
         answeredHere.remove(uuid); reportedConnecting.remove(uuid); reportedConnected.remove(uuid); mirrored.remove(uuid)
         startPerformed.remove(uuid)
         // Close the call screen at once (another call takes it over if there is one).
@@ -516,19 +527,24 @@ final class CallController: NSObject {
 }
 
 extension CallController: CXProviderDelegate {
+    // The provider calls these on the main queue (setDelegate(self, queue: nil)), in CallKit's order. They run right
+    // here, on the main actor, not in a Task: a Task per callback could run didDeactivate before the didActivate that
+    // came first, or an action after the reset that followed it (#15).
+
     nonisolated func providerDidReset(_ provider: CXProvider) {
-        Task { @MainActor in
+        MainActor.assumeIsolatedCompat {
             self.uuids.removeAll(); self.cids.removeAll(); self.lastState.removeAll(); self.info.removeAll()
             self.pendingOutgoing = nil; self.mirrored.removeAll(); self.answeredHere.removeAll()
             self.reportedConnecting.removeAll(); self.reportedConnected.removeAll(); self.startPerformed.removeAll()
             self.remote.removeAll(); self.hungUp.reset(); self.endedHere.removeAll()
+            self.audioSessionActive = false; self.speakerWanted = false
             self.model.callScreen = nil
             self.model.audio.stop()
         }
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
-        Task { @MainActor in
+        MainActor.assumeIsolatedCompat {
             self.performStart(action.callUUID, number: action.handle.value)
             action.fulfill()
             if self.reportedConnecting.insert(action.callUUID).inserted {
@@ -539,11 +555,11 @@ extension CallController: CXProviderDelegate {
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
-        Task { @MainActor in self.performAnswer(action.callUUID); action.fulfill() }
+        MainActor.assumeIsolatedCompat { self.performAnswer(action.callUUID); action.fulfill() }
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
-        Task { @MainActor in
+        MainActor.assumeIsolatedCompat {
             // Already done when the end came from our own screen.
             if self.endedHere.remove(action.callUUID) == nil { self.performEnd(action.callUUID) }
             action.fulfill()
@@ -551,35 +567,47 @@ extension CallController: CXProviderDelegate {
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
-        Task { @MainActor in self.performMute(action.callUUID, action.isMuted); action.fulfill() }
+        MainActor.assumeIsolatedCompat { self.performMute(action.callUUID, action.isMuted); action.fulfill() }
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
-        Task { @MainActor in if self.performHold(action.callUUID, action.isOnHold) { action.fulfill() } else { action.fail() } }
+        MainActor.assumeIsolatedCompat { if self.performHold(action.callUUID, action.isOnHold) { action.fulfill() } else { action.fail() } }
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXPlayDTMFCallAction) {
-        Task { @MainActor in self.performDtmf(action.callUUID, action.digits); action.fulfill() }
+        MainActor.assumeIsolatedCompat { self.performDtmf(action.callUUID, action.digits); action.fulfill() }
     }
 
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        Task { @MainActor in
-            LinkJournal.shared.add("audio session activated")
-            self.model.audio.sessionActivated()
-            self.applySpeaker()   // a speaker choice made while connecting; a headset or car keeps the call
-        }
+        MainActor.assumeIsolatedCompat { self.sessionDidActivate() }
     }
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
-        Task { @MainActor in self.model.audio.sessionDeactivated() }
+        MainActor.assumeIsolatedCompat { self.sessionDidDeactivate() }
     }
 }
 
 // MARK: - The actions themselves (from the CallKit delegate)
 
 extension CallController {
+    /// CallKit activated the call's audio session. The speaker choice made while connecting is applied first, then the
+    /// engine starts (on the audio queue, after this): it is built on the final route, instead of the override racing
+    /// the engine start and its configuration change.
+    func sessionDidActivate() {
+        LinkJournal.shared.add("audio session activated")
+        audioSessionActive = true
+        applySpeaker()   // a speaker choice made while connecting; a headset or car keeps the call
+        model.audio.sessionActivated()
+    }
+
+    func sessionDidDeactivate() {
+        audioSessionActive = false
+        model.audio.sessionDeactivated()
+    }
+
     func performStart(_ uuid: UUID, number: String) {
         CallAudio.configureSession()
+        Microphone.checkForCall(mirrored.contains(uuid) ? "call shown here" : "outgoing call")
         if mirrored.remove(uuid) == nil {
             pendingOutgoing = uuid
             pendingNumber = number
@@ -592,6 +620,7 @@ extension CallController {
     func performAnswer(_ uuid: UUID) {
         answeredHere.insert(uuid)
         CallAudio.configureSession()
+        Microphone.checkForCall("answer")
         if mirrored.remove(uuid) == nil, let cid = cids[uuid] {
             model.link.send(MsgType.callAnswer, CallRef(cid: cid))
         }

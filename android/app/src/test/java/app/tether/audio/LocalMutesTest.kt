@@ -57,7 +57,39 @@ class LocalMutesTest {
         assertEquals("none", LocalMutes.silent(LocalMutes.Plan.NONE, ok = false))
     }
 
+    @Test fun theAutomaticLayerUsesOnlyTheVendorsMicSourceKey() {
+        // Default setting, no redirect mode: the vendor's key, checked while untested; never Android's mic mute.
+        for (s in listOf(Silence.SAMSUNG, Silence.SAMSUNG_QUALCOMM, Silence.MEDIATEK)) {
+            val p = LocalMutes.autoPlan(s, null)
+            assertTrue("$s", p.vendorMic); assertFalse("$s", p.telecomMic); assertTrue("$s: checked", p.check)
+            assertFalse("$s: seen working", LocalMutes.autoPlan(s, Memory.OK).check)
+            assertEquals("$s: silenced the uplink before", LocalMutes.Plan.NONE, LocalMutes.autoPlan(s, Memory.BREAKS_UPLINK))
+        }
+        for (s in listOf(Silence.QUALCOMM, Silence.OTHER)) assertEquals("$s: no key of its own, open", LocalMutes.Plan.NONE, LocalMutes.autoPlan(s, null))
+    }
+
+    @Test fun aBlindUplinkKeepsOnlyTheTrustedKey() {
+        // The A54 (Samsung, Exynos): VOICE_UPLINK cannot show the injection, the tx key is known to keep it: muted,
+        // no check (which would only undo it every call). Others stay open rather than risk a silent far end.
+        val a54 = LocalMutes.autoPlan(Silence.SAMSUNG, Memory.UNVERIFIED)
+        assertTrue(a54.vendorMic); assertFalse(a54.check)
+        for (s in listOf(Silence.SAMSUNG_QUALCOMM, Silence.MEDIATEK)) assertEquals("$s", LocalMutes.Plan.NONE, LocalMutes.autoPlan(s, Memory.UNVERIFIED))
+        assertTrue(LocalMutes.keepWhenBlind(LocalMutes.autoPlan(Silence.SAMSUNG, null), Silence.SAMSUNG))
+        assertFalse(LocalMutes.keepWhenBlind(LocalMutes.autoPlan(Silence.MEDIATEK, null), Silence.MEDIATEK))
+        assertFalse("Android's mute is never trusted", LocalMutes.keepWhenBlind(LocalMutes.plan(Silence.OTHER, true, true), Silence.OTHER))
+    }
+
+    @Test fun theUsersMuteSetting() {
+        val samsung = LocalMutes.manualPlan(Silence.SAMSUNG, null)
+        assertTrue(samsung.vendorMic && samsung.check)
+        assertFalse("blind, trusted key: no more checks", LocalMutes.manualPlan(Silence.SAMSUNG, Memory.UNVERIFIED).check)
+        val other = LocalMutes.manualPlan(Silence.OTHER, Memory.UNVERIFIED)
+        assertTrue("Android's mute on request, still watched", other.telecomMic && other.check)
+        assertEquals(LocalMutes.Plan.NONE, LocalMutes.manualPlan(Silence.SAMSUNG, Memory.BREAKS_UPLINK))
+    }
+
     @Test fun memoryWireNames() {
+        assertEquals(Memory.UNVERIFIED, Memory.of("unverified"))
         assertEquals(Memory.BREAKS_UPLINK, Memory.of("muted-locally-fixed"))
         assertEquals(Memory.OK, Memory.of("ok"))
         assertNull(Memory.of(null))

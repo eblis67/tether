@@ -1,3 +1,4 @@
+import CryptoKit
 import Intents
 import XCTest
 import TetherCore
@@ -10,7 +11,7 @@ final class RouterTests: XCTestCase {
     override func setUp() async throws {
         await MainActor.run {
             AppModel.shared.resetForTests()
-            Router.shared.dialRequest = nil; Router.shared.tab = .messages; Router.shared.linkWaitTries = 1
+            Router.shared.dialRequest = nil; Router.shared.pairRequest = nil; Router.shared.tab = .messages; Router.shared.linkWaitTries = 1
         }
     }
 
@@ -24,6 +25,38 @@ final class RouterTests: XCTestCase {
 
     func testTetherDialLinkAsks() {
         r.open(url: URL(string: "tether://dial?number=%2B10000000002")!)
+        XCTAssertEqual(r.dialRequest?.number, "+10000000002")
+    }
+
+    private func pairingCode() -> PairingCode {
+        PairingCode(peripheralKey: P256.KeyAgreement.PrivateKey().publicKey.x963Representation,
+                    token: Data(repeating: 7, count: 16), deviceName: "Test Phone")
+    }
+
+    /// The QR code opened from the Camera app: the Link tab asks "Pair with …?", nothing pairs by itself.
+    func testPairLinkAsksNeverPairs() {
+        let code = pairingCode()
+        r.open(url: URL(string: code.link)!)
+        XCTAssertEqual(r.pairRequest?.code, code)
+        XCTAssertEqual(r.tab, .link)
+        XCTAssertNil(r.dialRequest)
+        XCTAssertFalse(AppModel.shared.isPaired)
+    }
+
+    /// The 1.1 form as a link is no URL the system opens, but a pasted tether1: code still parses elsewhere;
+    /// a damaged pairing link says so and asks nothing.
+    func testDamagedPairLinkShowsAnError() {
+        AppModel.shared.lastError = nil
+        r.open(url: URL(string: "tether://pair?c=abc")!)
+        XCTAssertNil(r.pairRequest)
+        XCTAssertEqual(r.tab, .link)
+        XCTAssertNotNil(AppModel.shared.lastError)
+        AppModel.shared.lastError = nil
+    }
+
+    func testDialLinkIsNotAPairLink() {
+        r.open(url: URL(string: "tether://dial?number=%2B10000000002")!)
+        XCTAssertNil(r.pairRequest)
         XCTAssertEqual(r.dialRequest?.number, "+10000000002")
     }
 

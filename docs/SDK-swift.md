@@ -19,7 +19,7 @@ In `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/amirwmr/tether", from: "1.1.0"),
+    .package(url: "https://github.com/amirwmr/tether", from: "1.2.0"),
 ],
 targets: [
     .target(name: "MyClient", dependencies: [.product(name: "TetherCore", package: "tether")]),
@@ -57,6 +57,30 @@ link.pair(with: code)                            // once; later launches reconne
 link.send(MsgType.smsSend, SmsSend(to: "+10000000001", body: "Hi", sub: nil), expectReply: true)
 ```
 
+## Writing a client: what the phone expects
+
+The iPhone app and the Android client follow these rules; a client of your own should too (details in
+[protocol/PROTOCOL.md](../protocol/PROTOCOL.md)):
+
+- **Pairing codes come in two forms.** The QR code holds `tether://pair?c=…` since 1.2 (the iPhone's Camera app opens
+  it in the app); typed or pasted codes and 1.1 phones use `tether1:…`. `PairingCode.parse` reads both. A link opened
+  from outside your app must never pair by itself: ask first. The code holds the token: never log it.
+- **An empty PSM means GATT.** Phones on Android 8 and 9 have no L2CAP channels and answer the PSM read with an empty
+  value: use the GATT transport at once instead of waiting for a channel (§1).
+- **Send the microphone only once the call is `active`.** The modem takes no uplink while a call dials; the phone
+  drops what arrives before that, and sending it only costs airtime the downlink needs. Start the uplink afresh when
+  the call becomes active (or active again after hold).
+- **Check the microphone.** On iOS a refused microphone permission records silence without an error: ask for it before
+  the first call and tell the user when the input is refused or silent.
+- **Read `status.helper.audio`.** "full" (Android 13+), "fallback" (11–12, best effort) or "unavailable" (8–10): with
+  "unavailable" calls are controlled from the client but their audio stays on the phone, so say so instead of showing
+  a silent call.
+- **Expect gaps.** With Bluetooth tethering on the same two phones, audio can stall for several hundred milliseconds.
+  `PlayoutBuffer` keeps a stall's backlog and drains it in pauses (it cuts only beyond
+  `PlayoutBuffer.maxBacklogSeconds`); if you write your own buffer, do not drop speech after every gap.
+- **Ignore what you do not know.** Unknown message types and fields are skipped, never an error (§5); switch over
+  public enums with a `default`.
+
 ## Examples
 
 | Example | Runs on | What it shows |
@@ -87,11 +111,11 @@ In Xcode: Product › Build Documentation. The wire format itself is specified i
 
 | Area | Types |
 | --- | --- |
-| Pairing | `PairingCode` (`tether1:` QR payload), `TetherPrivateKey`, `randomBytes(_:)` |
+| Pairing | `PairingCode` (`tether1:` code, `tether://pair?c=` QR link; `parse` reads both), `TetherPrivateKey`, `randomBytes(_:)` |
 | Handshake (protocol §3) | `CentralHandshake` (client), `PeripheralHandshake` (phone), `KeySchedule`, `SessionKeys`, `HelloMessage`, `HelloAckMessage`, `HandshakeMode`, `HandshakeError` |
 | Records (§2, §4) | `Record`, `RecordKind`, `RecordReader` (reassembles a byte stream), `SecureSession` (AES-256-GCM, strict counters), `SessionError`, `FramingError`, `Proto` (channels, lengths) |
-| Control messages (§5) | `Control` (encode / decode the `{t, id, re, b}` envelope), `MessageHeader`, `MsgType` (every type name), one `Codable` struct per body: `StatusBody`, `SyncBody`, `Sms`, `SmsNew`, `SmsBatch`, `SmsSend`, `Contact`, `ContactsBatch`, `CallInfo`, `CallEntry`, `CallsBatch`, `NetState`, `BlockLists`, `SyncIds`, … |
-| Call audio | `AudioFrame` (channel 1 payload), `AudioStart`, `LibOpusEncoder`, `LibOpusDecoder` (with packet-loss concealment), `G711`, `PlayoutBuffer`, `SampleRing`, `JitterBuffer` |
+| Control messages (§5) | `Control` (encode / decode the `{t, id, re, b}` envelope), `MessageHeader`, `MsgType` (every type name), one `Codable` struct per body: `StatusBody` (with `helper.audio` / `audioUnavailable` since 1.2), `SyncBody`, `Sms`, `SmsNew`, `SmsBatch`, `SmsSend`, `Contact`, `ContactsBatch`, `CallInfo`, `CallEntry`, `CallsBatch`, `NetState`, `BlockLists`, `SyncIds`, … |
+| Call audio | `AudioFrame` (channel 1 payload), `AudioStart`, `LibOpusEncoder`, `LibOpusDecoder` (with packet-loss concealment), `G711`, `PlayoutBuffer` (stall backlog kept and drained in pauses since 1.2: `maxBacklogSeconds`, `speechTrimmed`), `SampleRing`, `JitterBuffer` |
 | Call rules | `HangUpGuard` (late call states after a local hang-up) |
 | Text | `MessageText` / `ParsedMessage` (links, numbers, e-mail, one-time codes, `*bold*`), `OTPExtractor`, `PhoneNumber`, `PhoneFormat` (grouping by country), `DialLink` (`tel:` links, numbers in free text), `NumberShape`, `SearchText`, `UssdCode` |
 | Bluetooth link (Apple) | `TetherLink`, `TetherLinkDelegate`, `IdentityStore`, `TetherUUID` |
@@ -125,7 +149,8 @@ From the first release that contains the root `Package.swift`, TetherCore follow
 - **Switch with a default.** Public enums (`HandshakeError`, `SessionError`, `AudioFrame.Codec`, `RecordKind`,
   `TetherLink.State`, …) may gain cases in a minor release.
 - **Not covered:** declarations behind `@_spi(TetherApp)` (the iPhone app's audio-route policy: `RouteKind`,
-  `RouteOption`, `RoutePort`, `RoutePlan`, `AudioRoutes`, `EngineFormat`, `EngineRebuild`, `EngineDecision`), anything
+  `RouteOption`, `RoutePort`, `RoutePlan`, `AudioRoutes`, `EngineFormat`, `EngineRebuild`, `EngineDecision`, and since
+  1.2 `CallUplink` and `UnfairLock`), anything
   `internal` (reachable only with `@testable import`), the text heuristics' exact results (which strings count as a
   number or a one-time code improve over time), the playout buffer's tuning numbers, log text, and
   `ios/TetherCore/Package.swift`'s own executables (`tether-vectors`, `tether-central`).

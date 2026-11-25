@@ -52,12 +52,15 @@ func run() throws {
     var toPhone = Wire(), toClient = Wire()
 
     // 1. Pairing code. The phone has a long-term P-256 key; it shows its public key, a one-time 16-byte token and
-    //    its name as a QR code (`tether1:…`). The client scans it.
+    //    its name as a QR code: the link form `tether://pair?c=…` since 1.2 (typed or pasted codes are `tether1:…`;
+    //    `parse` reads both). The client scans it.
     let phoneKey = TetherPrivateKey()
     let token = randomBytes(16)
     let shown = PairingCode(peripheralKey: phoneKey.publicKey.x963Representation, token: token, deviceName: "Demo phone")
-    guard let scanned = PairingCode.parse(shown.string) else { throw Failure("pairing code did not parse") }
-    step("pairing code \(shown.string.prefix(24))… (\(shown.string.count) characters) for \"\(scanned.deviceName)\"")
+    guard let scanned = PairingCode.parse(shown.link), PairingCode.parse(shown.string) == scanned else {
+        throw Failure("pairing code did not parse")
+    }
+    step("pairing code \(shown.link.prefix(28))… (\(shown.link.count) characters) for \"\(scanned.deviceName)\"")
 
     // 2. Handshake, pair mode: HELLO → HELLO_ACK → FIN ← FIN. Both sides derive the same session keys from three
     //    ECDH results and the token; each FIN proves it.

@@ -107,6 +107,14 @@ import Foundation
     /// The speaker button shows the real route only: on when the loudspeaker plays, whatever chose it.
     public static func speakerOn(outputs: [String]) -> Bool { current(outputs: outputs) == .speaker }
 
+    /// The speaker choice after a route notification. Before CallKit activates the call's session the route is not the
+    /// call's (it may still be another app's, or the system's default): the choice made while connecting stays until
+    /// it is applied. Once the session is active, the real route is the choice, whoever made it (CallKit's own button,
+    /// Control Center, a headset that took the call).
+    public static func speakerWanted(previous: Bool, sessionActive: Bool, outputs: [String]) -> Bool {
+        sessionActive ? speakerOn(outputs: outputs) : previous
+    }
+
     /// The speaker choice to re-apply when the session is (re)activated: only when the call is still on the
     /// built-in ports; a headset or car that took the call wins.
     public static func reapplySpeaker(wanted: Bool, outputs: [String]) -> Bool {
@@ -120,13 +128,22 @@ import Foundation
 }
 
 /// The I/O formats the engine was built with; a route change that alters them needs a new graph and converters
-/// (a hands-free microphone runs at 16 or 8 kHz, the built-in one at 48 kHz).
+/// (a hands-free microphone runs at 16 or 8 kHz, the built-in one at 48 kHz). Both sides of a comparison come from the
+/// engine itself (its input node's and output node's hardware formats), read the same way when it is built and at
+/// every event: the session's formats can differ from what the engine uses (#15), and mixing the two sources made
+/// every event look like a change (channel counts differ with voice processing, 2026-11-23).
 @_spi(TetherApp) public struct EngineFormat: Sendable, Equatable {
     public let inputRate: Double, inputChannels: Int, outputRate: Double, outputChannels: Int
     public init(inputRate: Double, inputChannels: Int, outputRate: Double, outputChannels: Int) {
         self.inputRate = inputRate; self.inputChannels = inputChannels
         self.outputRate = outputRate; self.outputChannels = outputChannels
     }
+
+    /// The same graph will do: the sample rates are unchanged (the converters and the playout rate depend on them).
+    /// Channel counts are not compared: a voice-processing input reports more channels than the microphone has, and
+    /// the count it reports may differ between a stopped and a running engine; an engine that cannot start again on a
+    /// real channel change is rebuilt by the restart's own failure path.
+    public func sameGraph(_ o: EngineFormat) -> Bool { inputRate == o.inputRate && outputRate == o.outputRate }
 }
 
 @_spi(TetherApp) public enum EngineRebuild: Sendable, Equatable {
@@ -156,7 +173,7 @@ import Foundation
         guard sessionActive else { return .keep }
         if now.inputRate <= 0 || now.inputChannels <= 0 || now.outputRate <= 0 { return .retryLater }
         if !running { return .rebuild }
-        let sameFormats = built.map { $0 == now } ?? false
+        let sameFormats = built.map { $0.sameGraph(now) } ?? false
         if engineRunning && (sameFormats || recentRebuilds >= maxRebuilds) { return .keep }
         if configurationChanged {
             // The engine stopped itself: the same one again when nothing changed, a fresh graph for new formats.
@@ -165,4 +182,29 @@ import Foundation
         }
         return sameFormats ? .keep : .rebuild
     }
+
+    /// An audio session interruption (Siri, an alarm, another app's audio) while a call's session is active.
+    /// - began: iOS stops the engine; the graph and the call's state stay (CallKit holds or ends the call itself).
+    /// - ended: the same engine again if it was built and only stopped, a fresh one if it is gone, nothing if it runs.
+    public static func onInterruption(began: Bool, sessionActive: Bool, running: Bool, engineRunning: Bool) -> EngineRebuild {
+        guard sessionActive, !began else { return .keep }
+        if !running { return .rebuild }
+        return engineRunning ? .keep : .restart
+    }
+
+    /// The media services were reset (mediaserverd restarted): every engine, node and converter is invalid, so a
+    /// call's audio is rebuilt from scratch (the call itself stays up). Nothing to do without an active session.
+    public static func onMediaServicesReset(sessionActive: Bool) -> EngineRebuild {
+        sessionActive ? .rebuild : .keep
+    }
+}
+
+/// When the iPhone sends its microphone to the Android phone.
+@_spi(TetherApp) public enum CallUplink {
+    /// Only while a call here is connected ("active"). While an outgoing call is still dialing (30 s and more) nobody
+    /// hears the uplink, and sending it anyway used airtime the downlink needed and built up a backlog on the Android
+    /// phone that arrived late once the call connected (the owner's calls, 2026-11-24). Nothing is sent instead: the
+    /// Android phone needs no uplink before the call is active (it starts its path then and takes the first frame as
+    /// the start of the sequence).
+    public static func open(callStates: [String]) -> Bool { callStates.contains("active") }
 }

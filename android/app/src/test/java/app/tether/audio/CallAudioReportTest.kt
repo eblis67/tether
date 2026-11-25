@@ -33,6 +33,25 @@ class CallAudioReportTest {
         assertTrue(line, line.contains("errors: local mute x"))
     }
 
+    @Test fun anInjectionNotRoutedToTheCallIsSaid() {
+        // Issue #15: telephony_tx granted on the phone's speaker instead of Telephony Tx.
+        val info = JSONObject().put("capture", "intercept").put("inject", "intercept").put("routed", "2:Speaker").put("routedToCall", false)
+            .put("errors", JSONArray()).put("uplink", uplink("off", false)).put("openWaitMs", 6200)
+        val line = CallAudioReport.pathLine(info, setting = false, memory = null)
+        assertTrue(line, line.contains("(routed 2:Speaker: NOT the call's uplink"))
+        assertTrue(line, line.contains("opened 6.2 s after the start"))
+    }
+
+    @Test fun theAutomaticVendorMute() {
+        val mic = JSONObject().put("setting", "auto").put("path", "muted").put("layer", "vendor-mute")
+            .put("note", "redirect modes not used on this phone: call_redirect breaks-downlink; the vendor's mic key mutes the mic at its source")
+        val kept = CallAudioReport.micLine(uplink("unverified", true).put("kept", true), setting = false, memory = null, mic = mic)
+        assertTrue(kept, kept.startsWith("phone mic MUTED via the vendor key (automatic: redirect modes not used"))
+        assertTrue(kept, kept.contains("kept although the uplink cannot be checked"))
+        val blind = CallAudioReport.micLine(uplink("unverified", true), setting = false, memory = Memory.UNVERIFIED, mic = mic)
+        assertTrue(blind, blind.endsWith("the uplink cannot be checked on this phone (the vendor key is known to keep the injected voice)"))
+    }
+
     @Test fun mutedViaTelecomWhileChecking() {
         assertEquals("phone mic MUTED via Android (Telecom), uplink check running",
             CallAudioReport.micLine(uplink("checking", true, telecom = true), setting = true, memory = null))

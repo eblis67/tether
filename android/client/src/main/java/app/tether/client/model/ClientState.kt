@@ -82,6 +82,7 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
     private var incomingContacts = ArrayList<Contact>()
     private var pendingIdsSms = ArrayList<LongArray>()
     private var pendingIdsCalls = ArrayList<LongArray>()
+    private var invalidIdsBatch = false
     private var nameIndex = HashMap<String, String>()
     private var photoIndex = HashMap<String, String>()
 
@@ -345,7 +346,7 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
         // A sync cut off mid-way must start clean next time.
         contactsPageStart = true
         incomingContacts = ArrayList()
-        pendingIdsSms = ArrayList(); pendingIdsCalls = ArrayList()
+        resetPendingIds()
         // Answers to texts in flight are lost with the link: the next sync settles them (the real row replaces a sent
         // placeholder; an unconfirmed one turns Not delivered after 2 min, never resent).
         pendingSms.clear()
@@ -410,17 +411,33 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
                 persist()
             }
             T.SYNC_IDS -> {
-                // Whatever the phone no longer has was deleted there or on another client. A page without one of the
-                // lists is malformed and ignored, like the iPhone's decoder does: a missing list is not an empty one.
-                if (!b.has("sms") || !b.has("calls")) return true
-                pendingIdsSms.addAll(IdRanges.parse(b.optJSONArray("sms"))); pendingIdsCalls.addAll(IdRanges.parse(b.optJSONArray("calls")))
-                if (!b.optBoolean("more")) {
-                    val s = pendingIdsSms; val c = pendingIdsCalls
-                    pendingIdsSms = ArrayList(); pendingIdsCalls = ArrayList()
-                    val gone = sms.filter { it.id > 0 && !IdRanges.contains(s, it.id) }.map { it.id }
-                    val before = recents.size
-                    recents = recents.filter { IdRanges.contains(c, it.id) }
-                    if (gone.isNotEmpty()) applyDeleted(gone, null) else if (recents.size != before) persist()
+                val more = if (b.has("more")) b.opt("more") else false
+                if (more !is Boolean) {
+                    // An invalid marker cannot end the batch. Discard pages through the next valid final marker.
+                    invalidIdsBatch = true
+                    return true
+                }
+                if (!invalidIdsBatch) {
+                    val smsIds = IdRanges.parse(b.optJSONArray("sms"), pendingIdsSms.lastOrNull()?.get(1))
+                    val callIds = IdRanges.parse(b.optJSONArray("calls"), pendingIdsCalls.lastOrNull()?.get(1))
+                    // One malformed page makes the entire set unsafe for deletion.
+                    if (smsIds == null || callIds == null) invalidIdsBatch = true
+                    else {
+                        pendingIdsSms.addAll(smsIds)
+                        pendingIdsCalls.addAll(callIds)
+                    }
+                }
+                if (!more) {
+                    val smsIds = pendingIdsSms
+                    val callIds = pendingIdsCalls
+                    val valid = !invalidIdsBatch
+                    resetPendingIds()
+                    if (valid) {
+                        val gone = sms.filter { it.id > 0 && !IdRanges.contains(smsIds, it.id) }.map { it.id }
+                        val before = recents.size
+                        recents = recents.filter { IdRanges.contains(callIds, it.id) }
+                        if (gone.isNotEmpty()) applyDeleted(gone, null) else if (recents.size != before) persist()
+                    }
                 }
             }
             T.CONTACTS_BATCH -> {
@@ -530,10 +547,17 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
 
     /** A new pairing or unpairing: nothing of the old Android phone's data is kept. */
     fun wipe() {
+        resetPendingIds()
         sms = emptyList(); contacts = emptyList(); recents = emptyList(); contactsVersion = ""
         readUpTo.clear(); drafts.clear(); threadSim.clear(); status = null; lists = BlockLists(); smsSyncedUpTo = null
         outbox = emptyList(); recentsSeenUpTo = null; net = null; pendingRead.clear(); pendingSms.clear(); smsIndex.clear()
         rebuildIndex(); persist()
+    }
+
+    private fun resetPendingIds() {
+        pendingIdsSms = ArrayList()
+        pendingIdsCalls = ArrayList()
+        invalidIdsBatch = false
     }
 
     private fun persist() { fx.save(toJson().toString()); fx.changed() }

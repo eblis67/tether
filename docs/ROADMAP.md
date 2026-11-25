@@ -1,7 +1,7 @@
 # Roadmap
 
-Near-term plans, roughly in order. Nothing here is a promise; [Discussions](https://github.com/amirwmr/tether/discussions)
-is the place to suggest or argue priorities, and issues labelled `help wanted` are open for anyone.
+Near-term plans, roughly in order. Nothing here is a promise; a
+[feature request](https://github.com/amirwmr/tether/issues/new?template=feature_request.yml) is the place to suggest or argue priorities, and issues labelled `help wanted` are open for anyone.
 
 ## Verify on more devices
 

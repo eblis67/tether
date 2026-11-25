@@ -3,6 +3,7 @@ package app.tether.client.ui
 import android.app.Activity
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.format.DateUtils
@@ -10,6 +11,7 @@ import android.util.Base64
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.ImageView
@@ -18,6 +20,30 @@ import android.widget.TextView
 import app.tether.client.ClientApp
 import app.tether.client.R
 import app.tether.client.model.Problem
+
+/** Extra padding for the window's edges: system bars and display cutout, and at the bottom the keyboard when it is
+ *  taller than the navigation bar (both sit at the bottom, so they never add up). Left, top, right, bottom. */
+fun barPadding(bars: IntArray, imeBottom: Int): IntArray =
+    intArrayOf(bars[0], bars[1], bars[2], maxOf(bars[3], imeBottom))
+
+/**
+ * Draws [root] edge to edge and pads it by the system bars, the cutout and the keyboard (#12). Android 15+ draws apps
+ * with targetSdk 35+ behind the bars and ignores adjustResize, so text went behind the navigation bar and the
+ * keyboard covered the text field. The same from Android 11 on, so every version behaves alike; Android 10 keeps
+ * its own fitting (and adjustResize).
+ */
+fun Activity.fitSystemBars(root: View) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+    window.setDecorFitsSystemWindows(false)
+    val base = intArrayOf(root.paddingLeft, root.paddingTop, root.paddingRight, root.paddingBottom)
+    root.setOnApplyWindowInsetsListener { v, insets ->
+        val b = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+        val p = barPadding(intArrayOf(b.left, b.top, b.right, b.bottom), insets.getInsets(WindowInsets.Type.ime()).bottom)
+        v.setPadding(base[0] + p[0], base[1] + p[1], base[2] + p[2], base[3] + p[3])
+        WindowInsets.CONSUMED
+    }
+    root.requestApplyInsets()
+}
 
 /** Small helpers for the app's plain framework views (the Android phone's app is built the same way). */
 fun Context.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -56,6 +82,19 @@ fun Context.row(vararg views: View, gravity: Int = Gravity.CENTER_VERTICAL) = Li
 }
 
 fun View.weight(w: Float = 1f): View { layoutParams = LinearLayout.LayoutParams(0, -2, w); return this }
+
+/** A row of buttons sharing the width equally (one line each), so long labels (Persian, "Bluetooth") never push a
+ *  button off the screen (#12). */
+fun Context.evenRow(vararg buttons: TextView) = LinearLayout(this).apply {
+    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+    buttons.forEachIndexed { i, b ->
+        val h = (b.layoutParams as? LinearLayout.LayoutParams)?.height ?: dp(42)
+        b.setSingleLine(); b.ellipsize = android.text.TextUtils.TruncateAt.END; b.setPadding(dp(8), 0, dp(8), 0)
+        addView(b, LinearLayout.LayoutParams(0, h, 1f).apply {
+            topMargin = dp(6); marginStart = if (i == 0) 0 else dp(4); marginEnd = if (i == buttons.lastIndex) 0 else dp(4)
+        })
+    }
+}
 
 /** A contact's picture (base64 JPEG from the Android phone) or a circle with the initial. */
 fun Context.avatar(name: String, photo: String?, sizeDp: Int = 40): View {
@@ -96,6 +135,13 @@ fun Context.describe(p: Problem): String {
         else -> p.detail ?: ""
     }
     return if (p.detail != null && p.kind != Problem.OTHER) "$base: ${p.detail}" else base
+}
+
+/** The line for a microphone warning (call screen and main screen). */
+fun micText(w: app.tether.client.calls.MicWarning): Int = when (w) {
+    app.tether.client.calls.MicWarning.DENIED -> R.string.mic_denied
+    app.tether.client.calls.MicWarning.UNAVAILABLE -> R.string.mic_unavailable
+    app.tether.client.calls.MicWarning.SILENT -> R.string.mic_silent
 }
 
 /** A list adapter from a list and a row builder. */

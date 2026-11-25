@@ -2,6 +2,7 @@ package app.tether.link
 
 import app.tether.core.LinkPolicy
 import app.tether.core.LinkSecurity
+import app.tether.core.OldAndroid
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -18,6 +19,7 @@ import android.bluetooth.le.AdvertisingSet
 import android.bluetooth.le.AdvertisingSetCallback
 import android.bluetooth.le.AdvertisingSetParameters
 import android.content.Context
+import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
 import java.io.IOException
@@ -66,7 +68,8 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
         if (running || !enabled) return
         running = true
         try {
-            startL2cap()
+            // L2CAP channels need Android 10; Android 8 and 9 link over GATT only (the PSM read answers empty).
+            if (Build.VERSION.SDK_INT >= 29) startL2cap()
             startGatt()
             startAdvertising()
             Log.i(TAG, "peripheral up, psm=$psm")
@@ -91,6 +94,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
         dropKeepers()
     }
 
+    @android.annotation.TargetApi(29) // started only on Android 10+
     private fun startL2cap() {
         val ss = adapter!!.listenUsingInsecureL2capChannel()   // insecure on purpose: see LinkSecurity
         l2cap = ss
@@ -428,8 +432,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
                                                  characteristic: BluetoothGattCharacteristic) {
             val s = server ?: return
             if (characteristic.uuid == PSM_CHAR) {
-                val v = byteArrayOf((psm and 0xff).toByte(), (psm shr 8).toByte())
-                s.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, v.copyOfRange(minOf(offset, 2), 2))
+                s.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, OldAndroid.psmValue(psm, offset))
             } else {
                 s.sendResponse(device, requestId, BluetoothGatt.GATT_READ_NOT_PERMITTED, 0, null)
             }

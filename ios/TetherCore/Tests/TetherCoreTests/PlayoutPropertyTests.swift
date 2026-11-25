@@ -45,6 +45,7 @@ final class PlayoutPropertyTests: XCTestCase {
             else if b.jitterFloor < b.minTarget || b.jitterFloor > b.maxTarget { broken = "jitter floor \(b.jitterFloor)" }
             else if b.buffered > b.target + b.maxTarget + frame { broken = "buffered \(b.buffered): a burst must be cut" }
             else if !out.allSatisfy({ $0.isFinite && abs($0) <= 1 }) { broken = "output out of range" }
+            else if b.speechTrimmed < 0 || b.speechTrimmed > b.trimmed { broken = "speech cut \(b.speechTrimmed) outside what was trimmed" }
             if let broken { XCTFail("\(broken) (seed \(seed), rate \(rate), step \(step))"); return }
         }
         XCTAssertGreaterThanOrEqual(b.concealedSamples, 0)

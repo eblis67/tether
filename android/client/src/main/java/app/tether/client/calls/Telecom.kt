@@ -132,6 +132,7 @@ class TelecomBridge(private val app: ClientApp) : CallSink {
     })
 
     override fun ringback(on: Boolean) { app.audio.ringback = on }
+    override fun uplink(open: Boolean) = app.audio.setUplink(open)
 
     override fun idle() {
         app.audio.stop()

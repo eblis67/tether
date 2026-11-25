@@ -180,17 +180,56 @@ class UplinkBufferTest {
         assertEquals(5 * rate / 1000, b.target)                           // even 20 ms frames: 5 ms
         after(60)                                                          // a 60 ms hold-up: 42 ms ahead
         assertEquals(42 * rate / 1000, b.target)
-        after(120)                                                         // a long stall: capped at 45 ms
+        after(120)                                                         // a long hold-up: capped at 45 ms
         assertEquals(45 * rate / 1000, b.target)
         after(20, 500)                                                     // 10 s without: back to 5 ms
         assertEquals(5 * rate / 1000, b.target)
+        after(800)                                                         // a stall no cushion covers: not counted
+        assertEquals(5 * rate / 1000, b.target)
+        repeat(8) { after(120, 40) }                                       // hold-ups every second (tethering): up to 60 ms
+        assertEquals(60 * rate / 1000, b.target)
+    }
+
+    @Test fun aLongStallIsCaughtUpAtOnceQuietFramesFirst() {
+        val b = UplinkBuffer()
+        var t = 0L
+        val loud = ShortArray(frame) { (8000 * sin(it * 0.2)).toInt().toShort() }
+        repeat(100) { t += 20_000_000L; b.push(loud.copyOf(), t, 320); b.poll() }   // steady, 20 ms in the track
+        // An 800 ms stall (Bluetooth tethering, 2026-11-24), then its 40 frames at once, every other one a pause.
+        t += 800_000_000L
+        repeat(40) { i -> b.push(if (i % 2 == 0) ShortArray(frame) { ((i * 31 + it) % 7 - 3).toShort() } else loud.copyOf(), t, 320) }
+        val keep = b.target + rate * UplinkBuffer.KEEP_MS / 1000
+        assertTrue("queue ${b.size} + track 320 vs ${keep + frame}", b.size + 320 <= keep + frame)
+        assertTrue("late cut ${b.lateCut}", b.lateCut >= 30 * frame)
+        // The pauses went first: what is left is the latest speech.
+        val left = generateSequence { b.poll() }.toList()
+        assertTrue(left.drop(1).all { UplinkBuffer.meanSquare(it) > UplinkBuffer.QUIET_MS })
+        assertEquals("faded in from the last sample written", loud[frame - 1].toDouble(), left.first()[0].toDouble(), 600.0)
+    }
+
+    @Test fun aStallDoesNotLeaveTheDelayBehind() {
+        // Stalls of 800 ms every 5 s: without the late cut 800 ms stayed ahead until enough pauses came (537 ms ahead,
+        // 1.6 s cut in pauses on the reference phone, 2026-11-24).
+        val (_, n) = compare("stalls of 800 ms every 5 s") { run(it, holdEveryMs = 5000, holdMs = intArrayOf(800)) }
+        assertEquals(0, n.overflow)
+        assertTrue("delay ${n.avgDelayMs}", n.avgDelayMs < 80)
+        assertTrue("end delay ${n.endDelayMs}", n.endDelayMs < 120)
+    }
+
+    @Test fun tetheringHoldUpsGetACushion() {
+        // Hold-ups of 60-80 ms every second (Bluetooth tethering on): the target covers them, so few run the track dry.
+        val (o, n) = compare("hold-ups 60-80 ms every 1 s") { run(it, holdEveryMs = 1000, holdMs = intArrayOf(50, 65, 58, 62)) }
+        assertEquals(0.0, n.voiceLostMs, 0.0)
+        assertTrue("underrun ${n.underrunMs} vs ${o.underrunMs}", n.underrunMs < o.underrunMs * 0.9)
+        assertTrue("delay ${n.avgDelayMs}", n.avgDelayMs < 90)
     }
 
     @Test fun overflowDropsTheOldestOnlyBeyondOneSecond() {
+        // Before the track plays (-1) nothing is late yet: only a full second overflows.
         val b = UplinkBuffer()
-        repeat(50) { b.push(ShortArray(frame) { _ -> (10000 + it).toShort() }, it * 1_000_000L) }
+        repeat(50) { b.push(ShortArray(frame) { _ -> (10000 + it).toShort() }, it * 1_000_000L, -1) }
         assertEquals(0, b.overflowFrames)
-        b.push(ShortArray(frame) { 99 }, 51_000_000L)
+        b.push(ShortArray(frame) { 99 }, 51_000_000L, -1)
         assertEquals(1, b.overflowFrames)
         assertEquals(10001, b.poll()!![0].toInt())   // frame 0 went (loud frames: sped up, never cut)
     }

@@ -2,6 +2,103 @@
 
 ## Unreleased
 
+- Contributing: pull request rules (one topic, keep the project's name and ids, never break installed apps, CI changes
+  on their own); `main` now requires all CI jobs to pass and a maintainer's approval before a pull request is merged.
+
+## 1.2.2 — 2026-11-25
+
+- Android phone: a call answered or dialed on the Android phone itself (its screen, a headset or a car connected to it)
+  stays on that phone. Before, with the iPhone linked, its audio went to the iPhone and the phone's own earpiece and
+  microphone were muted, so the call had no audio where it was taken (#13). The iPhone shows such a call as on the
+  Android phone, with **Move here**.
+- Android phone: when its software gives Tether no call audio (the call's sound reads as silence, as on a Galaxy A73
+  with Android 16, #13), the call goes back to the phone itself within seconds instead of staying silent on both ends,
+  and later calls are not bridged on that firmware. The iPhone, the Android client and the phone app say so
+  (`helper.audio` "blocked"); a system update or a self-test that hears the call turns call audio back on.
+- iPhone: the renewal note says to refresh the app in SideStore, AltStore or Sideloadly (it named a developer script).
+- Android phone: Call audio › **Link log** shows the link log with Share and Copy (headed by the app version, phone
+  model and Android version), so a bug report no longer needs a computer and adb.
+- Coming from 1.1.0: uninstall the 1.1.0 Android app first (1.2 APKs are signed with the project's release key), then
+  pair again.
+
+## 1.2.1 — 2026-11-25
+
+- Android phone: a redirect audio mode whose effect on the uplink cannot be checked (the phone gives no uplink capture,
+  common on custom ROMs) is no longer kept for the call, and no other untested mode is tried on later calls. Before, the
+  first one or two calls on such a phone could leave the other side hearing nothing of the iPhone (Poco F3 and
+  Poco X3 Pro reports, #14).
+- Coming from 1.1.0: uninstall the 1.1.0 Android app first (1.2 APKs are signed with the project's release key), then
+  pair again. Everything new in 1.2: see 1.2.0.
+
+## 1.2.0 — 2026-11-25
+
+### Call audio on the Android phone
+
+- The phone's own microphone is kept out of bridged calls fully automatically: the default setting tries a redirect
+  audio mode, then the phone maker's own microphone switch (Samsung's tx key, MediaTek's UL mute; never Android's
+  general mic mute), then leaves the microphone on, each step checked during the call and remembered per phone model.
+  A redirect mode whose effect on the uplink could not be seen is no longer used on later calls (#15); where the
+  uplink cannot be checked at all, only Samsung's key (verified on real calls) stays on.
+- The call's audio paths open only once the phone is in a call's audio mode (on outgoing calls that can take seconds of
+  dialing): no fall-back to older methods for that, and no restart loop (at most one restart, never over the
+  self-test's choice) (#15).
+- The iPhone's voice goes into the call only once it is connected: nothing piles up while dialing.
+- With Bluetooth tethering on: frequent hold-ups get a larger uplink cushion (60 ms instead of 45), and what a long
+  stall delivers late is dropped at once instead of delaying the call for a minute.
+- Samsung phones with a Qualcomm chip (Galaxy A71, A73, Fold) also mute the voice-call stream, so the earpiece is silent
+  even where Samsung's keys do nothing (#15). The `telephony_tx` path is checked to be routed to the call, and built
+  without a low-latency track some Qualcomm phones refuse (#15).
+- Hang-up no longer waits for blocked audio reads; start, stop, the mic setting and a new helper session take one lock
+  (#15).
+- Diagnostics for "no audio" reports (#13, #14): the Link log says when the downlink capture delivers nothing or only
+  zeros, when the phone takes nothing from the uplink injection, when the injection is not routed to the call, and how
+  long the paths waited; the self-test's rows say the same.
+
+### iPhone
+
+- iPhone: the microphone permission is asked for once the app is paired and again when a call starts; a refused or
+  silent microphone is shown on the call screen, in the Link tab and the Link log, and "Your voice in the call" no
+  longer says it reaches the other side then (#14).
+- iPhone call audio: the microphone is sent only once a call is connected (not while an outgoing call dials); a
+  stall's backlog (Bluetooth tethering) plays late and drains in the pauses instead of losing speech; interruptions
+  and media-services resets bring the audio back; CallKit callbacks run in order; a speaker choice made while
+  connecting is kept; the render-thread flags use a heap-allocated lock (#15).
+- iPhone link: renewing a pending connect no longer leaves the link waiting on the cancelled one (#15).
+
+### Android client
+
+- Android client: a malformed `sync.ids` page no longer deletes local rows (#11, thanks @Shabdin-A).
+- Android client: the same playout stall handling as the iPhone (a stall's backlog plays late and drains in the
+  pauses, cut only beyond 0.8 s; a stall's burst no longer holds the buffer deep).
+- Android client: the microphone is sent only once a call is connected (not while dialing), and a refused permission, a recorder that does not open or one that delivers only silence for 6 s is shown on the call screen and the main screen and in the Link log; the permission is asked for again when a call starts (#14).
+- Android client: content no longer goes behind the navigation bar, text fields stay above the keyboard, call-screen buttons share the width evenly (#12).
+
+### Platforms
+
+- The phone app installs on Android 8.0 and 9 (was 10): the link runs over GATT there (no L2CAP channels; the phone
+  answers the PSM read empty, so the iPhone and the Android client go straight to GATT), texts, contacts, call log and
+  call control work, the default phone app is requested through Telecom, a call's direction comes from its first
+  state. No call audio before Android 11: the status field `helper.audio` ("unavailable") is now shown on the
+  iPhone in Link › Call audio. Hotspot and Bluetooth tethering switches are reported as unavailable before Android 11.
+
+### Developers
+
+- SDK guides: a "Writing a client" checklist for the 1.2 rules (two pairing-code forms, an empty PSM means GATT, the
+  microphone only once a call is active, `status.helper.audio`, audio stalls); the examples show the QR link form.
+- CONTRIBUTING.md: what "done" means (every doc, translation, SDK page, example and the other client app updated with
+  a change) and why no personal Apple or signing account may appear in the repository; the pull request checklist
+  asks for both.
+
+### Install, pairing and first run
+
+- Release APKs are signed with the project's own release key (fingerprint in docs/RELEASING.md). The 1.1.0 APKs were
+  debug-signed: uninstall the 1.1.0 app before installing 1.2.0, then pair again.
+- Install without building: an AltStore / SideStore source for the iPhone app (`releases/latest/download/altstore.json`),
+  a step-by-step install guide (docs/INSTALL.md) with SideStore, AltStore, Sideloadly and TrollStore, an FAQ, a
+  complete Persian guide (docs/fa/), and release notes that say which download goes on which phone.
+- Pairing QR code is now a `tether://pair?c=…` link: the iPhone's Camera app offers to open it in Cellular, which asks before pairing. Old `tether1:` codes still work everywhere; the Android app can show the old code for 1.1 iPhone apps.
+- First-run guides: numbered Setup steps with plain instructions on the Android phone (incl. the one-time wireless-debugging pairing), a Set up section on the iPhone's Link tab, and pairing steps in the Android client (English and Persian).
+
 ## 1.1.0 — 2026-11-23
 
 ### New features

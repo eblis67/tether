@@ -9,8 +9,15 @@ package app.tether.helper
  *   ([overflowFrames]); what a slow start leaves queued is caught up in the next pauses.
  * - The delay that matters is what waits ahead of an arriving frame: this queue plus what the track holds. Its smallest
  *   value over the last ~25 frames that came on time is the standing delay; it is steered to [target]: what the longest
- *   gap of the last ~10 s needs (~12 ms for even connection events, at most 45 ms), so the next hold-up finds audio,
- *   plus what the track's sink needs (its mixer takes 20-32 ms at a time; learnt from the track's underruns).
+ *   arrival gap of the last ~10 s needs (~12 ms for even connection events, up to 60 ms where Bluetooth tethering
+ *   shares the radio and hold-ups of 60-80 ms come every second), so the next hold-up finds audio, plus what the
+ *   track's sink needs (its mixer takes 20-32 ms at a time; learnt from the track's underruns). A stall of
+ *   [LATE_MS] or more does not count: no cushion covers it, the late cut below deals with it.
+ * - A long hold-up (Bluetooth tethering: up to 880 ms, 2026-11-24) delivers its frames all at once, far more than the
+ *   target: the far end already heard the gap, and playing what came late only delays everything after it (537 ms
+ *   ahead, 1.6 s cut in pauses over the next minute). So once the delay ahead is over [target] + [LATE_MS], it is cut
+ *   back at once to [target] + [KEEP_MS]: quiet frames first, then the oldest voiced ones, joined with a short
+ *   crossfade ([lateCut]).
  * - Steering happens where it is inaudible: in a quiet frame, part or all of it is cut (level above target) or a
  *   piece of it is repeated (level below target). Clock drift between the iPhone's microphone and the call's clock,
  *   the extra delay an underrun or a slow start leaves behind, and a missing cushion are all corrected that way. Only
@@ -61,8 +68,15 @@ class UplinkBuffer(
     /** Mean square of the quietest recent frames (normalised): what "quiet" is measured against (consumer thread). */
     private var floor = 1e-6
 
+    /** Frames were dropped from the queue's head: the next one handed out is crossfaded from the last sample written. */
+    private var splice = false
+    /** The last sample handed out (consumer thread). */
+    private var lastOut: Short = 0
+
     // Statistics (read for the call's figures).
     @Volatile var arrived = 0; private set
+    /** Samples dropped at once after a long hold-up (see [LATE_MS]). */
+    @Volatile var lateCut = 0; private set
     @Volatile var overflowFrames = 0; private set
     @Volatile var quietCut = 0; private set
     @Volatile var inserted = 0; private set
@@ -95,7 +109,33 @@ class UplinkBuffer(
         } else if (gap <= 45_000_000L) lateUntil = nowNs + 3_000_000L
         while (queued + pcm.size > capacity && q.isNotEmpty()) { queued -= q.removeFirst().size; overflowFrames++ }
         q.addLast(pcm); queued += pcm.size
+        if (lateUntil == 0L) lateCutting = false
+        if (trackQueued >= 0) cutLate(queued + trackQueued)
         lock.notifyAll()
+    }
+
+    /** A late burst is being cut: every further frame of it goes down to target + [KEEP_MS] too. */
+    private var lateCutting = false
+
+    /** Holding the lock: [ahead] (queue + track) is far over target after a hold-up: drop late audio at once (see class). */
+    private fun cutLate(ahead: Int) {
+        val keep = target + rate * KEEP_MS / 1000
+        val limit = if (lateCutting) keep + frame else target + rate * LATE_MS / 1000
+        if (ahead <= limit || q.size < 2) return
+        lateCutting = lateUntil != 0L
+        var excess = ahead - keep
+        val before = queued
+        // Quiet frames first (the newest stays: it is what was just said).
+        val it = q.iterator()
+        var i = 0
+        while (excess > 0 && it.hasNext()) {
+            val f = it.next()
+            if (++i == q.size) break
+            if (meanSquare(f) < QUIET_MS) { it.remove(); queued -= f.size; excess -= f.size }
+        }
+        while (excess > 0 && q.size > 1) { val f = q.removeFirst(); queued -= f.size; excess -= f.size }
+        val cut = before - queued
+        if (cut > 0) { lateCut += cut; removed += cut; splice = true }
     }
 
     /** Track side: waits up to [timeoutMs] for a frame, then as [poll]. */
@@ -105,12 +145,17 @@ class UplinkBuffer(
     }
 
     /** The next piece to write, shaped (it may be empty: a quiet frame cut whole), or null when nothing is queued. */
-    fun poll(): ShortArray? {
+    fun poll(): ShortArray? = shape()?.also { out ->
+        if (out.isNotEmpty()) lastOut = out[out.size - 1]
+    }
+
+    private fun shape(): ShortArray? {
         val f: ShortArray
         val excess: Int
         synchronized(lock) {
             f = q.removeFirstOrNull() ?: return null
             queued -= f.size
+            if (splice) { splice = false; crossfade(f, lastOut) }
             excess = if (aheadCount < 5) 0 else {
                 var m = Double.MAX_VALUE
                 for (i in 0 until aheadCount) if (ahead[i] < m) m = ahead[i]
@@ -169,10 +214,16 @@ class UplinkBuffer(
             // (12 ms ahead); after hold-ups like the recent ones the next finds audio to play, a longer one may still
             // run dry for a few ms (covering it fully would cost its whole length in delay all call long). Without
             // hold-ups for 10 s it falls back.
-            var b = 0.0
-            for (i in 0 until gapCount) if (gaps[i] > b) b = gaps[i]
-            gapTarget = ((b - 18.0).coerceIn(5.0, 45.0) * rate / 1000).toInt()
-            target = minOf(gapTarget + sinkExtra, rate * 60 / 1000)
+            var b = 0.0; var holdUps = 0
+            for (i in 0 until gapCount) {
+                if (gaps[i] > b && gaps[i] < LATE_MS) b = gaps[i]
+                if (gaps[i] > 63.0) holdUps++
+            }
+            // A few hold-ups in 10 s: up to 45 ms (more would cost its whole length in delay all call long for a few
+            // gaps). Hold-ups every second (Bluetooth tethering): up to 60 ms, else the track runs dry every second.
+            val cap = if (holdUps >= FREQUENT_HOLDUPS) MAX_GAP_TARGET_MS else RARE_GAP_TARGET_MS
+            gapTarget = ((b - 18.0).coerceIn(5.0, cap) * rate / 1000).toInt()
+            target = minOf(gapTarget + sinkExtra, rate * MAX_TARGET_MS / 1000)
         }
     }
 
@@ -190,20 +241,40 @@ class UplinkBuffer(
             sinkExtra = maxOf(0, sinkExtra - rate / 1000); sinceUnderrun = 0
         }
         underrunsSeen = total
-        target = minOf(gapTarget + sinkExtra, rate * 60 / 1000)
+        target = minOf(gapTarget + sinkExtra, rate * MAX_TARGET_MS / 1000)
     }
+
 
     fun clear() = synchronized(lock) {
         q.clear(); queued = 0; aheadCount = 0; aheadNext = 0; removed = 0.0; lateUntil = 0; excessPolls = 0; lastArrival = 0
         lastGapNs = 0; gapCount = 0; gapNext = 0; sinceTarget = 0; target = rate * 5 / 1000; gapTarget = target; floor = 1e-6
-        sinkExtra = 0; underrunsSeen = -1; sinceUnderrun = 0
-        arrived = 0; overflowFrames = 0; quietCut = 0; inserted = 0; compressed = 0; stretched = 0; levelMax = 0; levelSum = 0; levelN = 0
+        sinkExtra = 0; underrunsSeen = -1; sinceUnderrun = 0; splice = false; lateCutting = false
+        arrived = 0; overflowFrames = 0; quietCut = 0; inserted = 0; compressed = 0; stretched = 0; levelMax = 0; levelSum = 0; levelN = 0; lateCut = 0
     }
 
     /** Samples queued (not yet handed to the track). */
     val size: Int get() = synchronized(lock) { queued }
 
     companion object {
+        /** Over target by more than this (ms) after a hold-up: cut back at once to target + [KEEP_MS]. */
+        const val LATE_MS = 150
+        const val KEEP_MS = 30
+        /** Largest delay the gaps may ask for (ms): with a few hold-ups in the window, with [FREQUENT_HOLDUPS] or more; and with the sink's extra. */
+        const val RARE_GAP_TARGET_MS = 45.0
+        const val MAX_GAP_TARGET_MS = 60.0
+        const val FREQUENT_HOLDUPS = 6
+        const val MAX_TARGET_MS = 90
+        /** A frame below this mean square (about -40 dBFS) is quiet enough to drop first. */
+        const val QUIET_MS = 1e-4
+        /** Samples over which a frame after a dropped stretch is faded in from the last sample written (2.5 ms). */
+        const val FADE = 40
+
+        /** Fades the start of [f] from [from] (in place): no click where dropped audio left a jump. */
+        fun crossfade(f: ShortArray, from: Short) {
+            val n = minOf(FADE, f.size)
+            for (i in 0 until n) { val t = (i + 1).toDouble() / (n + 1); f[i] = (from * (1 - t) + f[i] * t).toInt().toShort() }
+        }
+
         fun meanSquare(f: ShortArray): Double {
             var s = 0.0
             for (v in f) { val x = v / 32768.0; s += x * x }

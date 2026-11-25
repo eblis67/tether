@@ -11,6 +11,8 @@ import android.telephony.TelephonyManager
 import app.tether.audio.OpusCodec
 import app.tether.client.calls.CallAudio
 import app.tether.client.calls.CallTracker
+import app.tether.client.calls.MicPolicy
+import app.tether.client.calls.MicWarning
 import app.tether.client.calls.TelecomBridge
 import app.tether.client.link.BleCentral
 import app.tether.client.link.Identity
@@ -78,7 +80,7 @@ class ClientApp : Application(), LinkEvents {
         }
         state = ClientState(port, effects)
         runCatching { if (dataFile.exists()) state.load(JSONObject(dataFile.readText())) }.onFailure { journal.add("saved data not readable: ${it.message}") }
-        audio = CallAudio(send = { link.sendAudio(it) }, log = { journal.add(it) })
+        audio = CallAudio(send = { link.sendAudio(it) }, log = { journal.add(it) }, hasMicPermission = { hasMicPermission() }, onMic = { changed() })
         telecom = TelecomBridge(this)
         calls = CallTracker(port, telecom, nameOf = { state.name(it) }, schedule = { ms, b -> main.postDelayed(b, ms) })
         val codecs = if (runCatching { OpusCodec.available() }.getOrDefault(false)) listOf("opus", "pcmu") else listOf("pcmu")
@@ -106,6 +108,11 @@ class ClientApp : Application(), LinkEvents {
     fun deviceName(): String = runCatching { Settings.Global.getString(contentResolver, "device_name") }.getOrNull()?.takeIf { it.isNotBlank() } ?: Build.MODEL
 
     fun hasLinkPermissions(): Boolean = linkPermissions().all { checkSelfPermission(it) == android.content.pm.PackageManager.PERMISSION_GRANTED }
+
+    fun hasMicPermission(): Boolean = checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** What is wrong with this phone's microphone for the call screen and the main screen (null: nothing). */
+    val micWarning: MicWarning? get() = MicPolicy.warning(hasMicPermission(), audio.recorderFailed, audio.captureSilent)
 
     fun linkPermissions(): List<String> = if (Build.VERSION.SDK_INT >= 31)
         listOf(android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT)

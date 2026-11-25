@@ -72,6 +72,7 @@ match), runs the Android unit tests, builds the Swift package, and attaches to t
 | `Tether-A54-<version>.apk` | the app for the Android phone with the SIMs |
 | `Tether-Client-<version>.apk` | the Android client (a second Android phone) |
 | `Tether-<version>-unsigned.ipa` | the iPhone / iPad app, Release build, **not signed**: for sideloading tools that re-sign it with your own Apple ID |
+| `altstore.json` | AltStore / SideStore source for the IPA, made and checked by `tools/altstore-source.py` from the IPA's own Info.plist. Its stable address is `https://github.com/amirwmr/tether/releases/latest/download/altstore.json` (GitHub's "latest" points at the newest non-prerelease, so prereleases never reach users of the source) |
 | `SHA256SUMS` | checksums of the files above |
 
 The release notes are that version's CHANGELOG section plus install instructions. On every push to `main`, CI also keeps
@@ -85,4 +86,6 @@ gh attestation verify Tether-A54-1.2.0.apk --repo amirwmr/tether
 ```
 
 The attestation proves that the file was built by this repository's Release workflow from the tagged commit. To check
-the Android signing key of an APK: `apksigner verify --print-certs Tether-A54-1.2.0.apk`.
+the Android signing key of an APK: `apksigner verify --print-certs Tether-A54-1.2.0.apk`. Release APKs from 1.2.0 on
+are signed with the project's release key, certificate SHA-256
+`16f456947ccc85880d9fe3cd24775b884d2f21d0f39c4f10d3b3d6e64901057f`.

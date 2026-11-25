@@ -117,4 +117,31 @@ final class AudioRouteMatrixTests: XCTestCase {
             }
         }
     }
+
+    /// Interruptions and media-services resets keep the call and bring its audio back (#15).
+    func testInterruptionsAndMediaReset() {
+        for running in [false, true] { for engine in [false, true] {
+            XCTAssertEqual(EngineDecision.onInterruption(began: true, sessionActive: true, running: running, engineRunning: engine), .keep, "began: wait for the end")
+            XCTAssertEqual(EngineDecision.onInterruption(began: false, sessionActive: false, running: running, engineRunning: engine), .keep, "no call")
+        } }
+        XCTAssertEqual(EngineDecision.onInterruption(began: false, sessionActive: true, running: true, engineRunning: false), .restart, "the same engine again")
+        XCTAssertEqual(EngineDecision.onInterruption(began: false, sessionActive: true, running: true, engineRunning: true), .keep)
+        XCTAssertEqual(EngineDecision.onInterruption(began: false, sessionActive: true, running: false, engineRunning: false), .rebuild)
+        XCTAssertEqual(EngineDecision.onMediaServicesReset(sessionActive: true), .rebuild)
+        XCTAssertEqual(EngineDecision.onMediaServicesReset(sessionActive: false), .keep)
+    }
+
+    /// Formats read from the engine the same way at build and at the event: an unchanged engine is never rebuilt
+    /// for a configuration change, only started again; a new rate (hands-free) is.
+    func testEngineFormatsFromTheSameSource() {
+        let vp = EngineFormat(inputRate: 48000, inputChannels: 3, outputRate: 48000, outputChannels: 2)   // voice processing reports more channels
+        XCTAssertEqual(EngineDecision.onRouteEvent(sessionActive: true, running: true, configurationChanged: true, built: vp, now: vp, engineRunning: false), .restart)
+        XCTAssertEqual(EngineDecision.onRouteEvent(sessionActive: true, running: true, configurationChanged: false, built: vp, now: vp, engineRunning: true), .keep)
+        // The same engine reporting another channel count (running vs stopped, voice processing): no rebuild loop.
+        let vpRunning = EngineFormat(inputRate: 48000, inputChannels: 1, outputRate: 48000, outputChannels: 1)
+        XCTAssertEqual(EngineDecision.onRouteEvent(sessionActive: true, running: true, configurationChanged: false, built: vp, now: vpRunning, engineRunning: true), .keep)
+        XCTAssertEqual(EngineDecision.onRouteEvent(sessionActive: true, running: true, configurationChanged: true, built: vp, now: vpRunning, engineRunning: false), .restart)
+        let hfp = EngineFormat(inputRate: 16000, inputChannels: 1, outputRate: 16000, outputChannels: 1)
+        XCTAssertEqual(EngineDecision.onRouteEvent(sessionActive: true, running: true, configurationChanged: true, built: vp, now: hfp, engineRunning: false), .rebuild)
+    }
 }

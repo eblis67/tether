@@ -49,19 +49,27 @@ public final class SampleRing: @unchecked Sendable {
 ///   re-buffering; only ~100 ms without audio un-primes it.
 /// - The level is steered in quiet frames (inaudible): above `target` a quiet frame is written short (clock drift,
 ///   bursts, the delay a gap left behind); below it, while the far clock runs measurably slow, a quiet frame is written
-///   longer. Speech is never cut or stretched; a hard trim only catches a huge burst.
+///   longer. Speech is never cut or stretched: after a stall (with Bluetooth tethering on, up to ~0.9 s, its frames then
+///   arriving in one burst) the backlog plays late and its delay goes in the following pauses; only a backlog over
+///   `maxBacklogSeconds` loses its oldest audio (2026-11-25; before, anything 120 ms over the target was cut, words
+///   included: 0.7 s of speech in the 2-minute tethering trace).
 /// - `target` follows the spread of frame arrival times over the last ~10 s (up at once, down slowly), grows by 5 ms
 ///   with every concealed gap (more after a real underrun) and shrinks after ~3 s clean, never below that spread.
-///   The spread is measured around the far clock's own rate (a drift line), so drift does not widen it.
+///   The spread is measured around the far clock's own rate (a drift line), so drift does not widen it; a stall's
+///   burst is left out of it (no buffer covers a stall, and it held the target at its maximum for ~10 s).
 public final class PlayoutBuffer: @unchecked Sendable {
     private let ring: SampleRing
     private let lock = UnfairLock()
     public private(set) var target: Int
     public let minTarget: Int, maxTarget: Int
+    /// The most audio kept queued (samples, `maxBacklogSeconds`).
+    public let maxBacklog: Int
     private let rate: Int
     private var primed = false
     public private(set) var underruns = 0
     public private(set) var trimmed = 0
+    /// Of `trimmed`, samples that were not quiet frames (a backlog over `maxBacklogSeconds` cut from its oldest end).
+    public private(set) var speechTrimmed = 0
     public private(set) var concealedSamples = 0
     /// Samples added by writing quiet frames longer (the level was below target).
     public private(set) var inserted = 0
@@ -91,7 +99,8 @@ public final class PlayoutBuffer: @unchecked Sendable {
         jitterFloor = Int(rate * 0.03)
         delays = [Double](repeating: 0, count: 500)
         times = [Double](repeating: 0, count: 500)
-        ring = SampleRing(capacity: Int(rate))
+        maxBacklog = Int(rate * Self.maxBacklogSeconds)
+        ring = SampleRing(capacity: Int(rate * (Self.maxBacklogSeconds + 0.25)))   // the ceiling plus a frame never overwrites
         lastLen = Int(rate * 0.01)     // 10 ms
         last = .allocate(capacity: lastLen)
         last.initialize(repeating: 0, count: lastLen)
@@ -105,6 +114,10 @@ public final class PlayoutBuffer: @unchecked Sendable {
     private var firstArrival: UInt64 = 0
     private var startupArrivals = 100
     private var expectedSamples = 0
+    /// Stall detection (audio queue): the last frame's time and delay in the window, and the delay before a stall
+    /// while its burst is still arriving.
+    private var lastNoted = 0.0, lastDelay = 0.0
+    private var stallBase: Double?
     /// The target the arrival statistics ask for (samples); `target` never shrinks below it and jumps up to it.
     /// Written on the audio queue, read for statistics.
     public private(set) var jitterFloor: Int
@@ -136,10 +149,16 @@ public final class PlayoutBuffer: @unchecked Sendable {
         if add > 0 { f.withUnsafeBufferPointer { ring.write($0.baseAddress!, add) } }
         var live = before + n + add
         var skip = f.count - n
-        if live > tgt + maxTarget { ring.skip(live - tgt); skip += live - tgt; live = tgt }   // a huge burst: cut now
+        // A backlog beyond the ceiling (a stall of most of a second, then its frames in one burst) loses its oldest
+        // audio. Below it nothing is cut from speech: the listener already waited through the stall, and every word
+        // still comes, a little late; the delay goes again in the next pauses (quiet frames written short, above).
+        var cut = 0
+        let ceiling = max(tgt + maxTarget, maxBacklog)
+        if live > ceiling { cut = live - ceiling; ring.skip(cut); skip += cut; live = ceiling }
         lock.lock()
         if !primed && live >= tgt { primed = true }
         trimmed += skip
+        speechTrimmed += cut
         inserted += add
         lock.unlock()
     }
@@ -214,11 +233,22 @@ public final class PlayoutBuffer: @unchecked Sendable {
         // (a 250-280 ms hold-up then, on a real iPhone, 2026-11-23), which kept the target at its maximum for
         // the next 10 s. Concealed gaps deepen the buffer meanwhile.
         if startupArrivals > 0 { startupArrivals -= 1; return }
-        if firstArrival == 0 || at < firstArrival { firstArrival = at; expectedSamples = 0; delayCount = 0; delayNext = 0 }
+        if firstArrival == 0 || at < firstArrival { firstArrival = at; expectedSamples = 0; delayCount = 0; delayNext = 0; lastNoted = 0; stallBase = nil }
         expectedSamples += missing * samples
         let t = Double(at - firstArrival) / 1e6
         let d = t - Double(expectedSamples) * 1000 / Double(rate)
         expectedSamples += samples
+        // A stall far longer than any buffer could cover (no frame for over `stallMs`, then its frames in one burst)
+        // says nothing about the link's usual spread: its late frames are left out of the window, or one stall held
+        // the target at its maximum, and with the stall's backlog kept (not cut) that maximum was the delay for ~10 s.
+        if lastNoted > 0 && t - lastNoted > Self.stallMs { stallBase = lastDelay }
+        lastNoted = t
+        if let base = stallBase {
+            // The burst: every frame later than the spread already covers (it ends with the first one in time).
+            if d > base + Double(jitterFloor) * 1000 / Double(rate) { return }
+            stallBase = nil
+        }
+        lastDelay = d
         delays[delayNext] = d
         times[delayNext] = t
         delayNext = (delayNext + 1) % delays.count
@@ -272,14 +302,25 @@ public final class PlayoutBuffer: @unchecked Sendable {
     /// estimate from a 10 s window with hold-ups wanders by up to ~800 ppm.
     static let slowClockPpm = 3000.0
 
+    /// No frame for this long (ms) is a stall, not jitter (the arrival statistics leave its burst out).
+    static let stallMs = 250.0
+
+    /// The most audio kept queued (s): beyond it the oldest is cut, speech or not.
+    public static let maxBacklogSeconds = 0.8
+
     /// Room beyond the arrival spread: the render thread takes 10 ms at a time.
     static let marginMs = 10.0
 
     private func remember(_ out: UnsafeMutablePointer<Float>, _ count: Int) {
         let k = min(count, lastLen)
-        // Keep the newest 10 ms, in order, so concealment continues the waveform.
+        // Keep the newest 10 ms, in order, so concealment continues the waveform. A pull shorter than 10 ms shifts the
+        // kept samples down first: source and destination overlap there, so it is a memmove (an explicit one: the
+        // copy direction matters and must not depend on how a pointer helper is implemented).
         if k == lastLen { last.update(from: out + (count - k), count: k) }
-        else { last.update(from: last + k, count: lastLen - k); (last + (lastLen - k)).update(from: out + (count - k), count: k) }
+        else {
+            memmove(last, last + k, (lastLen - k) * MemoryLayout<Float>.stride)
+            (last + (lastLen - k)).update(from: out + (count - k), count: k)
+        }
     }
 
     /** Samples queued right now (the playout delay beyond the output's own). */

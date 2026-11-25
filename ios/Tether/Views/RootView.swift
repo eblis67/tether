@@ -69,6 +69,25 @@ struct RootView: View {
                 },
                 secondaryButton: .cancel { router.keypadNumber = req.number })
         }
+        .alert(item: $router.pairRequest) { req in
+            let name = req.code.deviceName.isEmpty ? String(localized: "the Android phone") : req.code.deviceName
+            return Alert(
+                title: Text("Pair with \(name)?"),
+                message: Text(model.isPaired
+                    ? "This replaces the current pairing and removes the synced data from this iPhone."
+                    : "Calls, texts, contacts and call history of that phone will come to this iPhone over Bluetooth."),
+                primaryButton: .default(Text("Pair")) { model.pair(req.code) },
+                secondaryButton: .cancel())
+        }
+        // First launch: nothing to show until paired, so start on the Link tab with the setup steps.
+        .onAppear {
+            if !model.isPaired && router.pairRequest == nil && router.dialRequest == nil { router.tab = .link }
+            #if DEBUG
+            // -TetherOpenURL <url>: open a link as if from outside (screenshots of the pairing question).
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-TetherOpenURL"), i + 1 < args.count, let u = URL(string: args[i + 1]) { router.open(url: u) }
+            #endif
+        }
         .animation(.default, value: model.lastError)
         .animation(.default, value: model.notice)
         .fullScreenCover(isPresented: Binding(get: { model.showCallScreen && model.callScreen != nil },

@@ -21,6 +21,8 @@ interface CallSink {
     fun setHeld(local: String, on: Boolean)
     fun ended(local: String, reason: EndReason)
     fun ringback(on: Boolean)
+    /** The microphone may go to the Android phone ([CallUplink]): a call here is connected. Called on changes only. */
+    fun uplink(open: Boolean) {}
     /** No local call is left: call audio stops. */
     fun idle()
     fun changed() {}
@@ -58,6 +60,7 @@ class CallTracker(private val link: LinkPort, private val sink: CallSink, privat
     private var cancelledDialAt = 0L
     private var cancelledNumber = ""
     private var dialToken = 0
+    private var uplinkOpen = false
 
     val hasCalls get() = locals.isNotEmpty() || pendingOutgoing != null
     fun cidOf(local: String) = cids[local]
@@ -177,6 +180,7 @@ class CallTracker(private val link: LinkPort, private val sink: CallSink, privat
                 if (prev != "holding") sink.setHeld(local, true)
             }
         }
+        updateUplink()
         sink.changed()
     }
 
@@ -188,10 +192,16 @@ class CallTracker(private val link: LinkPort, private val sink: CallSink, privat
         sink.changed()
     }
 
+    private fun updateUplink() {
+        val open = CallUplink.open(info.values.map { it.state })
+        if (open != uplinkOpen) { uplinkOpen = open; sink.uplink(open) }
+    }
+
     private fun bind(cid: String, local: String) { locals[cid] = local; cids[local] = cid }
 
     private fun cleanup(local: String) {
         answeredHere.remove(local); holdRequested.remove(local); connectedAt.remove(local)
+        updateUplink()
         if (!hasCalls) { sink.ringback(false); sink.idle() }
     }
 
@@ -214,6 +224,7 @@ class CallTracker(private val link: LinkPort, private val sink: CallSink, privat
         locals.clear(); cids.clear(); lastState.clear(); info.clear(); remote.clear(); connectedAt.clear()
         pendingOutgoing = null; pendingNumber = ""; cancelledNumber = ""; cancelledDialAt = 0; dialToken++
         hungUp.reset(); answeredHere.clear(); holdRequested.clear()
+        updateUplink()
         sink.ringback(false)
         sink.idle()
         sink.changed()

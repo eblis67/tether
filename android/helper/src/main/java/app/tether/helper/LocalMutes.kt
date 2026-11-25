@@ -4,15 +4,17 @@ package app.tether.helper
  * What a bridged call silences on the Android phone itself (issue #2: on a Galaxy Z Fold 6 the far end heard nothing
  * of the iPhone while the downlink was fine).
  *
- * The earpiece is always silenced: that never touches the uplink. The phone's own microphone only when the user asks
- * for it (default off), because on several audio HALs a microphone mute also silences the audio injected into the
- * uplink: Android's mic mute (through Telecom) on MediaTek for certain, and by their sources on Qualcomm HALs whenever
- * the injection is not their in-call music use case (the interception API's track is not); Samsung's tx control mode
- * was never checked against the interception API on a real call. The phone lies in a bag, so its own microphone picks
- * up little, and a muted far end is far worse than some bag noise.
+ * The earpiece is always silenced: that never touches the uplink. The phone's own microphone is muted automatically
+ * ([autoPlan], the default setting when no redirect mode keeps the mic out, see [MicPath]) only with the vendor's own
+ * microphone-source key, never with Android's mic mute: on several audio HALs that also silences the audio injected
+ * into the uplink (MediaTek for certain, Qualcomm whenever the injection is not their in-call music use case, and a
+ * Galaxy Z Fold 6 with it and Samsung's tx key together, issue #2). With the user's "mute" setting ([manualPlan]) the
+ * vendor key where there is one, else Android's mic mute.
  *
- * When the user does turn the mute on, the helper watches the uplink during the call ([UplinkCheck]) and undoes the
- * mute if the iPhone's voice does not reach the call; the app remembers the result for this phone model.
+ * Every mute is watched during the call ([UplinkCheck]) until a check on this phone model gave an answer: the mute is
+ * undone when the iPhone's voice does not reach the call. Where the check cannot see the uplink at all (a blind
+ * VOICE_UPLINK, [Memory.UNVERIFIED]) only a key known to keep the injected voice ([CallAudio.Silence.blindSafe]:
+ * Samsung's tx control, verified on real calls on the reference phone) stays on; any other mute is left off then.
  */
 object LocalMutes {
     /** What the app remembers for this phone model (wire names as in status `helper.uplink`). */
@@ -20,7 +22,9 @@ object LocalMutes {
         /** The local mic mute silenced the uplink: never mute again on this phone unless the user turns it on anew. */
         BREAKS_UPLINK("muted-locally-fixed"),
         /** A check heard the iPhone's voice in the uplink with the mute on: no need to check again. */
-        OK("ok");
+        OK("ok"),
+        /** The uplink capture heard the iPhone neither with the mute nor without it: this phone cannot be checked. */
+        UNVERIFIED("unverified");
 
         companion object {
             fun of(wire: String?): Memory? = entries.firstOrNull { it.wire == wire }
@@ -52,6 +56,26 @@ object LocalMutes {
     fun plan(silence: CallAudio.Silence, micMute: Boolean, check: Boolean): Plan =
         if (!micMute) Plan.NONE
         else Plan(vendorMic = silence.vendorMicKeys, telecomMic = !silence.vendorMicKeys, check = check)
+
+    /**
+     * The automatic layer ([MicPath.Setting.AUTO] without a redirect mode): the vendor's microphone-source key, checked
+     * until this phone gave an answer; nothing where the vendor has no such key, where it silenced the uplink, or where
+     * the uplink cannot be checked and the key is not known to keep the injected voice.
+     */
+    fun autoPlan(silence: CallAudio.Silence, memory: Memory?): Plan = when {
+        !silence.vendorMicKeys || memory == Memory.BREAKS_UPLINK -> Plan.NONE
+        memory == Memory.UNVERIFIED && !silence.blindSafe -> Plan.NONE
+        else -> Plan(vendorMic = true, telecomMic = false, check = memory == null)
+    }
+
+    /** The user's "mute" setting: as [plan], checked until this phone gave an answer that holds for this mute. */
+    fun manualPlan(silence: CallAudio.Silence, memory: Memory?): Plan {
+        val p = plan(silence, memory != Memory.BREAKS_UPLINK, check = true)
+        return p.copy(check = memory == null || (memory == Memory.UNVERIFIED && !keepWhenBlind(p, silence)))
+    }
+
+    /** After the check found VOICE_UPLINK blind (the mute already undone): put [p]'s mute back, trusting the vendor? */
+    fun keepWhenBlind(p: Plan, silence: CallAudio.Silence): Boolean = p.vendorMic && !p.telecomMic && silence.blindSafe
 
     /** The plan after the uplink check found the mute silencing the iPhone's voice: no mic mute of any kind. */
     fun undone(p: Plan): Plan = p.copy(vendorMic = false, telecomMic = false)

@@ -17,3 +17,46 @@ enum ReconnectPolicy {
         return (recent, recent.count <= 3 ? .atOnce : .backOff(Double(min(30, 2 * recent.count))))
     }
 }
+
+/// What `TetherLink.startIfReady` does with the peripheral it holds (pure, without CoreBluetooth, for tests).
+enum LinkStart {
+    /// The held peripheral's connection state (`none`: the link holds no peripheral).
+    enum Phase: Equatable { case none, disconnected, connecting, connected, disconnecting }
+
+    enum Step: Equatable {
+        /// Bluetooth is off or not authorised yet.
+        case notReady
+        /// Nothing paired.
+        case unpaired
+        /// A connect is pending: leave it, iOS completes it when the Android phone is in range (also while suspended).
+        case waitForConnect
+        /// Connected (restored by iOS after a relaunch) but without a session: set one up on this connection.
+        case resume
+        /// Connected, with a session up or being set up: nothing to do.
+        case keep
+        /// Connect to the known peripheral (if any) and scan.
+        case connect
+    }
+
+    static func step(poweredOn: Bool, paired: Bool, held: Phase, sessionOrSetup: Bool) -> Step {
+        guard poweredOn else { return .notReady }
+        guard paired else { return .unpaired }
+        switch held {
+        case .connecting: return .waitForConnect
+        case .connected: return sessionOrSetup ? .keep : .resume
+        case .none, .disconnected, .disconnecting: return .connect
+        }
+    }
+
+    /// Renewing a pending connect (opening the app, the 10 s connect watchdog): whether to cancel it, and whether the
+    /// link forgets the peripheral before starting again. It must forget it at once: CoreBluetooth reports a cancelled
+    /// connect as still `connecting` for a while, and `step` then waited for a connect that would never complete, so the
+    /// link never reconnected (#15). A connected peripheral is never renewed.
+    static func renew(_ held: Phase) -> (cancel: Bool, forget: Bool) {
+        switch held {
+        case .connecting: return (true, true)
+        case .connected: return (false, false)
+        case .none, .disconnected, .disconnecting: return (false, true)
+        }
+    }
+}

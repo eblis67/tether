@@ -22,10 +22,20 @@
     <string name="state_unpaired">Not paired</string>
     <string name="state_bt_off">Bluetooth off</string>
     <string name="pair_iphone">Pair iPhone</string>
-    <string name="pair_hint">In Cellular on the iPhone, choose Pair and scan this code. It works once and expires in 5 minutes.</string>
+    <string name="pair_hint">On the iPhone, open the Camera, point it at this code and tap Open in Cellular (or in Cellular: Link › Pair with Android phone). Allow Bluetooth when the iPhone asks. The code works once and expires in 5 minutes.</string>
     <string name="pair_expires">Expires in %1$d s</string>
     <string name="unpair">Unpair</string>
 
+    <string name="setup_intro">Do these steps once, top to bottom. Each one says what to do; a step is done when it turns green.</string>
+    <string name="step_n">%1$d. %2$s</string>
+    <string name="help_permissions">Tap Grant and allow everything Tether asks for: phone, SMS, contacts, call log, nearby devices (Bluetooth) and notifications. Tether passes them on to your iPhone; nothing leaves your devices.</string>
+    <string name="help_dialer">Tap Set and choose Tether as the default phone app, so calls can be answered and made from the iPhone.</string>
+    <string name="help_battery">Tap Set and allow unrestricted battery use, so Android does not stop Tether while the phone sits in a bag.</string>
+    <string name="help_adb">One time only, needs Wi-Fi. Turn on Developer options (Settings › About phone › Software information: tap Build number 7 times). Tap Pair: Tether opens Developer options and posts a notification. Turn on Wireless debugging, tap Pair device with pairing code, then type the 6-digit code into Tether\'s notification. This lets Tether carry call audio.</string>
+    <string name="help_pair_next">Next: tap Pair iPhone below and scan the code with the iPhone.</string>
+    <string name="pair_old_app">iPhone app 1.1 or older? Show the old code</string>
+    <string name="pair_new_code">Show the new code</string>
+    <string name="pair_hint_old">Code for Cellular 1.1: in Cellular open Link › Pair with Android phone and scan it there (the Camera app cannot open this one).</string>
     <string name="step_permissions">Permissions</string>
     <string name="step_dialer">Default phone app</string>
     <string name="step_battery">Unrestricted battery use</string>
@@ -36,11 +46,16 @@
     <string name="action_pair">Pair</string>
     <string name="action_start">Start</string>
     <string name="action_selftest">Run call-audio self-test</string>
-    <string name="step_adb_tcp">TCP debugging (Android 10, or no Wi-Fi)</string>
+    <string name="step_adb_tcp">TCP debugging (Android 8 to 10, or no Wi-Fi)</string>
     <string name="adb_tcp_on">On, port %1$d</string>
     <string name="adb_tcp_off">Off</string>
     <string name="action_enable">Enable</string>
     <string name="action_turn_off">Turn off</string>
+    <string name="link_log">Link log</string>
+    <string name="link_log_empty">No events yet.</string>
+    <string name="action_share">Share</string>
+    <string name="action_copy">Copy</string>
+    <string name="copied">Copied</string>
     <string name="adb_tcp_howto">Connect this phone to a computer with USB once, run: adb tcpip 5555, and accept the key prompt on the phone (Always allow). Tether then connects to 127.0.0.1:5555 itself. Repeat the adb tcpip command after every restart of the phone. Turn it off again with: adb usb. While it is on, the phone accepts adb connections on every network it is on, protected only by that key approval.</string>
     <string name="adb_tcp_connecting">Connecting to adb on 127.0.0.1…</string>
     <string name="adb_tcp_connected">Connected. Starting the audio helper…</string>
@@ -78,6 +93,7 @@
     <string name="unpair_confirm_named">Forget %1$s? It will need to be paired again.</string>
     <string name="audio_needs_android11">Call audio needs Android 11 or later. On this phone, calls are still answered, placed and ended from the iPhone, but their audio stays on this phone.</string>
     <string name="audio_android11_12">Call audio on Android 11 and 12 uses the phone\'s call recorder path and works only if this phone allows it. Run the self-test during a call to check.</string>
+    <string name="audio_blocked">This phone\'s software gave Tether no call audio in a call (the call sounded like silence to it), so calls are not bridged here: they are still answered, placed and ended from the iPhone, but you hear and speak on this phone. A system update, or a self-test during a call that hears the call, turns call audio back on.</string>
     <string name="audio_needs_android13">Call audio needs Android 13 or later. On this phone, calls are still answered, placed and ended from the iPhone, but their audio stays on this phone.</string>
     <string name="mic_mute_on">On: Tether checks during each call that your voice still reaches the other side and turns the mute off if it does not.</string>
     <string name="mic_mute_blocked">On, but not used on this phone: muting the microphone silenced your voice for the other side. Switch it off and on to try again.</string>
@@ -86,7 +102,8 @@
     <string name="mic_choice_auto">Off during calls (recommended)</string>
     <string name="mic_choice_mute">Muted</string>
     <string name="mic_choice_open">On</string>
-    <string name="mic_auto_note">Tether puts the call in Android\'s redirect audio mode: this phone\'s own microphone and earpiece leave the call, and the other side hears only your iPhone. Tether checks that both directions still work and remembers what this phone allows.</string>
+    <string name="mic_auto_note">Tether takes this phone\'s own microphone and earpiece out of the call: with Android\'s redirect audio mode where this phone handles it, else with the phone maker\'s own microphone switch. It checks that both directions still work and remembers what this phone allows.</string>
+    <string name="mic_auto_vendor">Android\'s redirect mode does not work on this phone: Tether mutes this phone\'s microphone with the maker\'s own switch instead, which keeps your voice in the call.</string>
     <string name="mic_auto_unavailable">This phone does not allow it (or needs Android 13): its microphone stays on during calls, so keep it in a bag or pocket. Choose this again to try anew.</string>
     <string name="mic_open_note">This phone\'s microphone stays in the call: the other side may hear your voice twice, and the room around this phone.</string>
     <string name="mic_now_off">Now: out of the call (%1$s)</string>

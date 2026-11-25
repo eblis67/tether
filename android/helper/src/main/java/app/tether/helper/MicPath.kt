@@ -18,8 +18,14 @@ import org.json.JSONObject
  * [Redirect.COMMUNICATION_REDIRECT] is the VoIP twin (Telecom's call streaming uses it); Tether's own test line is VoIP.
  *
  * What the vendor's audio HAL does in these modes is not specified, so each mode is verified per phone model (in the
- * call by [RedirectGuard], by the self-test) and remembered as a [Verdict]; a mode that failed is not used again.
- * Without a usable mode the mic stays open (or the opt-in mute of [LocalMutes] is used).
+ * call by [RedirectGuard], by the self-test) and remembered as a [Verdict]; a mode that failed, or whose effect on the
+ * uplink could not be seen, is not used again.
+ *
+ * [Setting.AUTO] is a chain, each layer tried where this phone has it and has not shown it to fail, the first that
+ * holds is kept for the call ([Layer]): a redirect mode (CALL_REDIRECT, then CALL_SCREENING where declared) → the
+ * vendor's microphone-source key ([LocalMutes.autoPlan]: Samsung's tx control, MediaTek's UL mute; never Android's mic
+ * mute, which silences the injected voice on several HALs) → the phone's mic open. [Setting.MUTE] and [Setting.OPEN]
+ * are the user's own choice and override the chain.
  */
 object MicPath {
     /** The user's choice (status `helper.mic`). */
@@ -47,6 +53,9 @@ object MicPath {
         const val CALL_SCREENING = 4
         const val CALL_REDIRECT = 5
         const val COMMUNICATION_REDIRECT = 6
+
+        /** A call's own audio mode or one of the redirect modes: the phone routes (or releases) a call's audio. */
+        fun isCall(m: Int): Boolean = m == IN_CALL || m == IN_COMMUNICATION || m == CALL_SCREENING || m == CALL_REDIRECT || m == COMMUNICATION_REDIRECT
 
         fun name(m: Int): String = when (m) {
             NORMAL -> "normal"; RINGTONE -> "ringtone"; IN_CALL -> "in_call"; IN_COMMUNICATION -> "in_communication"
@@ -77,8 +86,11 @@ object MicPath {
     enum class Verdict(val wire: String, val usable: Boolean) {
         /** The injected voice was heard in the uplink with the mode on, or the mic left the uplink: use it. */
         OK("ok", true),
-        /** Nothing went wrong, but this phone cannot show its uplink to a check: used without the speech check. */
-        UNVERIFIED("unverified", true),
+        /**
+         * Nothing went wrong, but this phone cannot show its uplink to a check. Not used automatically (issue #15): a
+         * redirect mode that silenced the uplink would leave the far end hearing nothing, and no check could tell.
+         */
+        UNVERIFIED("unverified", false),
         /** The downlink went silent in the mode and came back without it. */
         BREAKS_DOWNLINK("breaks-downlink", false),
         /** The injected voice left the uplink in the mode and came back without it. */
@@ -106,16 +118,39 @@ object MicPath {
     /**
      * The mode for this call, or null (the mic stays open, or is muted with [Setting.MUTE]): only with [Setting.AUTO],
      * on Android 13+, with the interception API's injection (the older inject paths need the call's own routing), the
-     * first mode of the call's ladder that this phone has not shown to fail.
+     * first mode of the call's ladder that this phone has not shown to fail. Once one mode of the ladder is
+     * [Verdict.UNVERIFIED] (this phone's uplink cannot be seen), the ladder's untested modes are skipped too: the next
+     * one could not be checked either, and a mode that silenced the uplink would give a one-way call (Poco F3 / X3 Pro
+     * reports, 2026-11-25). Modes that passed a check stay usable.
      */
     fun choose(sdk: Int, setting: Setting, callMode: Int, inject: String?, screeningSupported: Boolean,
                memory: Map<Redirect, Verdict>): Redirect? {
         if (setting != Setting.AUTO || inject != "intercept") return null
-        return Redirect.ladder(callMode, screeningSupported).firstOrNull { sdk >= it.minSdk && memory[it]?.usable != false }
+        val ladder = Redirect.ladder(callMode, screeningSupported)
+        val blind = blindUplink(callMode, memory)
+        return ladder.firstOrNull { sdk >= it.minSdk && memory[it]?.usable != false && !(blind && memory[it] == null) }
     }
+
+    /** A mode of [callMode]'s ladder could not be checked on this phone: its uplink is not visible to a check. */
+    fun blindUplink(callMode: Int, memory: Map<Redirect, Verdict>): Boolean =
+        Redirect.ladder(callMode, true).any { memory[it] == Verdict.UNVERIFIED }
 
     /** Watch the uplink with speech (an [UplinkCheck]) only while the mode is untested on this phone. */
     fun wantSpeechCheck(v: Verdict?): Boolean = v == null
+
+    /** The layers of [Setting.AUTO], best first; `wire` as INFO `mic.layer`. */
+    enum class Layer(val wire: String) { REDIRECT("redirect"), VENDOR_MUTE("vendor-mute"), OPEN("open") }
+
+    /**
+     * Why [Setting.AUTO] has no redirect mode for this call (INFO `mic.note`), from what [choose] was given.
+     */
+    fun noRedirectWhy(sdk: Int, inject: String?, callMode: Int, memory: Map<Redirect, Verdict>): String = when {
+        sdk < 33 -> "no redirect mode before Android 13"
+        inject != "intercept" -> "no redirect mode without the interception API (inject ${inject ?: "none"})"
+        Redirect.ladder(callMode, true).isEmpty() -> "no redirect mode in ${Mode.name(callMode)}"
+        else -> "redirect modes not used on this phone: " + Redirect.ladder(callMode, true)
+            .joinToString(", ") { "${it.wire} ${memory[it]?.wire ?: if (blindUplink(callMode, memory)) "not tried (the uplink cannot be checked)" else "not declared"}" }
+    }
 
     /**
      * The self-test's verdict for one mode, from levels measured with the mode off (…0) and on (…1): `accepted` the
@@ -153,6 +188,8 @@ object MicPath {
  *   VOICE_UPLINK stays quiet → revert; it hears the voice after that → [MicPath.Verdict.BREAKS_UPLINK]; it does not hear
  *   it either way → [MicPath.Verdict.UNVERIFIED] (blind uplink: later calls skip the check); it hears it with the mode
  *   on → [MicPath.Verdict.OK].
+ * - No VOICE_UPLINK capture for an untested mode ([uplinkUnavailable]): the mode is withdrawn at once (or never set),
+ *   remembered as [MicPath.Verdict.UNVERIFIED]: an unchecked mode could silence the uplink for the whole call.
  * A revert keeps the mode off for the rest of the call.
  */
 class RedirectGuard(val redirect: MicPath.Redirect, private val waitDownlink: Boolean, speechCheck: Boolean,
@@ -171,6 +208,24 @@ class RedirectGuard(val redirect: MicPath.Redirect, private val waitDownlink: Bo
     @Volatile var note = if (waitDownlink) "waiting for audio in the downlink" else "set within a second"; private set
     /** Times the mode was set again after Telecom took it back. */
     @Volatile var reasserts = 0; private set
+    /**
+     * The mode is off for good and nothing more is being watched: the next layer of [MicPath.Setting.AUTO] may take
+     * over the phone's mic now (not earlier: a mute during the after-check would blur what it compares).
+     */
+    val settled: Boolean get() = when (state) {
+        State.WAITING, State.ON -> false
+        State.STOPPED -> true
+        State.REVERTED -> when (why) {
+            Why.DOWNLINK -> true   // the downlink's after-check is not affected by a mic mute
+            Why.UPLINK -> check?.done != false
+            Why.NONE -> true
+        }
+    }
+    /** This call showed that VOICE_UPLINK does not show the injected voice at all (with or without the mode). */
+    val blindUplink: Boolean get() = check?.blind == true || unchecked
+
+    /** The uplink capture for the speech check could not be opened or stopped: the mode goes (see [uplinkUnavailable]). */
+    @Volatile private var unchecked = false
 
     private enum class Why { NONE, DOWNLINK, UPLINK }
     private var why = Why.NONE
@@ -183,6 +238,12 @@ class RedirectGuard(val redirect: MicPath.Redirect, private val waitDownlink: Bo
     private fun alive(s: Second) = s.downFrames > 0 && s.downNonZero >= ALIVE_SAMPLES
 
     fun second(s: Second): Action {
+        if (unchecked && (state == State.WAITING || state == State.ON)) {
+            val wasOn = state == State.ON
+            state = State.REVERTED; why = Why.NONE
+            note = "the uplink cannot be checked on this phone: ${redirect.wire} " + (if (wasOn) "undone" else "not used") + "; the next layer takes the mic"
+            return if (wasOn) Action.REVERT else Action.NONE
+        }
         when (state) {
             State.WAITING -> {
                 if (!waitDownlink || alive(s)) {
@@ -257,7 +318,7 @@ class RedirectGuard(val redirect: MicPath.Redirect, private val waitDownlink: Bo
     fun uplinkUnavailable(reason: String) {
         val c = check ?: return
         c.fail(reason)
-        if (state != State.REVERTED && verdict == null) { verdict = MicPath.Verdict.UNVERIFIED; note = reason }
+        if (state != State.REVERTED && verdict == null) { verdict = MicPath.Verdict.UNVERIFIED; note = reason; unchecked = true }
     }
 
     companion object {

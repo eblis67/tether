@@ -58,3 +58,39 @@ final class LinkPolicyTests: XCTestCase {
     }
     #endif
 }
+
+/// What the link does with the peripheral it holds when it (re)starts, and renewing a pending connect (#15).
+final class LinkStartTests: XCTestCase {
+    func testStepsPerPhase() {
+        XCTAssertEqual(LinkStart.step(poweredOn: false, paired: true, held: .none, sessionOrSetup: false), .notReady)
+        XCTAssertEqual(LinkStart.step(poweredOn: true, paired: false, held: .connecting, sessionOrSetup: false), .unpaired)
+        XCTAssertEqual(LinkStart.step(poweredOn: true, paired: true, held: .connecting, sessionOrSetup: false), .waitForConnect)
+        XCTAssertEqual(LinkStart.step(poweredOn: true, paired: true, held: .connected, sessionOrSetup: false), .resume)
+        XCTAssertEqual(LinkStart.step(poweredOn: true, paired: true, held: .connected, sessionOrSetup: true), .keep)
+        for p in [LinkStart.Phase.none, .disconnected, .disconnecting] {
+            XCTAssertEqual(LinkStart.step(poweredOn: true, paired: true, held: p, sessionOrSetup: false), .connect, "\(p)")
+        }
+    }
+
+    /// The bug: after cancelling a pending connect, CoreBluetooth still reports the peripheral as connecting for a
+    /// while. Holding on to it, the start waited for a connect that never completes; forgetting it connects again.
+    func testRenewingAPendingConnectConnectsAgain() {
+        var held = LinkStart.Phase.connecting
+        let r = LinkStart.renew(held)
+        XCTAssertTrue(r.cancel)
+        XCTAssertTrue(r.forget, "the cancelled peripheral is forgotten at once")
+        // Kept (the old behaviour), it still reads as connecting right after the cancel: the start would wait.
+        XCTAssertEqual(LinkStart.step(poweredOn: true, paired: true, held: held, sessionOrSetup: false), .waitForConnect)
+        if r.forget { held = .none }
+        XCTAssertEqual(LinkStart.step(poweredOn: true, paired: true, held: held, sessionOrSetup: false), .connect)
+    }
+
+    /// Renewing never cancels a connected peripheral (a restored connection is resumed, not dropped).
+    func testRenewingKeepsAConnection() {
+        let r = LinkStart.renew(.connected)
+        XCTAssertFalse(r.cancel)
+        XCTAssertFalse(r.forget)
+        XCTAssertEqual(LinkStart.step(poweredOn: true, paired: true, held: .connected, sessionOrSetup: false), .resume)
+        for p in [LinkStart.Phase.none, .disconnected, .disconnecting] { XCTAssertFalse(LinkStart.renew(p).cancel, "\(p)") }
+    }
+}

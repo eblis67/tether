@@ -146,14 +146,25 @@ public final class TetherLink: NSObject {
         }
     }
 
+    private static func phase(_ p: CBPeripheral?) -> LinkStart.Phase {
+        guard let p else { return .none }
+        switch p.state {
+        case .connecting: return .connecting
+        case .connected: return .connected
+        case .disconnecting: return .disconnecting
+        default: return .disconnected
+        }
+    }
+
     private func startIfReady() {
-        guard central.state == .poweredOn else { return }
-        guard isPaired else { state = .unpaired; return }
-        if let p = peripheral, p.state == .connecting { return }
-        if let p = peripheral, p.state == .connected {
+        let busy = settingUp || session != nil || handshake != nil || channel != nil || transport != "none"
+        switch LinkStart.step(poweredOn: central.state == .poweredOn, paired: isPaired, held: Self.phase(peripheral), sessionOrSetup: busy) {
+        case .notReady, .waitForConnect, .keep: return
+        case .unpaired: state = .unpaired; return
+        case .resume:
             // Restored by iOS (relaunch after suspension/termination) still connected, but our L2CAP
             // channel and session died with the old process: set them up again.
-            if !settingUp && session == nil && handshake == nil && channel == nil && transport == "none" {
+            if let p = peripheral {
                 settingUp = true
                 log("resuming restored connection")
                 state = .connecting
@@ -162,6 +173,7 @@ public final class TetherLink: NSObject {
                 p.discoverServices([TetherUUID.service])
             }
             return
+        case .connect: break
         }
         if let id = store.peripheralID, let p = central.retrievePeripherals(withIdentifiers: [id]).first {
             log("pending connect to known peripheral \(id)")
@@ -184,7 +196,7 @@ public final class TetherLink: NSObject {
             guard self.isPaired, self.session == nil, !self.settingUp else { return }
             self.log(why)
             self.failures.removeAll(); self.retryItem?.cancel(); self.retryItem = nil
-            if let p = self.peripheral, p.state == .connecting { self.central.cancelPeripheralConnection(p) }
+            self.renewPendingConnect()
             self.startIfReady()
         }
     }
@@ -195,6 +207,15 @@ public final class TetherLink: NSObject {
     /// didConnect came for the current connect (a nil-error disconnect before it is our own cancellation).
     private var connectedThisAttempt = false
 
+    /// Cancels a pending connect and forgets its peripheral at once (LinkStart.renew): CoreBluetooth may report it as
+    /// connecting for a while after the cancel, and a held one made startIfReady wait for a connect that never came.
+    /// Its late disconnect (no error, never connected) is recognised as our own cancellation.
+    private func renewPendingConnect() {
+        let r = LinkStart.renew(Self.phase(peripheral))
+        if r.cancel, let p = peripheral { central.cancelPeripheralConnection(p) }
+        if r.forget { peripheral = nil; connectedThisAttempt = false }
+    }
+
     private func connect(_ p: CBPeripheral) {
         peripheral = p
         p.delegate = self
@@ -204,7 +225,7 @@ public final class TetherLink: NSObject {
         let w = DispatchWorkItem { [weak self] in
             guard let self, let cur = self.peripheral, cur.state == .connecting, !self.settingUp, self.session == nil else { return }
             self.log("connect still pending after 10 s: renewing")
-            self.central.cancelPeripheralConnection(cur)
+            self.renewPendingConnect()
             self.startIfReady()
         }
         connectWatchdog = w

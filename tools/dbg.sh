@@ -9,7 +9,7 @@
 #   tools/dbg.sh drop (close live sessions from the Android side)
 #   tools/dbg.sh inject_ms 20..200|off (uplink playback buffer cap for the next calls; default 40)
 #   tools/dbg.sh mic_mute on|off|state (mute the A54's own mic during bridged calls; default off; prints the uplink check)
-#   tools/dbg.sh mic auto|mute|open|state (the A54's own mic during bridged calls: auto = a redirect audio mode where it works)
+#   tools/dbg.sh mic auto|mute|open|state [keep] (the A54's own mic during bridged calls: auto = a redirect audio mode, else the vendor mic key; keep: do not forget what was remembered)
 #   tools/dbg.sh linklog [n] | only none|off | forget_kind <kind> | contact_test | test_contact +1000000000x | star <id> on|off
 #   tools/dbg.sh test_sms +10000000001 "text" | test_sms_delete <id|thread:N> | test_call +10000000001 | test_call_delete <id>
 #   tools/dbg.sh block +10000000001 on|off | mute <thread> on|off | lists      (test numbers +1000000000x only)
@@ -38,7 +38,7 @@ case "$cmd" in
   only) extra="--es kind ${1:-off}";;
   inject_ms) extra="--es ms ${1:-off}";;
   mic_mute) extra="--es on ${1:-state}";;
-  mic) extra="--es on ${1:-state}";;
+  mic) extra="--es on ${1:-state}${2:+ --es keep $2}";;
   forget_kind) extra="--es kind $1";;
   linklog) extra="--es n ${1:-120}";;
   ext_echo) [ -n "$1" ] && extra="--es data '$1'";;

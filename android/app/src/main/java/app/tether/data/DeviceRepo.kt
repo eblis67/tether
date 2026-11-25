@@ -42,7 +42,7 @@ class CallLogRepo(private val ctx: Context, private val subs: SimRepo) {
                 putInt(android.content.ContentResolver.QUERY_ARG_LIMIT, cap)
             }
             ctx.contentResolver.query(CallLog.Calls.CONTENT_URI, cols, qa, null)?.use { c ->
-                while (c.moveToNext()) out.add(CallEntry(c.getLong(0), c.getString(1) ?: "", c.getString(2), c.getLong(3),
+                while (out.size < cap && c.moveToNext()) out.add(CallEntry(c.getLong(0), c.getString(1) ?: "", c.getString(2), c.getLong(3),
                     c.getInt(4), c.getInt(5), subs.subForAccountId(c.getString(6))))
             }
         } catch (e: SecurityException) {
@@ -112,7 +112,7 @@ class SimRepo(private val ctx: Context) {
                     override fun onSubscriptionsChanged() { rewatch() }
                 })
             } else {
-                // Android 10: the listener uses the looper of the thread that creates it, so create it on the main one.
+                // Android 8-10: the listener uses the looper of the thread that creates it, so create it on the main one.
                 Handler(Looper.getMainLooper()).post {
                     runCatching {
                         sm.addOnSubscriptionsChangedListener(object : SubscriptionManager.OnSubscriptionsChangedListener() {
@@ -169,7 +169,7 @@ class SimRepo(private val ctx: Context) {
         override fun onServiceStateChanged(st: android.telephony.ServiceState) = applyService(r, st)
     }
 
-    /** Android 10 to 11: PhoneStateListener (deprecated from 12). Android 10 has no display info; the plain data type stands in. */
+    /** Android 8 to 11: PhoneStateListener (deprecated from 12). Android 8-10 have no display info; the plain data type stands in. */
     @Suppress("DEPRECATION")
     private open inner class LegacyListener(val t: TelephonyManager, val r: Radio) : android.telephony.PhoneStateListener() {
         override fun onSignalStrengthsChanged(ss: android.telephony.SignalStrength) {
@@ -245,7 +245,7 @@ class SimRepo(private val ctx: Context) {
                 .put("name", info.displayName?.toString() ?: "SIM ${info.simSlotIndex + 1}")
                 .put("carrier", t.networkOperatorName?.takeIf { it.isNotBlank() } ?: info.carrierName?.toString() ?: "")
                 .apply { country(t)?.let { put("country", it) } }
-                .put("signal", live[info.subscriptionId]?.level ?: t.signalStrength?.level ?: 0)
+                .put("signal", live[info.subscriptionId]?.level ?: (if (Build.VERSION.SDK_INT >= 28) t.signalStrength?.level else null) ?: 0)
                 .apply { live[info.subscriptionId]?.let { l ->
                     l.net?.let { put("net", it) }; put("service", l.service); put("roaming", l.roaming)
                 } }
@@ -294,7 +294,7 @@ class SimRepo(private val ctx: Context) {
         else @Suppress("DEPRECATION") (info.number ?: "")
 
     /**
-     * Subscription behind a calling account: `getSubscriptionId` from Android 11; on Android 10 a SIM account's id is the
+     * Subscription behind a calling account: `getSubscriptionId` from Android 11; on Android 8-10 a SIM account's id is the
      * SIM's ICCID, so match on that (best effort), and with a single SIM there is only one answer.
      */
     @SuppressLint("MissingPermission")
@@ -340,5 +340,7 @@ class SimRepo(private val ctx: Context) {
             .put("adbWifi", Settings.Global.getInt(ctx.contentResolver, "adb_wifi_enabled", 0) == 1)
     }
 
-    fun isDialer() = ctx.getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_DIALER)
+    /** Whether Tether is the default phone app: the dialer role from Android 10, Telecom's default dialer before. */
+    fun isDialer() = if (Build.VERSION.SDK_INT >= 29) ctx.getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_DIALER)
+        else telecom.defaultDialerPackage == ctx.packageName
 }

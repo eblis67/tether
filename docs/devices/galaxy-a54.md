@@ -96,3 +96,19 @@ placed, so what the Samsung audio HAL does with a live PSTN call in these modes 
 | Interception API opened inside `MODE_CALL_REDIRECT` with no call | record and track open (track routed to Telephony, type 18); on a second try opening the record there blocked, so the helper opens both in the call's own mode first and only then switches |
 | `getMode()` in a process whose context targets Android 10 or lower | reports `CALL_SCREENING` as `IN_CALL` (AudioManager compatibility): the helper's context reports the current SDK |
 | Self-test on the test line | `mic:communication_redirect` accepted, "unverified" (VoIP path: `VOICE_UPLINK` shows neither the mic nor the tone, the test line's downlink is silent) |
+
+## Real calls (2026-11-23/24, the owner's calls)
+
+What the owner's own calls showed (link logs), and what the helper does with it since 1.2.0:
+
+| Finding | Since 1.2.0 |
+| --- | --- |
+| `MODE_CALL_REDIRECT` and `MODE_CALL_SCREENING` on a real PSTN call: the downlink went silent within 3 s each time (`breaks-downlink`, remembered) | Not used again on this model; the default setting falls through to Samsung's tx key in the same call |
+| `VOICE_UPLINK` does not reliably show the injected voice: with the tx key on it heard the iPhone once (`uplink check ok`, 11-24) and not at all in another call (silent with and without the key) | A check that finds the capture blind no longer leaves the mic open: on Samsung (Exynos) the tx key goes back on and the model is remembered as `unverified` (no more checks) |
+| Samsung's tx key (`l_voice_tx_control_mode=1`) without Android's mic mute: the far end heard the iPhone on every real call of 11-24 | The default setting uses it automatically when no redirect mode holds (`CallAudio.Silence.SAMSUNG.blindSafe`) |
+| Outgoing calls: `MODE_NORMAL` for seconds of dialing, the interception API refusing; after the old 4 s wait the helper fell back to `voice_downlink` / `telephony_tx` (4 downlink frames in the call) and the app restarted the helper up to 3 times (five starts in one second) | The paths open only in a call's audio mode (retried quietly meanwhile), no fallback for that refusal, one restart at most |
+| The iPhone's uplink during dialing piled up (the modem takes nothing before the call connects): 0.5-1 s ahead, 232 of 308 frames dropped in one call, inject clock 15.2-15.7 kHz measured over dialing | The uplink is dropped until the call is active and starts afresh then (`uplinkBeforeActiveFrames` in the figures) |
+| With Bluetooth tethering on, the uplink from the iPhone had up to 253 long gaps per call, worst 814-880 ms | Hold-ups every second raise the uplink target to 60 ms (else 45); what a stall delivers late is cut at once (`late cut`) instead of over the next minute |
+
+On 2026-11-25 the test line's capture showed a 55 ms standing backlog and a 15.77 kHz capture clock with both the 1.1.0
+build and 1.2.0 (16/92 ms and 16.0 kHz on 11-23): the phone's state, not the build.

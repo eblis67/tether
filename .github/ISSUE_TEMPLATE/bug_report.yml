@@ -59,7 +59,7 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: "The Android phone's link log (`tools/dbg.sh linklog`) and the iPhone's Link › Link log around the time of the problem. Redact numbers and names."
+      description: "The Android phone's link log (Tether › Call audio › Link log › Share) and the iPhone's Link › Link log (share button) around the time of the problem. Redact numbers and names."
       render: text
   - type: checkboxes
     id: checks

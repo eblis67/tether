@@ -1,7 +1,7 @@
 // MacCentral: a Mac client for a Tether phone over real Bluetooth, built on TetherLink (the same link code the
 // iPhone app uses).
 //
-//   MacCentral pair "<tether1:… code>" [seconds]   pair with the code the phone shows, then run
+//   MacCentral pair "<code>" [seconds]   pair with the code the phone shows, then run
 //   MacCentral run [seconds]                         reconnect with the stored identity
 //   MacCentral unpair                                forget the phone (and tell it, if it is in reach)
 //
@@ -152,7 +152,7 @@ var seconds = 60.0
 switch args.first {
 case "pair":
     guard args.count >= 2, let code = PairingCode.parse(args[1]) else {
-        print("not a pairing code: it starts with \(PairingCode.prefix)"); exit(2)
+        print("not a pairing code: it starts with \(PairingCode.linkPrefix) or \(PairingCode.prefix)"); exit(2)
     }
     if args.count >= 3 { seconds = Double(args[2]) ?? seconds }
     print("pairing with \(code.deviceName)")
@@ -166,7 +166,7 @@ case "unpair":
     seconds = 2
 default:
     print("""
-    usage: MacCentral pair "<tether1:… code>" [seconds]
+    usage: MacCentral pair "<tether://pair?c=… or tether1:… code>" [seconds]
            MacCentral run [seconds]
            MacCentral unpair
     """)

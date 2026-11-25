@@ -99,6 +99,12 @@ struct InCallView: View {
             CallStatusText(call: call)
                 .font(.system(size: 17))
                 .opacity(0.75)
+            if let w = model.micWarning, call.state != "ended" {
+                // The other side cannot hear this iPhone (#14): say it where the call is, not only in the Link tab.
+                Label(Microphone.text(w), systemImage: "mic.slash.fill")
+                    .font(.footnote.weight(.medium)).foregroundStyle(.yellow)
+                    .multilineTextAlignment(.center).padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity)
     }

@@ -189,11 +189,20 @@ public struct HelperInfo: Codable, Equatable, Sendable {
     public var mic: String?
     /// During a bridged call, what the Android phone's own mic does: "off" (out of the call), "muted", "open".
     public var micPath: String?
+    /// What call audio this Android version allows: "full" (13+), "fallback" (11-12, best effort), "unavailable"
+    /// (8 to 10: calls are controlled from the iPhone but their audio stays on the Android phone). Nil from older builds.
+    public var audio: String?
     public init(state: String, method: String? = nil, capture: String? = nil, up: Bool = false, down: Bool = false,
-                silent: String? = nil, micMute: Bool? = nil, uplink: String? = nil, mic: String? = nil, micPath: String? = nil) {
+                silent: String? = nil, micMute: Bool? = nil, uplink: String? = nil, mic: String? = nil, micPath: String? = nil,
+                audio: String? = nil) {
         self.state = state; self.method = method; self.capture = capture; self.up = up; self.down = down; self.silent = silent
-        self.micMute = micMute; self.uplink = uplink; self.mic = mic; self.micPath = micPath
+        self.micMute = micMute; self.uplink = uplink; self.mic = mic; self.micPath = micPath; self.audio = audio
     }
+
+    /// The Android phone cannot bridge call audio at all (Android 8 to 10).
+    public var audioUnavailable: Bool { audio == "unavailable" }
+    /// The Android phone's software gave Tether no call audio in a real call (since 1.2.2): calls stay on that phone.
+    public var audioBlocked: Bool { audio == "blocked" }
 }
 
 public struct StatusBody: Codable, Equatable, Sendable {
