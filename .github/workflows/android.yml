@@ -1,5 +1,8 @@
 name: Android APK
 
+# 2026-11-25: comment bump to re-trigger after the upstream sync to
+# 1fc7a1f — the merge-upstream push itself started no runs.
+
 on:
   push:
     branches: [main]
