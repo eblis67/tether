@@ -73,6 +73,9 @@ public final class WifiAudioExtension: TetherExtension {
     /// The channel this side believes is open (offered and accepted, or accepted from the peer), if any.
     private var channelCid: String?
 
+    /// Whether a channel is currently open on this link (the host's policy input: don't offer twice).
+    public var channelOpen: Bool { channelCid != nil }
+
     // MARK: client side (offering)
 
     /// Offers a Wi-Fi audio channel to the Android phone; returns the channel id, or nil when it could not

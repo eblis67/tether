@@ -21,6 +21,9 @@ final class WifiAudioFeature {
     private let work = DispatchQueue(label: "tether.wifiaudio", qos: .userInitiated)
 
     private var channel: WifiAudioChannel?
+    /// The open channel's id, remembered from the accept (the channel keeps its own copy private);
+    /// `channelEnded(_:)` needs it to forget the right channel.
+    private var openCid: String?
     private var inCall = false
     private var attempts = 0
     private var lastAttemptMs: Int64?
@@ -53,11 +56,11 @@ final class WifiAudioFeature {
         ext.onDeclined = { [weak self] _, _, why in
             Task { @MainActor [weak self] in self?.declined(why) }
         }
-        ext.onDown = { [weak self] _, _, _ in
-            Task { @MainActor [weak self] in self?.peerDown() }
+        ext.onDown = { [weak self] _, cid, _ in
+            Task { @MainActor [weak self] in self?.peerDown(cid) }
         }
-        ext.onError = { [weak self] _, _, code in
-            Task { @MainActor [weak self] in self?.failed(code) }
+        ext.onError = { [weak self] _, cid, code in
+            Task { @MainActor [weak self] in self?.failed(cid, code) }
         }
     }
 
@@ -79,8 +82,7 @@ final class WifiAudioFeature {
         model.wifiAudioInCall = false
         stopTimer()
         if let ext, ext.channelOpen, let session = model.extensions.session(for: ext) {
-            ext.sendDown(session, why: "ended")
-            ext.channelEnded()
+            ext.sendDown(session, why: "ended")   // sendDown forgets the channel itself
         }
         teardownChannel(notify: true)
         publishPath()
@@ -99,8 +101,7 @@ final class WifiAudioFeature {
     func settingChanged() {
         if !enabled {
             if let ext, ext.channelOpen, let session = model.extensions.session(for: ext) {
-                ext.sendDown(session, why: nil)
-                ext.channelEnded()
+                ext.sendDown(session, why: nil)   // sendDown forgets the channel itself
             }
             teardownChannel(notify: true)
             publishPath()
@@ -129,6 +130,7 @@ final class WifiAudioFeature {
         let stream = NWFilesStream(conn)
         let channel = WifiAudioChannel(keys: keys, cid: accept.cid, initiator: true)
         self.channel = channel
+        openCid = accept.cid
         sink.channel = channel
         lastPingMs = nil
         work.async { [weak self, stream, channel] in
@@ -151,15 +153,15 @@ final class WifiAudioFeature {
         publishPath()
     }
 
-    private func peerDown() {
-        ext?.channelEnded()
+    private func peerDown(_ cid: String) {
+        ext?.channelEnded(cid)
         teardownChannel(notify: false)
         publishPath()
     }
 
-    private func failed(_ code: String) {
+    private func failed(_ cid: String?, _ code: String) {
         LinkJournal.shared.add("Wi-Fi call path failed (\(code)) — the call stays on Bluetooth")
-        ext?.channelEnded()
+        if let cid { ext?.channelEnded(cid) }
         teardownChannel(notify: false)
         publishPath()
     }
@@ -167,7 +169,7 @@ final class WifiAudioFeature {
     /// The channel ended (or never connected): forget it; the timer's policy decides about another offer.
     private func channelGone(_ gone: WifiAudioChannel) {
         guard channel === gone else { return }
-        ext?.channelEnded()
+        if let cid = openCid { ext?.channelEnded(cid) }
         teardownChannel(notify: false)
         publishPath()
     }
@@ -193,8 +195,7 @@ final class WifiAudioFeature {
         if let channel, WifiAudioPolicy.channelDead(lastHeardMs: channel.lastHeardMs, nowMs: now) {
             LinkJournal.shared.add("Wi-Fi call path went quiet — the call is on Bluetooth")
             if let ext, let session = model.extensions.session(for: ext) {
-                ext.sendDown(session, why: nil)
-                ext.channelEnded()
+                ext.sendDown(session, why: nil)   // sendDown forgets the channel itself
             }
             teardownChannel(notify: true)
         }
@@ -218,6 +219,7 @@ final class WifiAudioFeature {
     private func teardownChannel(notify: Bool) {
         channel?.close(notify: notify)
         channel = nil
+        openCid = nil
         sink.channel = nil
         lastPingMs = nil
     }

@@ -193,9 +193,9 @@ struct StatusStrip: View {
     private var dotColor: Color {
         if model.isDemo { return .orange }
         switch model.linkState {
-        case .connected: .green
-        case .connecting, .handshaking: .orange
-        default: model.isPaired ? .red : .gray
+        case .connected: return .green
+        case .connecting, .handshaking: return .orange
+        default: return model.isPaired ? .red : .gray
         }
     }
 
