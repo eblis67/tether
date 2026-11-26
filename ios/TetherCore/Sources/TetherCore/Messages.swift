@@ -567,3 +567,16 @@ public struct HangUpGuard: Sendable {
         return .drop
     }
 }
+
+/// The local instant a call connected, from the Android phone's `since` (protocol §5): that is the Android
+/// phone's wall clock (`Call.Details.connectTimeMillis`), and the two phones' clocks are independent — an
+/// unshifted `since` makes the call timer (CallKit's and the call screen's) wrong by exactly the difference,
+/// and a peer clock ahead of ours puts the connected date in the future. Shifted by the peer's clock offset
+/// (its pings against our clock, TetherLink.peerClockOffsetMs) and never later than now.
+public enum CallClock {
+    public static func connectedAt(sinceMs: Int64?, peerOffsetMs: Int64?, now: Date = Date()) -> Date? {
+        guard let sinceMs else { return nil }
+        let nowMs = Int64(now.timeIntervalSince1970 * 1000)
+        return Date(timeIntervalSince1970: Double(min(sinceMs - (peerOffsetMs ?? 0), nowMs)) / 1000)
+    }
+}
