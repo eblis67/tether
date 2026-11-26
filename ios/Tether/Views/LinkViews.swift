@@ -1,7 +1,9 @@
 import AVFoundation
 import Perception
+import PhotosUI
 import SwiftUI
 import TetherCore
+import UniformTypeIdentifiers
 
 struct LinkView: View {
     @Environment(\.appModel) private var model
@@ -181,6 +183,8 @@ struct LinkView: View {
                         }
                     }
                 }
+
+                FilesSection()
 
                 PhoneLinksSection()
 
@@ -1021,6 +1025,95 @@ private struct QRScanner: UIViewControllerRepresentable {
                   value != last else { return }
             last = value
             onCode?(value)
+        }
+    }
+}
+
+
+/// File transfers (x.tether.files, protocol §7.10): pick and send, answer offers, watch progress. The offer is
+/// answered only here (or not at all): receiving starts from the Receive tap, like the Android apps.
+struct FilesSection: View {
+    @Environment(\.appModel) private var model
+    @State private var photoItems: [PhotosPickerItem] = []
+    @State private var pickingPhotos = false
+    @State private var pickingFiles = false
+
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
+        Section {
+            if let incoming = model.filesIncoming {
+                Text("Files from \(incoming.from)").font(.headline)
+                ForEach(Array(incoming.entries.prefix(6)), id: \.name) { e in
+                    LabeledContent(e.name, value: ByteCountFormatter.string(fromByteCount: e.size, countStyle: .file))
+                }
+                if incoming.entries.count > 6 {
+                    Text("… and \(incoming.entries.count - 6) more").font(.footnote).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Button("Receive") { model.acceptFiles() }.buttonStyle(.borderedProminent)
+                    Button("Decline", role: .destructive) { model.declineFiles() }
+                }
+            } else if let phase = model.filesPhase {
+                switch phase {
+                case .sending(let name, let fraction):
+                    progressRow(String(localized: "Sending \(name)…"), fraction)
+                case .receiving(let name, let fraction):
+                    progressRow(String(localized: "Receiving \(name)…"), fraction)
+                }
+                Button("Cancel transfer", role: .destructive) { model.cancelFiles() }
+            } else {
+                Button { pickingPhotos = true } label: { Label("Send a photo or video", systemImage: "photo.on.rectangle.angled") }
+                    .disabled(!canSend)
+                Button { pickingFiles = true } label: { Label("Send a file", systemImage: "doc.badge.plus") }
+                    .disabled(!canSend)
+                if !model.linkState.isConnected {
+                    Text("Connect to the Android phone to send or receive files.").font(.footnote).foregroundStyle(.secondary)
+                } else if !model.filesSupported {
+                    Text("The Android phone cannot transfer files (older build).").font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            if let note = model.filesNote {
+                Text(note).font(.footnote).foregroundStyle(.secondary)
+            }
+            if !model.filesReceivedNames.isEmpty {
+                Text("Received files").font(.subheadline).foregroundStyle(.secondary)
+                ForEach(model.filesReceivedNames, id: \.self) { name in Text(name).font(.footnote) }
+            }
+        } header: {
+            Text("Files")
+        } footer: {
+            Text("Both devices must be on the same Wi-Fi, or one connected to the other's hotspot. Files move directly between the devices; nothing is uploaded anywhere.")
+        }
+        .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, matching: .any(of: [.images, .videos]))
+        .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+            if case .success(let urls) = result {
+                model.sendFiles(urls.map { FilesPick(name: $0.lastPathComponent, url: $0, data: nil) })
+            }
+        }
+        .onChangeCompat(of: photoItems) { items in
+            guard !items.isEmpty else { return }
+            Task {
+                var picks: [FilesPick] = []
+                for (i, item) in items.enumerated() {
+                    if let data = try? await item.loadTransferable(type: Data.self) {
+                        let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
+                        picks.append(FilesPick(name: "photo-\(i + 1).\(ext)", url: nil, data: data))
+                    }
+                }
+                photoItems = []
+                if !picks.isEmpty { model.sendFiles(picks) }
+            }
+        }
+    }
+
+    private var canSend: Bool { model.linkState.isConnected && model.filesSupported }
+
+    @ViewBuilder private func progressRow(_ title: String, _ fraction: Double) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.subheadline)
+            ProgressView(value: fraction)
+            Text("\(Int(fraction * 100))%").font(.caption).foregroundStyle(.secondary)
         }
     }
 }

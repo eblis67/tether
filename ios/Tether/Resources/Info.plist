@@ -46,6 +46,8 @@
 	<string>The camera scans the pairing code shown on your Android phone.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Your voice is sent to the Android phone during calls.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Tether exchanges files with your Android phone over your local Wi-Fi. Nothing leaves your network.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>INSendMessageIntent</string>

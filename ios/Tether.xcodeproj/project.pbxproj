@@ -23,6 +23,7 @@
 		9A394F51878AC0F2FC796A3D /* LinkViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B780AAA1432D833E27C1DAB /* LinkViews.swift */; };
 		A5120646391E346F5BC0F6FF /* AppModelReceivedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89E9230950F516251A08C469 /* AppModelReceivedTests.swift */; };
 		A6CC9975EFEB03431DC3A4AD /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B65CC0FCBA237E0DB09A99 /* AppModel.swift */; };
+		D46A2B030D9046F099554D0D /* FilesFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E3386F0BFA4D46BB71C8B3 /* FilesFeature.swift */; };
 		BACD7C8A46DAF4950934C08E /* MessagesViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87E269068C8032C7E6B2F2BA /* MessagesViews.swift */; };
 		BBA8E43F55388B4A3CC4527D /* RouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6854E54209D961EA1D57080D /* RouterTests.swift */; };
 		BC6EB0742A0E13F9AC556974 /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A920AE3BA9401C358FAC0F3 /* Stores.swift */; };
@@ -60,6 +61,7 @@
 		1B8B6670F2FFC88848754BEC /* ContactsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactsViews.swift; sourceTree = "<group>"; };
 		23BD318D5A6CCF4E6B1A32F9 /* CallControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallControllerTests.swift; sourceTree = "<group>"; };
 		27B65CC0FCBA237E0DB09A99 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		E2E3386F0BFA4D46BB71C8B3 /* FilesFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesFeature.swift; sourceTree = "<group>"; };
 		2F2CA052180B01BD2A5B6260 /* Tether.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Tether.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3722EE0161E63C93D7E8603D /* ExtensionRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionRouterTests.swift; sourceTree = "<group>"; };
 		44EB8871E1AD4DF58F2C4C14 /* SnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStoreTests.swift; sourceTree = "<group>"; };
@@ -234,6 +236,7 @@
 			isa = PBXGroup;
 			children = (
 				27B65CC0FCBA237E0DB09A99 /* AppModel.swift */,
+				E2E3386F0BFA4D46BB71C8B3 /* FilesFeature.swift */,
 				C0FEECE0003BC61F76A0EAD2 /* Compat.swift */,
 				4A920AE3BA9401C358FAC0F3 /* Stores.swift */,
 			);
@@ -393,6 +396,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A6CC9975EFEB03431DC3A4AD /* AppModel.swift in Sources */,
+				D46A2B030D9046F099554D0D /* FilesFeature.swift in Sources */,
 				C576804291F0EE67B09C8D12 /* CallAudio.swift in Sources */,
 				F5C87C5424AE219E0C83D698 /* CallController.swift in Sources */,
 				C88E157636357DF6C84662CB /* CallIntents.swift in Sources */,

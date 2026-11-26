@@ -66,6 +66,17 @@ final class AppModel {
     @PerceptionIgnored let extensions = ExtensionRegistry(log: { LinkJournal.shared.add("ext: \($0)") })
     @PerceptionIgnored let extensionPort: LinkExtensionPort
     @PerceptionIgnored let echo = EchoExtension()
+    /// `x.tether.files` (§7.10) and its app host, created in `registerExtensions` (the extension's key material
+    /// is the live session's transcript hash).
+    @PerceptionIgnored private(set) var filesExt: FilesExtension?
+    @PerceptionIgnored private(set) var filesFeature: FilesFeature?
+    /// File transfers (Link tab), driven by FilesFeature.
+    var filesIncoming: FilesIncomingOffer?
+    var filesPhase: FilesPhase?
+    var filesNote: String?
+    var filesReceivedNames: [String] = []
+    /// The Android phone speaks `x.tether.files` and a session is up.
+    var filesSupported: Bool { filesExt.flatMap { extensions.session(for: $0) } != nil }
     /// The last result of the Debug developer row's echo test (Link tab).
     var extensionLine: String?
     @PerceptionIgnored lazy var calls = CallController(model: self)
@@ -146,13 +157,25 @@ final class AppModel {
 
     /// Add your extension here (one line), see docs/EXTENDING.md.
     private func registerExtensions() {
-        for e in [echo] as [TetherExtension] {
+        let files = FilesExtension(keyMaterial: { [weak self] in self?.link.transcriptHash })
+        filesExt = files
+        for e in [echo, files] as [TetherExtension] {
             do { try extensions.register(e) } catch { NSLog("[ext] not registered: %@", "\(error)") }
         }
+        let feature = FilesFeature(model: self)
+        filesFeature = feature
+        feature.wire(files)
         // An extension switched off after repeated failures: the Android phone learns it with a new sync.
         extensions.onCapsChanged = { [weak self] in self?.requestSync() }
         extensions.start()
     }
+
+    // MARK: file transfers (x.tether.files, Link tab)
+
+    func sendFiles(_ picks: [FilesPick]) { filesFeature?.send(picks) }
+    func acceptFiles() { filesFeature?.accept() }
+    func declineFiles() { filesFeature?.decline() }
+    func cancelFiles() { filesFeature?.cancel() }
 
     /// Debug builds (Link › Developer): one x.tether.echo round trip to the Android phone.
     func echoTest() {

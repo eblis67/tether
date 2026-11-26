@@ -53,6 +53,7 @@ class ClientApp : Application(), LinkEvents {
     lateinit var state: ClientState; private set
     lateinit var calls: CallTracker; private set
     lateinit var extensions: ExtensionRegistry; private set
+    lateinit var filesFeature: app.tether.client.ext.FilesFeature; private set
     lateinit var audio: CallAudio; private set
     lateinit var telecom: TelecomBridge; private set
     lateinit var notifier: Notifier; private set
@@ -86,9 +87,11 @@ class ClientApp : Application(), LinkEvents {
         val codecs = if (runCatching { OpusCodec.available() }.getOrDefault(false)) listOf("opus", "pcmu") else listOf("pcmu")
         // Extensions (protocol §7, docs/EXTENDING.md): register yours here. Handlers run on the main thread.
         extensions = ExtensionRegistry(log = { journal.add("ext: $it") }).apply {
-            for (e in clientExtensions()) runCatching { register(e) }.onFailure { journal.add("ext: not registered: ${it.message}") }
+            for (e in clientExtensions(this@ClientApp)) runCatching { register(e) }.onFailure { journal.add("ext: not registered: ${it.message}") }
             start()
         }
+        filesFeature = app.tether.client.ext.FilesFeature(this,
+            extensions.extensions.filterIsInstance<app.tether.core.ext.FilesExtension>().single())
         val extLink = object : ExtensionLink {
             override val peerName get() = identity.peerName ?: "Android phone"
             override val peerKind = "phone"

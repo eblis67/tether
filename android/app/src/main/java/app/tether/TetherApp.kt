@@ -20,6 +20,8 @@ class TetherApp : Application() {
     lateinit var callLog: CallLogRepo; private set
     lateinit var lists: app.tether.data.Lists; private set
     lateinit var hub: Hub; private set
+    /** [hub] once onCreate has built it; extension key material is only asked for later, but never before. */
+    val hubOrNull: Hub? get() = if (::hub.isInitialized) hub else null
     val prefs by lazy { getSharedPreferences("app", Context.MODE_PRIVATE) }
 
     override fun onCreate() {
@@ -37,6 +39,7 @@ class TetherApp : Application() {
         nm.createNotificationChannel(NotificationChannel(CH_CALLS, getString(R.string.channel_calls), NotificationManager.IMPORTANCE_HIGH))
         nm.createNotificationChannel(NotificationChannel(CH_SETUP, getString(R.string.channel_setup), NotificationManager.IMPORTANCE_HIGH))
         nm.createNotificationChannel(NotificationChannel(CH_FIND, getString(R.string.channel_find), NotificationManager.IMPORTANCE_HIGH))
+        nm.createNotificationChannel(NotificationChannel(CH_FILES, getString(R.string.channel_files), NotificationManager.IMPORTANCE_HIGH))
         ensureLinkService()
     }
 
@@ -71,5 +74,6 @@ class TetherApp : Application() {
         const val CH_CALLS = "calls"
         const val CH_SETUP = "setup"
         const val CH_FIND = "find"
+        const val CH_FILES = "files"
     }
 }

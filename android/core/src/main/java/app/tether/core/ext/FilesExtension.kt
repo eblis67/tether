@@ -30,11 +30,12 @@ import java.util.concurrent.Executors
  * two fresh salts, so the link keys are never reused and nothing leaves the two devices.
  *
  * The core library knows no files: the host hands it a [FilesSource] to send from and a [FilesStore] to receive
- * into, and its session's transcript hash through [keyMaterial]. For a `dry` (test) link the host must pass
- * in-memory stores, as for every extension (docs/EXTENDING.md rule 5).
+ * into, and each link's transcript hash through [keyMaterial] (the host owns the sessions; the core library
+ * never sees their traffic keys). For a `dry` (test) link the host must pass in-memory stores, as for every
+ * extension (docs/EXTENDING.md rule 5).
  */
 class FilesExtension(
-    private val keyMaterial: () -> ByteArray?,
+    private val keyMaterial: (link: ExtensionLink) -> ByteArray?,
     private val io: ExecutorService = Executors.newCachedThreadPool { r -> Thread(r, "tether-files").apply { isDaemon = true } },
     private val random: SecureRandom = SecureRandom(),
 ) : TetherExtension {
@@ -90,7 +91,7 @@ class FilesExtension(
     fun offer(session: ExtensionSession, source: FilesSource): String? {
         val entries = source.files()
         FilesCodec.checkEntries(entries)
-        if (keyMaterial() == null) return null
+        if (keyMaterial(session.link) == null) return null
         val link = session.link
         synchronized(lock) {
             if (outgoing.containsKey(link) || incoming.containsKey(link)) return null
@@ -135,7 +136,7 @@ class FilesExtension(
     fun accept(session: ExtensionSession, offer: FilesCodec.Offer, replyTo: Message, host: String,
                store: FilesStore, bind: InetAddress? = null): Boolean {
         val link = session.link
-        val th = keyMaterial()
+        val th = keyMaterial(link)
         if (th == null) {
             session.send(ERROR, FilesCodec.error(offer.tid, "key"))
             return false
@@ -250,7 +251,7 @@ class FilesExtension(
             ACCEPT -> {
                 val acc = FilesCodec.parseAccept(message.b)
                 val out = synchronized(lock) { outgoing[link]?.takeIf { it.tid == acc.tid } } ?: return
-                val th = keyMaterial()
+                val th = keyMaterial(link)
                 if (th == null) {
                     synchronized(lock) { if (outgoing[link] === out) outgoing.remove(link) }
                     session.send(ERROR, FilesCodec.error(acc.tid, "key"))
