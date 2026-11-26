@@ -99,7 +99,7 @@ final class ExtensionRouterTests: XCTestCase {
         let hello = ClientHello(kind: "iphone", name: "iPhone")
         let e = JSONEncoder(); e.outputFormatting = .sortedKeys
         let with = String(data: try e.encode(SyncBodyV1(sms: 1, calls: 2, contacts: "v", codecs: ["opus"], client: hello, caps: m.extensions.caps)), encoding: .utf8)!
-        XCTAssertTrue(with.contains(#""caps":["x.tether.echo\/1"]"#) || with.contains(#""caps":["x.tether.echo/1"]"#), with)
+        XCTAssertTrue(with.contains(#""caps":["x.tether.echo\/1","x.tether.files\/1"]"#) || with.contains(#""caps":["x.tether.echo/1","x.tether.files/1"]"#), with)
         let without = String(data: try e.encode(SyncBodyV1(sms: 1, calls: 2, contacts: "v", codecs: ["opus"], client: hello, caps: nil)), encoding: .utf8)!
         XCTAssertFalse(without.contains("caps"))
     }

@@ -36,6 +36,7 @@ class Notifier(private val app: ClientApp) {
         nm.createNotificationChannel(NotificationChannel(CH_ONGOING, app.getString(R.string.channel_ongoing), NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel(CH_SMS, app.getString(R.string.channel_messages), NotificationManager.IMPORTANCE_HIGH))
         nm.createNotificationChannel(NotificationChannel(CH_MISSED, app.getString(R.string.channel_missed), NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(NotificationChannel(CH_FILES, app.getString(R.string.channel_files), NotificationManager.IMPORTANCE_HIGH))
     }
 
     private fun pi(i: Intent, req: Int) = PendingIntent.getActivity(app, req, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -130,9 +131,27 @@ class Notifier(private val app: ClientApp) {
 
     fun clearAll() { shown.clear(); nm.cancelAll() }
 
+    // ------------------------------------------------------------------ file transfer
+
+    /** The Android phone offers files (`x.tether.files`): tapping opens the Link tab, where they are answered. */
+    fun showFilesOffer(peer: String, count: Int) {
+        val open = pi(Intent(app, app.tether.client.ui.MainActivity::class.java)
+            .putExtra(app.tether.client.ui.MainActivity.EXTRA_TAB, app.tether.client.ui.MainActivity.TAB_LINK)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), 41_007)
+        nm.notify(TAG_FILES, 1, Notification.Builder(app, CH_FILES)
+            .setSmallIcon(R.drawable.ic_tether)
+            .setContentTitle(app.getString(R.string.files_offer_title))
+            .setContentText(app.getString(R.string.files_offer_text, peer, count))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build())
+    }
+
+    fun cancelFilesOffer() = nm.cancel(TAG_FILES, 1)
+
     companion object {
-        const val CH_LINK = "link"; const val CH_CALLS = "calls"; const val CH_ONGOING = "ongoing"; const val CH_SMS = "messages"; const val CH_MISSED = "missed"
-        const val TAG_CALL = "call"; const val TAG_SMS = "sms"; const val TAG_MISSED = "missed"
+        const val CH_LINK = "link"; const val CH_CALLS = "calls"; const val CH_ONGOING = "ongoing"; const val CH_SMS = "messages"; const val CH_MISSED = "missed"; const val CH_FILES = "files"
+        const val TAG_CALL = "call"; const val TAG_SMS = "sms"; const val TAG_MISSED = "missed"; const val TAG_FILES = "files"
         const val ACTION_DECLINE = "app.tether.client.DECLINE"; const val ACTION_REPLY = "app.tether.client.REPLY"
         const val ACTION_READ = "app.tether.client.READ"; const val ACTION_CALL_BACK = "app.tether.client.CALL_BACK"
         const val EXTRA_THREAD = "thread"; const val EXTRA_NUMBER = "number"; const val EXTRA_SUB = "sub"; const val KEY_REPLY = "reply"

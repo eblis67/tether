@@ -148,6 +148,8 @@ class MainActivity : Activity() {
         row.addView(button(getString(R.string.pair_iphone)) { showQr() })
         link.addView(row)
 
+        renderFiles()
+
         // Setup
         val setup = card(getString(R.string.section_setup))
         setup.addView(label(getString(R.string.setup_intro), R.color.muted, 13f))
@@ -260,6 +262,91 @@ class MainActivity : Activity() {
     }
 
     /**
+     * File transfer (`x.tether.files`): pick and send, answer an incoming offer, watch progress, see what
+     * arrived. All state lives in [app.tether.ext.FilesFeature]; this only draws it and starts the picker.
+     */
+    private fun renderFiles() {
+        val f = app.hub.filesFeature
+        val files = card(getString(R.string.section_files))
+        val session = f.session()
+        when {
+            f.pending != null -> {
+                val p = f.pending!!
+                files.addView(label(getString(R.string.files_offer_from, p.peer), R.color.text, 16f))
+                for (e in p.entries.take(6)) files.addView(label("${e.name} · ${fmtSize(e.size)}", R.color.muted, 13f))
+                if (p.entries.size > 6) files.addView(label(getString(R.string.files_and_more, p.entries.size - 6), R.color.muted, 13f))
+                val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                r.addView(button(getString(R.string.files_accept)) { f.acceptPending() })
+                r.addView(button(getString(R.string.files_decline), secondary = true) { f.declinePending() })
+                files.addView(r)
+            }
+            f.active != null -> {
+                val a = f.active!!
+                files.addView(label(getString(if (a.sending) R.string.files_sending else R.string.files_receiving, a.names.firstOrNull() ?: ""),
+                    R.color.text, 16f))
+                val pct = if (a.total > 0) (a.done * 100 / a.total).toInt() else 0
+                files.addView(label(getString(R.string.files_progress, fmtSize(a.done), fmtSize(a.total), pct), R.color.muted, 13f))
+                files.addView(button(getString(R.string.files_cancel), secondary = true) { f.cancelActive() })
+            }
+            session == null -> files.addView(label(
+                getString(if (app.hub.conn?.isUp == true) R.string.files_not_supported else R.string.files_need_link), R.color.muted, 13f))
+            else -> {
+                files.addView(button(getString(R.string.files_send)) { pickFiles() })
+                files.addView(label(getString(R.string.files_same_wifi), R.color.muted, 13f))
+            }
+        }
+        f.note?.let { n ->
+            files.addView(label(when (n) {
+                app.tether.ext.FilesFeature.Note.SENT -> getString(R.string.files_note_sent)
+                app.tether.ext.FilesFeature.Note.RECEIVED -> getString(R.string.files_note_received)
+                app.tether.ext.FilesFeature.Note.DECLINED -> getString(R.string.files_note_declined)
+                app.tether.ext.FilesFeature.Note.CANCELLED -> getString(R.string.files_note_cancelled)
+                app.tether.ext.FilesFeature.Note.NO_NETWORK -> getString(R.string.files_no_network)
+                app.tether.ext.FilesFeature.Note.ERROR -> getString(R.string.files_note_error) +
+                    (f.noteDetail?.let { " ($it)" } ?: "")
+            }, if (n == app.tether.ext.FilesFeature.Note.ERROR) R.color.warn else R.color.muted, 13f))
+        }
+        val received = f.receivedFiles()
+        if (received.isNotEmpty() && f.pending == null) {
+            files.addView(label(getString(R.string.files_received_title), R.color.text, 16f))
+            for (file in received.take(5)) files.addView(label("${file.name} · ${fmtSize(file.length())}", R.color.muted, 13f))
+        }
+    }
+
+    private fun pickFiles() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        startActivityForResult(intent, REQ_PICK_FILES)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_PICK_FILES || resultCode != RESULT_OK || data == null) return
+        val uris = ArrayList<android.net.Uri>()
+        data.clipData?.let { clip -> for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let(uris::add) }
+        if (uris.isEmpty()) data.data?.let(uris::add)
+        if (uris.isEmpty()) return
+        for (uri in uris) runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        Toast.makeText(this, R.string.files_preparing, Toast.LENGTH_SHORT).show()
+        Thread {
+            val picked = app.tether.ext.digestPicked(contentResolver, uris)
+            main.post {
+                if (picked.isEmpty() || !app.hub.filesFeature.sendPicked(picked))
+                    Toast.makeText(this, R.string.files_note_error, Toast.LENGTH_SHORT).show()
+                render()
+            }
+        }.start()
+    }
+
+    private fun fmtSize(bytes: Long): String = when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
+        bytes < 1024 * 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024))
+        else -> "%.2f GB".format(bytes / (1024.0 * 1024 * 1024))
+    }
+
+    /**
      * The link log (the same lines as `tools/dbg.sh linklog`: link, call-audio and mic events, no message text, no
      * numbers), with Share and Copy, so a bug report needs no computer. A header says which app, phone and Android.
      */
@@ -334,6 +421,8 @@ class MainActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun color(id: Int) = getColor(id)
+
+    companion object { const val REQ_PICK_FILES = 7 }
 
     private fun card(title: String): LinearLayout {
         val c = LinearLayout(this).apply {

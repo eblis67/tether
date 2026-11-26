@@ -1,10 +1,17 @@
 # File transfer (`x.tether.files`) — design note
 
-Stage A (this change): the extension in the core libraries, the wire rules in
+Stage A: the extension in the core libraries, the wire rules in
 [protocol/PROTOCOL.md §7.10](../protocol/PROTOCOL.md#710-built-in-xtetherfiles-version-1), and golden bodies in
-`protocol/fixtures/x.tether.files*.json`. No app wires it up yet: nothing in the Android phone app, the Android
-client or the iPhone app registers it, so no installed build announces `x.tether.files/1` and nothing changes for
-users.
+`protocol/fixtures/x.tether.files*.json`.
+
+Stage B (built): all three apps register the extension and wire it end to end — pickers to send, an explicit
+Receive/Decline answer to offers, progress with cancel, and a received-files surface. The Android phone app and
+the Android client share the same shape (`ext/FilesHost.kt` stores/sources, `ext/FilesFeature.kt` state and
+engines, a Files card in the main UI); the iPhone app has the TCP engines in TetherCore
+(`FilesTransferEngine.swift`, over a blocking stream the app adapts from `NWConnection`/`NWListener`) and its
+host in `Model/FilesFeature.swift`, with a Files section on the Link tab. Received files land in each app's own
+folder (Android: the app-specific external `received` folder; iOS: Application Support `TetherReceived`), never
+in shared storage. `dry` test links get in-memory stores only, and no offer notification (EXTENDING.md rule 5).
 
 ## Flow
 
@@ -44,20 +51,18 @@ One transfer per link at a time; at most 1 024 files; a file at most 2^41 bytes;
 under the §7.3 envelope limits (hosts should not start a transfer during a call, when the limit is 2 KiB);
 30 s idle timeout on the TCP side; partial files are kept only under the names the offer gave them.
 
-## What stage B still needs (app wiring)
+## Stage B notes (as built)
 
-- **Register** `FilesExtension` on every side (`PhoneExtensions.kt`, `ClientExtensions.kt`,
-  `AppModel.registerExtensions`), handing it the live session's transcript hash as `keyMaterial` — the host owns
-  the session, the core library never sees its traffic keys.
-- **Stores and sources**: Android `FilesStore`/`FilesSource` over a user-picked folder and the media store
-  (photos and videos land in the iTell-style Pictures/Movies/Download folders), iOS counterparts over the photo
-  library and Files. For `dry` test links, in-memory stores only (EXTENDING.md rule 5).
-- **Choosing the address**: the accept's `host`/`port` must be the receiver's Wi-Fi (or hotspot) interface
-  address; the core receiver binds an address the host gives it. Same-network and hotspot cases, and the
-  "both phones on the same Wi-Fi" hint, are UI concerns.
-- **The iOS TCP engine**: `FilesWire` seals/opens the frames; the `NWConnection`/`NWListener` plumbing and the
-  per-file digest loop mirror the Kotlin `FilesSender`/`FilesReceiver` and belong in TetherCore or the app.
-- **UI**: pickers for sending, an accept/decline prompt (never auto-accept from a prompt-less state the user did
-  not choose), progress with cancel, a "received" surface, and the English/Persian strings in both apps.
-- **Status**: optionally surface an open transfer in `status.ext` (≤ 1 KiB) so the other side's Link tab can
-  show it.
+- **Registration**: `PhoneExtensions.kt`, `ClientExtensions.kt` and `AppModel.registerExtensions` register
+  `FilesExtension` with the live session's transcript hash as `keyMaterial` — the host owns the session, the
+  core library never sees its traffic keys.
+- **Choosing the address**: the accept's `host` is the receiver's Wi-Fi (or hotspot) interface address, found
+  by walking the network interfaces (Android `LocalAddress`, iOS `localIPv4Address()` — Wi-Fi first, then the
+  hotspot bridge); the port is ephemeral. With no local address the user is told to join the same Wi-Fi or the
+  other's hotspot and try again. iOS states this in `NSLocalNetworkUsageDescription`.
+- **Sending picks**: Android uses the system document picker (files and photos alike); iOS has Photos and
+  Files pickers, staging picks into a private cache folder so digests and reads see plain files.
+- **Not built**: a browsing UI for `x.tether.files.list` (the cores implement it and all apps answer it with
+  their received folder's contents, but no app asks yet — offers are always of locally picked files), and
+  surfacing an open transfer in `status.ext`. Photos picked on Android keep the picker's display names; on
+  iOS they get generated names (`photo-1.jpg`, …).

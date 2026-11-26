@@ -19,6 +19,8 @@ import app.tether.core.Message
 import app.tether.core.T
 import app.tether.core.ext.ExtensionLink
 import app.tether.core.ext.ExtensionRegistry
+import app.tether.core.ext.FilesExtension
+import app.tether.ext.FilesFeature
 import app.tether.ext.phoneExtensions
 import app.tether.core.idRanges
 import app.tether.core.paginate
@@ -96,6 +98,14 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         for (e in phoneExtensions(app)) runCatching { register(e) }.onFailure { Log.e(TAG, "extension not registered", it) }
     }
     private val extLinks = ConcurrentHashMap<Connection, ExtensionLink>()
+
+    /** The transcript hash of the session behind an extension [link] (x.tether.files' key material). */
+    fun transcriptHashFor(link: ExtensionLink): ByteArray? =
+        extLinks.entries.firstOrNull { it.value === link }?.key?.transcriptHash
+
+    /** File transfer (x.tether.files): the feature around the registered extension (offers, stores, progress). */
+    val filesFeature: FilesFeature = FilesFeature(app, this,
+        extensions.extensions.filterIsInstance<FilesExtension>().single())
 
     /** A connection as the extensions see it. Unsolicited extension messages follow the broadcast rules (test isolation). */
     private fun ext(c: Connection): ExtensionLink = extLinks.getOrPut(c) {

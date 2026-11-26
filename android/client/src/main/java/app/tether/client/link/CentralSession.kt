@@ -61,6 +61,8 @@ class CentralSession(
     private var nextId = 1
     /** Pair mode: the HELLO proves a pairing token. */
     val pairing = token != null
+    /** The session's transcript hash (§3), for extensions that derive one-time keys (x.tether.files). */
+    val transcriptHash: ByteArray? get() = hs.keys?.th
     @Volatile var isUp = false; private set
     @Volatile var upAt = 0L; private set
     @Volatile var lastRx = now(); private set
