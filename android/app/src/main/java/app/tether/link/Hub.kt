@@ -20,7 +20,9 @@ import app.tether.core.T
 import app.tether.core.ext.ExtensionLink
 import app.tether.core.ext.ExtensionRegistry
 import app.tether.core.ext.FilesExtension
+import app.tether.core.ext.WifiAudioExtension
 import app.tether.ext.FilesFeature
+import app.tether.ext.WifiAudioFeature
 import app.tether.ext.phoneExtensions
 import app.tether.core.idRanges
 import app.tether.core.paginate
@@ -30,7 +32,9 @@ import app.tether.data.UssdCode
 import app.tether.telecom.FindPhone
 import app.tether.telecom.RingerControl
 import app.tether.telecom.CallRegistry
+import app.tether.helper.AudioMethods
 import app.tether.helper.LocalMutes
+import app.tether.helper.MethodChoice
 import app.tether.helper.MicPath
 import org.json.JSONArray
 import org.json.JSONObject
@@ -49,6 +53,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         const val PREF_MIC_MUTE = "phone_mic_mute"
         /** "This phone's microphone during bridged calls": MicPath.Setting auto (default) | mute | open (issue #2). */
         const val PREF_MIC = "phone_mic"
+        /** The speaker/microphone fallback (docs/CALL-AUDIO.md): calls are controlled from the client, never bridged. */
+        const val PREF_AUDIO_FALLBACK = "audio_fallback"
         /** Debug flag (adb): validate send/dial/add without touching the radio or the provider. */
         @Volatile var dryRun = false
     }
@@ -59,7 +65,12 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     val conn: Connection? get() = audio.target ?: targets().firstOrNull()
     val helper = HelperBridge(app)
     /** "Share VPN" proxy on the tethering interfaces (see ShareProxy). */
-    val share = ShareProxy(app).apply { sharing = app.prefs.getBoolean("share_vpn", false) }
+    val share = ShareProxy(app).apply {
+        sharing = app.prefs.getBoolean("share_vpn", false)
+        bypass = ProxyRequests.sanitizeBypass(
+            runCatching { JSONArray(app.prefs.getString("share_bypass", "[]")).let { a -> (0 until a.length()).map { a.optString(it) } } }
+                .getOrDefault(emptyList()))
+    }
     /** Carrier codes, "find my phone" and the ringer (iPhone Link tab › Phone). */
     val ussd = Ussd(app)
     private val ussdBusy = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -103,9 +114,20 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     fun transcriptHashFor(link: ExtensionLink): ByteArray? =
         extLinks.entries.firstOrNull { it.value === link }?.key?.transcriptHash
 
+    /** The connection behind an extension link, or null once it is gone. */
+    fun connectionFor(link: ExtensionLink): Connection? =
+        extLinks.entries.firstOrNull { it.value === link }?.key
+
+    /** A connection's extension link (the same one the registry's sessions for it carry). */
+    fun extensionLinkFor(c: Connection): ExtensionLink = ext(c)
+
     /** File transfer (x.tether.files): the feature around the registered extension (offers, stores, progress). */
     val filesFeature: FilesFeature = FilesFeature(app, this,
         extensions.extensions.filterIsInstance<FilesExtension>().single())
+
+    /** Wi-Fi call path (x.tether.wifiaudio): the feature around the registered extension (offers, frames, path). */
+    val wifiAudioFeature: WifiAudioFeature = WifiAudioFeature(app, this,
+        extensions.extensions.filterIsInstance<WifiAudioExtension>().single())
 
     /** A connection as the extensions see it. Unsolicited extension messages follow the broadcast rules (test isolation). */
     private fun ext(c: Connection): ExtensionLink = extLinks.getOrPut(c) {
@@ -140,6 +162,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         helper.onPath = { audio.onHelperPath(it) }
         // Airplane mode switched on from a client before a restart: keep the fail-safe running.
         if (app.prefs.getBoolean("airplane_by_tether", false)) bg { airplaneFailSafe(true) }
+        // Share VPN left on across a restart: its auto-off countdown keeps running too.
+        if (share.sharing) bg { shareFailSafe(true) }
         // Call events go out from the Telecom callback itself, ahead of anything queued (ring latency).
         CallRegistry.addListener { info -> onCall(info) }
         app.sms.observe { s -> if (forwardable(s)) targets().forEach { if (!app.lists.isMuted(s.thread)) wake(it); it.send(Message(T.SMS_NEW, JSONObject().put("item", s.json()))) } }
@@ -268,6 +292,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
 
     override fun onAudio(c: Connection, payload: ByteArray) { if (c === audio.target) audio.onUplink(payload) }
 
+    /** Call audio that arrived on the Wi-Fi channel (§7.11): the same uplink entry as Bluetooth audio. */
+    fun onWifiAudio(c: Connection, payload: ByteArray) { if (c === audio.target) audio.onUplink(payload) }
+
     override fun onMessage(c: Connection, m: Message) {
         // A test client (dry transport) may only touch calls on Tether's own test line, never a real call.
         // Taking the audio (answer, take) or a self-test needs every live call to be on the test line.
@@ -343,6 +370,14 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 if (what == "share") {
                     app.prefs.edit().putBoolean("share_vpn", on).apply()
                     share.sharing = on
+                    // A share set may also carry the split-tunnel bypass list: it replaces the stored one.
+                    if (m.b.has("bypass")) {
+                        val raw = m.b.optJSONArray("bypass")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
+                        val clean = ProxyRequests.sanitizeBypass(raw)
+                        share.bypass = clean
+                        app.prefs.edit().putString("share_bypass", JSONArray(clean).toString()).apply()
+                    }
+                    shareFailSafe(on)
                 }
                 val err = helper.ensureRunning()
                 // "dataSub" picks the SIM that carries mobile data; only a currently active SIM is accepted.
@@ -359,7 +394,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 if (what == "airplane") airplaneFailSafe(on)
                 share.refresh()
                 if (what != null) Log.i(TAG, "net.set $what=$on -> $state")
-                val body = (state ?: JSONObject().put("err", err ?: "helper did not answer")).put("share", share.sharing).put("proxy", share.json())
+                val proxy = share.json()
+                shareOffIn()?.let { proxy.put("offIn", it) }
+                val body = (state ?: JSONObject().put("err", err ?: "helper did not answer")).put("share", share.sharing).put("proxy", proxy)
                 c.send(Message(T.NET_STATE, body, re = m.id))
                 // Sharing changes show on the other client's switch at once.
                 if (what == "share" || what == "airplane") targets().filter { it !== c }.forEach { it.send(Message(T.NET_STATE, body)) }
@@ -391,10 +428,18 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             }
             T.SELFTEST -> slowBg { c.send(Message(T.SELFTEST_RESULT, selftest(), re = m.id)) }
             // {mic} (auto | mute | open) or, from older clients, {micMute}: "the Android phone's microphone during bridged
-            // calls"; answered with a status.
+            // calls"; {inject} / {capture} ("auto" or a method id) and {fallback}: the call-audio methods and the
+            // speaker/microphone fallback (docs/CALL-AUDIO.md); {feedback}: the user's answers after a test during a
+            // call. All answered with a status.
             T.AUDIO_SET -> bg {
-                if ((m.b.has("mic") || m.b.has("micMute")) && !dry(c))
-                    audio.setMic(MicPath.Setting.of(m.b.optString("mic").takeIf { m.b.has("mic") }, m.b.optBoolean("micMute")))
+                if (!dry(c)) {
+                    if (m.b.has("mic") || m.b.has("micMute"))
+                        audio.setMic(MicPath.Setting.of(m.b.optString("mic").takeIf { m.b.has("mic") }, m.b.optBoolean("micMute")))
+                    if (m.b.has("inject")) audio.setManual(AudioMethods.Dir.INJECT, m.b.optString("inject"))
+                    if (m.b.has("capture")) audio.setManual(AudioMethods.Dir.CAPTURE, m.b.optString("capture"))
+                    if (m.b.has("fallback")) audio.setFallback(m.b.optBoolean("fallback"))
+                    m.b.optJSONObject("feedback")?.let { audio.recordFeedback(it.optBoolean("you"), it.optBoolean("them")) }
+                }
                 Log.i(TAG, "audio.set ${m.b} (dry=${dry(c)})")
                 lastStatusSent.remove(c)   // the asking client always gets the status, also when nothing changed
                 pushStatus()
@@ -549,6 +594,53 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             LinkLog.add("after airplane mode: $what back on")
         }
         return st
+    }
+
+    // ------------------------------------------------------------------ Share VPN auto-off
+
+    @Volatile private var shareCheck: java.util.concurrent.ScheduledFuture<*>? = null
+
+    /** How long Share VPN may stay on with no client linked before it switches itself off (iTell: ~10 min). */
+    private val shareAwayMs = 10 * 60_000L
+
+    /** Seconds until Share VPN auto-off, while sharing is on and no client is linked; null otherwise. */
+    fun shareOffIn(): Int? {
+        if (!share.sharing || targets().isNotEmpty()) return null
+        val left = shareAwayMs - (SystemClock.elapsedRealtime() - lastClientSeen)
+        return (left / 1000).toInt().coerceAtLeast(0)
+    }
+
+    /**
+     * Share VPN switched on and then every device goes away: after [shareAwayMs] with no client linked the
+     * phone switches sharing off by itself, like the airplane fail-safe above — a forgotten share switch must
+     * not proxy (and bill) forever. Any client linking holds the countdown off, so it only ever runs while
+     * nobody is there to use the sharing.
+     */
+    private fun shareFailSafe(on: Boolean) {
+        shareCheck?.cancel(false)
+        if (!on) return
+        LinkLog.add("share VPN on; auto-off armed (10 min with no client)")
+        shareCheck = work.scheduleWithFixedDelay({
+            if (!share.sharing) { shareCheck?.cancel(false); return@scheduleWithFixedDelay }
+            val offIn = shareOffIn()
+            if (offIn != null && offIn <= 0) {
+                LinkLog.add("no client for 10 min with share VPN on: switching it off (auto-off)")
+                app.prefs.edit().putBoolean("share_vpn", false).apply()
+                share.sharing = false
+                share.refresh()
+                refresh()
+                shareCheck?.cancel(false)
+            }
+        }, 15, 15, TimeUnit.SECONDS)
+    }
+
+    /** What a client's Share VPN switch does (also the adb test hook): state, pref and the auto-off together. */
+    fun setShare(on: Boolean) {
+        app.prefs.edit().putBoolean("share_vpn", on).apply()
+        share.sharing = on
+        share.refresh()
+        shareFailSafe(on)
+        refresh()
     }
 
     /** Last time any client link was up (for the airplane fail-safe). */
@@ -722,7 +814,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     fun callJson(info: CallInfo, c: Connection): JSONObject {
         val o = info.json()
         val t = audio.ownerOf(info)
-        if (AudioOwner.elsewhere(info.state, t, c, helper.audioBlocked()))
+        if (AudioOwner.elsewhere(info.state, t, c, helper.audioBlocked() || audio.fallbackOn()))
             o.put("elsewhere", true).put("where", AudioOwner.where(t?.takeIf { it !== c }?.name, app.keys.deviceName()))
         return o
     }
@@ -775,6 +867,18 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                     val chosen = r.optString("chosen").takeIf { it.isNotEmpty() }
                     // The redirect modes' answers (MicPath), remembered for this phone model like the in-call check's.
                     if (!audio.onlyTestLine()) MicPath.memoryOf(r.optJSONObject("redirect")).forEach { (mode, v) -> audio.rememberRedirect(mode, v, "self-test") }
+                    // The method rows too (docs/CALL-AUDIO.md): per-method verdicts, the winning inject, and the
+                    // first capture that heard the call — never on the test line, whose results say nothing.
+                    if (!audio.onlyTestLine()) {
+                        val injOk = HashMap<String, Boolean>(); val capOk = HashMap<String, Boolean>()
+                        var chosenCapture: String? = null
+                        r.optJSONArray("methods")?.let { a -> for (i in 0 until a.length()) { val row = a.getJSONObject(i); val n = row.optString("name")
+                            when {
+                                n.startsWith("inject:") && !n.contains(",") -> injOk[n.removePrefix("inject:")] = row.optBoolean("ok")
+                                n.startsWith("capture:") -> { capOk[n.removePrefix("capture:")] = row.optBoolean("ok"); if (chosenCapture == null && row.optBoolean("ok")) chosenCapture = n.removePrefix("capture:") }
+                            } } }
+                        audio.learnSelftest(injOk, capOk, chosen, chosenCapture)
+                    }
                     chosen?.let { app.prefs.edit().putString("inject", it).apply() }
                     val rows = JSONArray().put(path)
                     r.optJSONArray("methods")?.let { a -> for (i in 0 until a.length()) rows.put(a.get(i)) }
@@ -840,6 +944,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         /** When this call's start INFO came (elapsed ms; 0: not yet), the method choice the start used, restarts so far. */
         @Volatile private var infoAt = 0L
         private var startChoice = "auto"
+        /** The capture choice and the skip lists of this call's start (docs/CALL-AUDIO.md), reused by a restart. */
+        private var startCaptureChoice = "auto"
+        private var startCaptureSkip: List<String> = emptyList()
+        private var startInjectSkip: List<String> = emptyList()
         private var restarts = 0
         /** What the helper was last told: the bridged call is active (the uplink flows only then). */
         @Volatile private var sentActive = false
@@ -952,6 +1060,67 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             })
         }
 
+        // ---------------------------------------------------------- call-audio methods (docs/CALL-AUDIO.md)
+
+        private val methodsKey get() = "audio_methods:" + android.os.Build.MODEL
+
+        /**
+         * What this phone model remembers of its call-audio methods ([MethodChoice]). The old `inject`
+         * preference (the self-test's choice, kept device-wide before this record existed) is adopted as the
+         * chosen inject the first time the record is read without one.
+         */
+        fun methodState(): MethodChoice.State {
+            val s = MethodChoice.parse(app.prefs.getString(methodsKey, null)?.let { runCatching { JSONObject(it) }.getOrNull() })
+            val legacy = app.prefs.getString("inject", null)?.takeIf { it != "auto" }
+            return if (s.chosenInject == null && legacy != null) s.copy(chosenInject = legacy) else s
+        }
+
+        private fun saveMethodState(s: MethodChoice.State) =
+            app.prefs.edit().putString(methodsKey, MethodChoice.toJson(s).toString()).apply()
+
+        /** The self-test's method results, remembered for this phone model. */
+        fun learnSelftest(injectOk: Map<String, Boolean>, captureOk: Map<String, Boolean>, chosenInject: String?, chosenCapture: String?) {
+            saveMethodState(MethodChoice.recordSelftest(methodState(), injectOk, captureOk, chosenInject, chosenCapture))
+            LinkLog.add("call audio: self-test remembered for this phone: inject ${chosenInject ?: "—"}, capture ${chosenCapture ?: "—"}")
+        }
+
+        /** The user's method pick for one direction ("auto" or an unknown id clears it); a running call restarts on it. */
+        fun setManual(dir: AudioMethods.Dir, id: String?) {
+            val s = MethodChoice.withManual(methodState(), android.os.Build.VERSION.SDK_INT, dir, id)
+            saveMethodState(s)
+            LinkLog.add("call audio: ${dir.wire} method " + (s.manual(dir)?.let { "set to $it by the user" } ?: "back to automatic"))
+            if (running) audioCtl.execute { lock.lock(); try { if (running) startHelperNow() } finally { lock.unlock() } }
+            refresh()
+        }
+
+        /**
+         * The user's answers after a test during a call ("could they hear you?"), attributed to the methods the
+         * helper last reported for a call — the client only says yes or no, it does not name methods.
+         */
+        fun recordFeedback(heardYou: Boolean, heardThem: Boolean) {
+            val info = helper.lastInfo
+            val inject = info?.optString("inject")?.takeIf { it.isNotEmpty() && it != "null" }
+            val capture = info?.optString("capture")?.takeIf { it.isNotEmpty() && it != "null" }
+            if (inject == null && capture == null) { Log.i(TAG, "audio feedback without a bridged call: ignored"); return }
+            saveMethodState(MethodChoice.recordFeedback(methodState(), inject, capture, heardYou, heardThem))
+            LinkLog.add("call audio feedback: the other side " + (if (heardYou) "could hear the client" else "could NOT hear the client (inject ${inject ?: "none"})") +
+                ", the client " + (if (heardThem) "could hear the other side" else "could NOT hear the other side (capture ${capture ?: "none"})") + ": remembered for this phone")
+            refresh()
+        }
+
+        /** The speaker/microphone fallback: calls are controlled from the client but stay on this phone itself. */
+        fun fallbackOn(): Boolean = app.prefs.getBoolean(PREF_AUDIO_FALLBACK, false)
+
+        fun setFallback(on: Boolean) {
+            if (fallbackOn() == on) return
+            app.prefs.edit().putBoolean(PREF_AUDIO_FALLBACK, on).apply()
+            LinkLog.add("call audio: the speaker/microphone fallback is " +
+                (if (on) "on: calls stay on this phone (its speaker and microphone)" else "off: calls are bridged again"))
+            // A running call is handed back to the phone (or bridged again) by the next reconcile.
+            audioCtl.execute { reconcile() }
+            refresh()
+        }
+
         /**
          * Changed on this phone or from a client: a new choice also forgets what earlier checks found, so all is tried anew
          * ([forget] false: kept, for the debug hook's tests on the test line, which remember nothing themselves).
@@ -976,6 +1145,15 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             val live = if (running) helper.lastUplink?.optString("state")?.takeIf { it.isNotEmpty() } else null
             (live ?: if (mic == MicPath.Setting.MUTE) memory()?.wire else redirectMemory().values.firstOrNull { it == MicPath.Verdict.OK }?.wire)?.let { put("uplink", it) }
             if (running) helper.lastMic?.optString("path")?.takeIf { it.isNotEmpty() }?.let { put("micPath", it) }
+            // The call-audio methods this phone offers, the user's picks, and the speaker/microphone fallback
+            // (docs/CALL-AUDIO.md; absent from builds before them, whose clients show no picker).
+            val ms = methodState()
+            put("methods", JSONArray().apply {
+                for (m in AudioMethods.available(android.os.Build.VERSION.SDK_INT))
+                    put(JSONObject().put("id", m.id).put("dir", m.dir.wire))
+            })
+            put("pick", JSONObject().put("inject", ms.manualInject ?: "auto").put("capture", ms.manualCapture ?: "auto"))
+            if (fallbackOn()) put("fallback", true)
         }
 
         /** The self-test's first row: how this call's audio ran before the test paused it. */
@@ -1037,21 +1215,29 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             audioCtl.execute { reconcile() }
         }
 
-        private fun startHelper(rate: Int, inject: String) {
+        private fun startHelper(rate: Int, capture: String, inject: String, captureSkip: List<String>, injectSkip: List<String>) {
             val mem = memory()
             telecomWanted = false
             lastUplinkSeen = null
             lastMicSeen = null
             infoAt = 0
             startChoice = inject
+            startCaptureChoice = capture
+            startCaptureSkip = captureSkip
+            startInjectSkip = injectSkip
             sentActive = CallRegistry.hasActiveCall()
             // The test line is VoIP with no far end: its results say nothing about real calls, so they are not remembered.
             val test = onlyTestLine()
-            helper.start(rate, "auto", inject, app.prefs.getInt("inject_ms", 40), test, mic = mic.wire,
+            helper.start(rate, capture, inject, app.prefs.getInt("inject_ms", 40), test, mic = mic.wire,
                 micMute = LocalMutes.wantMicMute(micSetting, mem), micCheck = LocalMutes.wantCheck(mem),
                 redirect = if (test) JSONObject() else MicPath.memoryJson(redirectMemory()),
-                muteMemory = if (test) null else mem?.wire, active = sentActive)
+                muteMemory = if (test) null else mem?.wire, active = sentActive,
+                captureSkip = captureSkip, injectSkip = injectSkip)
         }
+
+        /** Once more with the choices this call's start used (a method pick changed mid-call, the one restart). */
+        private fun startHelperNow() =
+            startHelper(codec?.rate ?: 16000, startCaptureChoice, startChoice, startCaptureSkip, startInjectSkip)
 
         /** Tells the helper when the bridged call becomes active (dialing → connected, hold → unhold) or stops being so. */
         private fun updateActive() {
@@ -1131,7 +1317,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             val o = owner
             val changed = o !== announcedOwner
             announcedOwner = o
-            val want = o != null && o.isUp && CallRegistry.wantsAudio() && !paused && !helper.audioBlocked()
+            val want = o != null && o.isUp && CallRegistry.wantsAudio() && !paused && !helper.audioBlocked() && !fallbackOn()
             if (want && !running) start(o!!)
             else if (!want && running) stop()
             else if (running && o != null && target !== o) retarget(o)
@@ -1184,12 +1370,21 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                     for (f in frames) {
                         val sq = seq++ and 0xffff
                         sentAt[sq and 1023] = t0
-                        cc.sendAudio(AudioFrame(kk.id, sq, f).encoded())
+                        val bytes = AudioFrame(kk.id, sq, f).encoded()
+                        // The Wi-Fi call path (§7.11) takes the frame when it is the chosen path; the
+                        // sequence number is assigned before the choice, so the client orders both
+                        // paths together.
+                        if (!wifiAudioFeature.sendDown(cc, bytes)) cc.sendAudio(bytes)
                     }
                 }
             }
             quietLocalEarpiece(true) // before the helper drops it to 0, so the saved level is the user's
-            startHelper(k.rate, app.prefs.getString("inject", "auto") ?: "auto")
+            // The methods this phone remembers (docs/CALL-AUDIO.md): the user's pick, else the self-test's
+            // choice, else the ladder with the user-voted-down methods skipped.
+            val ms = methodState()
+            val sdk = android.os.Build.VERSION.SDK_INT
+            startHelper(k.rate, MethodChoice.pick(sdk, ms, AudioMethods.Dir.CAPTURE), MethodChoice.pick(sdk, ms, AudioMethods.Dir.INJECT),
+                MethodChoice.skip(sdk, ms, AudioMethods.Dir.CAPTURE), MethodChoice.skip(sdk, ms, AudioMethods.Dir.INJECT))
             c.sendUrgent(startMessage(k))
             muteLocalMic(true)
             LinkService.running?.peripheral?.tune(c.transport.address, high = true)
@@ -1228,7 +1423,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             if (!AudioRestart.wanted(android.os.Build.VERSION.SDK_INT, info, startChoice, restarts, since, CallRegistry.hasActiveCall())) return
             restarts++
             LinkLog.add("call audio: the phone refused the interception API in the call (capture ${info.optString("capture")}, inject ${info.optString("inject")}): restarting the call's audio once")
-            startHelper(codec?.rate ?: 16000, startChoice)
+            startHelperNow()
         }
 
         fun stop(sendStop: Boolean = true) { lock.lock(); try { stopLocked(sendStop) } finally { lock.unlock() } }
@@ -1240,6 +1435,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             val statsBefore = helper.lastStats
             helper.stop()
             val t = target
+            if (t != null) wifiAudioFeature.callEnded(t)   // the Wi-Fi channel belongs to the call (§7.11)
             lastTiming = timingSummary(t)
             reportStats(t, lastTiming, statsBefore)
             if (sendStop) t?.sendUrgent(Message(T.AUDIO_STOP))

@@ -13,6 +13,14 @@
       "on": true,
       "sub": 2
     },
+    "bypass": {
+      "what": "share",
+      "on": true,
+      "bypass": [
+        "bank.example",
+        "shop.local"
+      ]
+    },
     "old": {
       "what": "data",
       "on": false

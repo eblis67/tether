@@ -13,6 +13,11 @@ Open **Tether**. Its main screen has three cards; work through **Setup** from to
 | Unrestricted battery use | Exempts Tether from battery optimisation | So Android does not stop the link in the background |
 | Wireless debugging | Pairs Tether with the phone's own Wireless debugging (see below) | Needed only for call audio and the network switches |
 
+The app also walks through this as an in-app **setup guide**: it opens on first launch, shows the extra steps
+your phone's maker needs (auto-start, the maker's own battery setting, Samsung's never-sleeping list, locking
+Tether in recent apps), and can be reopened any time from the Setup card. [SETUP-WIZARD.md](SETUP-WIZARD.md)
+says why each maker step exists and which ones the app can check itself.
+
 Your default **SMS** app can stay as it is (for example Google Messages). Tether reads and sends texts through the
 system; marking texts read and deleting them works without being the SMS app.
 

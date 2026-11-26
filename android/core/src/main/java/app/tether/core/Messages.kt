@@ -82,6 +82,8 @@ object Ext {
     const val ECHO = "x.tether.echo"
     /** The built-in file transfer extension (§7.10). */
     const val FILES = "x.tether.files"
+    /** The built-in Wi-Fi call path extension (§7.11). */
+    const val WIFI_AUDIO = "x.tether.wifiaudio"
 }
 
 data class Sms(val id: Long, val thread: Long, val addr: String, val body: String, val date: Long,

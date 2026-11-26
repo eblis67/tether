@@ -15,6 +15,7 @@ struct RootView: View {
             ReturnToCallBanner()
             RemoteCallBanner()
             if model.isPaired || router.tab != .link { StatusStrip() }
+            if model.isDemo { DemoBanner() }
             TabView(selection: $router.tab) {
                 RecentsView()
                     .tabItem { Label("Recents", systemImage: "clock") }
@@ -80,8 +81,9 @@ struct RootView: View {
                 secondaryButton: .cancel())
         }
         // First launch: nothing to show until paired, so start on the Link tab with the setup steps.
+        // (Suspended in the demo: the sample phone is exactly what there is to show.)
         .onAppear {
-            if !model.isPaired && router.pairRequest == nil && router.dialRequest == nil { router.tab = .link }
+            if !model.isPaired && !model.isDemo && router.pairRequest == nil && router.dialRequest == nil { router.tab = .link }
             #if DEBUG
             // -TetherOpenURL <url>: open a link as if from outside (screenshots of the pairing question).
             let args = ProcessInfo.processInfo.arguments
@@ -98,7 +100,7 @@ struct RootView: View {
         .preferredColorScheme(.dark)
         .tint(Color("AccentColor"))
         .task {
-            if !model.isPaired { router.tab = .link }
+            if !model.isPaired && !model.isDemo { router.tab = .link }
         }
     }
 }
@@ -134,6 +136,35 @@ struct RemoteCallBanner: View {
     }
 }
 
+/// The demo's persistent badge (docs/DEMO-MODE.md): while it shows, everything on screen belongs to
+/// the sample phone, and one tap leaves the demo and brings the real data back.
+struct DemoBanner: View {
+    @Environment(\.appModel) private var model
+
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "play.circle.fill")
+            Text("You're exploring a sample phone. Nothing here is real.")
+                .font(.footnote.weight(.semibold))
+            Spacer(minLength: 4)
+            Button {
+                model.exitDemo()
+                if !model.isPaired { Router.shared.tab = .link }
+            } label: {
+                Text("Exit demo").font(.footnote.weight(.bold))
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .background(.white.opacity(0.25), in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14).padding(.vertical, 7)
+        .background(Color.orange)
+    }
+}
+
 /// Thin strip at the top: link state, battery and carrier of the Android phone.
 struct StatusStrip: View {
     @Environment(\.appModel) private var model
@@ -145,7 +176,7 @@ struct StatusStrip: View {
             Circle().fill(dotColor).frame(width: 8, height: 8)
             Text(stateText).font(.caption.weight(.semibold))
             Spacer(minLength: 4)
-            if let s = model.status, model.linkState.isConnected || AppModel.demoMode {
+            if let s = model.status, model.linkState.isConnected || model.demoActive {
                 ForEach(s.sims) { sim in SimStatus(sim: sim, showName: s.sims.count > 1) }
                 HStack(spacing: 2) {
                     Image(systemName: s.charging ? "battery.100.bolt" : batteryIcon(s.battery))
@@ -160,6 +191,7 @@ struct StatusStrip: View {
     }
 
     private var dotColor: Color {
+        if model.isDemo { return .orange }
         switch model.linkState {
         case .connected: .green
         case .connecting, .handshaking: .orange
@@ -168,11 +200,13 @@ struct StatusStrip: View {
     }
 
     private var stripBackground: Color {
+        if model.isDemo { return Color.orange.opacity(0.12) }
         if model.isPaired, !model.linkState.isConnected { return Color.red.opacity(0.12) }
         return Color(.secondarySystemBackground)
     }
 
     private var stateText: LocalizedStringKey {
+        if model.isDemo { return "Demo" }
         switch model.linkState {
         case .connected: "Connected"
         case .connecting, .handshaking: "Connecting…"

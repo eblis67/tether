@@ -323,8 +323,16 @@ object HelperMain {
             this.rate = rate
             val errors = JSONArray()
             if (android.os.Build.VERSION.SDK_INT < CallAudio.MIN_SDK_AUDIO) errors.put("call audio is not available: it needs Android 11 or later")
-            val capOrder = cfg.optString("capture", "auto").let { if (it == "auto") CallAudio.captureMethods else listOf(it) }
-            val injOrder = cfg.optString("inject", "auto").let { if (it == "auto") CallAudio.injectMethods else listOf(it) }
+            // "auto" runs the ladder minus the methods the user voted down (captureSkip / injectSkip: they open
+            // but did not reach the far end); a skip list that would empty the ladder is ignored.
+            fun order(which: String, ladder: List<String>): List<String> {
+                val forced = cfg.optString(which, "auto")
+                if (forced != "auto") return listOf(forced)
+                val skip = cfg.optJSONArray("${which}Skip")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
+                return ladder.filter { it !in skip }.ifEmpty { ladder }
+            }
+            val capOrder = order("capture", CallAudio.captureMethods)
+            val injOrder = order("inject", CallAudio.injectMethods)
             val injectMs = cfg.optInt("injectMs", 40)
             startId = cfg.opt("id") ?: JSONObject.NULL
             callActive = cfg.optBoolean("active", true)

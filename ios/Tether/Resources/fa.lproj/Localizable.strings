@@ -161,6 +161,13 @@
 "Once is enough: with Share VPN on, apps on this iPhone use the phone's VPN over the hotspot; with it off they go direct. If the hotspot address ever changes, update the URL." = "یک بار کافی است: با «اشتراک VPN» روشن، برنامه‌های این آیفون روی هات‌اسپات از VPN گوشی استفاده می‌کنند و با خاموش بودنش مستقیم وصل می‌شوند. اگر نشانی هات‌اسپات عوض شد، نشانی را به‌روز کنید.";
 "Turn on the Wi-Fi hotspot to see the address to use." = "هات‌اسپات Wi-Fi را روشن کنید تا نشانی نمایش داده شود.";
 "Copied" = "کپی شد";
+"Setup code for another device" = "کد راه‌اندازی برای دستگاه دیگر";
+"Telegram" = "تلگرام";
+"Another iPhone or iPad can scan this after joining the hotspot: it opens the proxy setup link." = "یک آیفون یا آیپد دیگر بعد از وصل شدن به هات‌اسپات می‌تواند این کد را اسکن کند: پیوند راه‌اندازی پراکسی باز می‌شود.";
+"No device is linked: Share VPN turns itself off in %lld min." = "هیچ دستگاهی وصل نیست: اشتراک VPN %lld دقیقه دیگر خودش خاموش می‌شود.";
+"If every device disconnects, Share VPN turns itself off after 10 minutes." = "اگر همهٔ دستگاه‌ها قطع شوند، اشتراک VPN بعد از ۱۰ دقیقه خودش خاموش می‌شود.";
+"Sites that bypass the VPN" = "سایت‌هایی که از VPN رد نمی‌شوند";
+"No sites yet. Sites on this list open directly, without the VPN: banks and local sites usually work better that way." = "هنوز سایتی نیست. سایت‌های این فهرست مستقیم و بدون VPN باز می‌شوند: بانک‌ها و سایت‌های داخلی معمولاً این‌طوری بهتر کار می‌کنند.";
 
 /* Round 5 */
 "Link log" = "گزارش اتصال";
@@ -250,6 +257,18 @@
 "The Android phone's microphone stays in the call: the other side may hear your voice twice, and the room around the phone." = "میکروفون گوشی اندروید در تماس می‌ماند: ممکن است طرف مقابل صدای شما را دو بار بشنود، همراه با صدای اطراف آن گوشی.";
 "Tether puts the call in Android's redirect audio mode: the Android phone's own microphone and earpiece leave the call, so the other side hears only this iPhone. Tether checks that both directions still work and keeps the microphone on where the phone does not allow it." = "تتر تماس را به حالت صوتی «هدایت تماس» اندروید می‌برد: میکروفون و بلندگوی مکالمهٔ گوشی اندروید از تماس بیرون می‌روند و طرف مقابل فقط صدای این آیفون را می‌شنود. تتر بررسی می‌کند که صدا در هر دو جهت برقرار بماند و جایی که گوشی اجازه ندهد، میکروفون را روشن نگه می‌دارد.";
 
+/* Call audio: methods, fallback and test feedback */
+"Automatic" = "خودکار";
+"Call audio on" = "صدای تماس روی";
+"This iPhone" = "همین آیفون";
+"The Android phone itself" = "خود گوشی اندروید";
+"Your voice method" = "روش صدای شما";
+"Their voice method" = "روش صدای طرف مقابل";
+"You answer, place and end calls here, but you hear and speak on the Android phone itself. Use this when no call-audio method works." = "تماس‌ها را از اینجا پاسخ می‌دهید، می‌گیرید و قطع می‌کنید، اما صدا را روی خود گوشی اندروید می‌شنوید و همان‌جا صحبت می‌کنید. وقتی هیچ روش صدای تماسی کار نمی‌کند از این استفاده کنید.";
+"Could the other side hear you?" = "طرف مقابل صدای شما را شنید؟";
+"Could you hear the other side?" = "شما صدای طرف مقابل را شنیدید؟";
+"Thanks — the Android phone remembers that for its next calls." = "ممنون — گوشی اندروید این را برای تماس‌های بعدی‌اش به خاطر می‌سپارد.";
+
 /* First run and pairing links */
 "Set up" = "راه‌اندازی";
 "Connect your Android phone" = "گوشی اندرویدی‌تان را وصل کنید";
@@ -310,3 +329,21 @@
 "No local network found: put both devices on the same Wi-Fi, or connect one to the other's hotspot, then try again." = "شبکه محلی پیدا نشد: هر دو دستگاه را روی یک Wi-Fi بگذارید، یا یکی را به هات‌اسپات دیگری وصل کنید و دوباره تلاش کنید.";
 "File transfer" = "انتقال فایل";
 "%@ wants to send %lld file(s)" = "%@ می‌خواهد %lld فایل بفرستد";
+"Try the demo" = "دمو را امتحان کنید";
+"Exit demo" = "خروج از دمو";
+"Demo" = "دمو";
+"Sample phone" = "گوشی نمونه";
+"You're exploring a sample phone. Nothing here is real." = "در حال گشتن در یک گوشی نمونه هستید. هیچ‌کدام از این‌ها واقعی نیست.";
+"This is a demo with a sample phone — that only works with a real Android phone." = "این یک دمو با گوشی نمونه است — این کار فقط با یک گوشی اندروید واقعی انجام می‌شود.";
+"No Android phone yet? Explore a sample phone with made-up calls, texts and contacts first." = "هنوز گوشی اندروید ندارید؟ اول یک گوشی نمونه را با تماس‌ها، پیامک‌ها و مخاطب‌های ساختگی بگردید.";
+"Explore a sample phone with made-up data. Your real phone and its data stay untouched." = "یک گوشی نمونه را با داده‌های ساختگی بگردید. گوشی واقعی شما و داده‌هایش دست‌نخورده می‌مانند.";
+"A made-up phone, so you can look around." = "یک گوشی ساختگی، برای این‌که نگاهی بیندازید.";
+"Sending files needs a real Android phone — in the demo you can only look around." = "فرستادن فایل به یک گوشی اندروید واقعی نیاز دارد — در دمو فقط می‌توانید نگاه کنید.";
+"Live Activity" = "فعالیت زنده";
+"Lock Screen" = "صفحه قفل";
+"Shows the Android phone's signal and battery on the Lock Screen and in the Dynamic Island while you are linked, and the call you are on. Needs iOS 16.1 or later." = "آنتن و باتری گوشی اندروید را وقتی وصل هستید روی صفحه قفل و داینامیک آیلند نشان می‌دهد، و همین‌طور تماسی که در آن هستید. به iOS ۱۶٫۱ یا جدیدتر نیاز دارد.";
+"Wi-Fi call path" = "مسیر وای‌فای تماس";
+"Call path" = "مسیر تماس";
+"Wi-Fi" = "وای‌فای";
+"Bluetooth" = "بلوتوث";
+"At home, on the same Wi-Fi as the Android phone, the call's sound can travel over Wi-Fi instead of Bluetooth — clearer, with less delay. Bluetooth stays in charge and takes over at once if Wi-Fi falters." = "در خانه، وقتی روی همان وای‌فای گوشی اندروید هستید، صدای تماس می‌تواند به‌جای بلوتوث از وای‌فای برود — واضح‌تر و با تأخیر کمتر. بلوتوث همچنان مسئول است و اگر وای‌فای ضعیف شود، فوراً خودش ادامه می‌دهد.";

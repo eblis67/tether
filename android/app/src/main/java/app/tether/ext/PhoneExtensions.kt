@@ -4,6 +4,7 @@ import app.tether.TetherApp
 import app.tether.core.ext.EchoExtension
 import app.tether.core.ext.FilesExtension
 import app.tether.core.ext.TetherExtension
+import app.tether.core.ext.WifiAudioExtension
 
 /**
  * The extensions the Android phone runs (protocol §7, docs/EXTENDING.md). Add yours here: Hub registers this list once,
@@ -11,9 +12,11 @@ import app.tether.core.ext.TetherExtension
  * whose id or types break the rules is refused at registration (logged), never half-registered.
  *
  * `x.tether.files` derives its one-time keys from the transcript hash of the very session a transfer runs on:
- * the key material is asked for per link, and Hub resolves it to that link's connection.
+ * the key material is asked for per link, and Hub resolves it to that link's connection. `x.tether.wifiaudio`
+ * (§7.11) derives its per-call channel keys the same way.
  */
 fun phoneExtensions(app: TetherApp): List<TetherExtension> = listOf(
     EchoExtension(),
-    FilesExtension(keyMaterial = { link -> app.hubOrNull()?.transcriptHashFor(link) }),
+    FilesExtension(keyMaterial = { link -> app.hubOrNull?.transcriptHashFor(link) }),
+    WifiAudioExtension(keyMaterial = { link -> app.hubOrNull?.transcriptHashFor(link) }),
 )

@@ -20,6 +20,8 @@ public enum Ext {
     public static let echo = "x.tether.echo"
     /// The built-in file transfer extension (§7.10).
     public static let files = "x.tether.files"
+    /// The built-in Wi-Fi call path extension (§7.11).
+    public static let wifiAudio = "x.tether.wifiaudio"
 }
 
 /// Any JSON value: bodies an extension reads loosely, and the `status.ext` fields.

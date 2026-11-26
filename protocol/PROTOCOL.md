@@ -180,7 +180,7 @@ numbers are as stored on the Android phone.
 | Type | Dir | Body |
 |---|---|---|
 | `ping` / `pong` | both | `{ts}` |
-| `status` | P→C | `{device, battery, charging, sims:[{slot, sub, name, carrier, number?, signal, net?, service?, roaming?, country?}], defaultSub?, dialer, helper:{state, method?, capture?, up, down, silent?, micMute?, uplink?, mic?, micPath?, audio?}, wifi, adbWifi, clients?:[{name, kind, self?, audio?}]}` (`helper.method` / `capture`: the call-audio inject / capture method of the current or last call; `audio`: what call audio the phone's Android version allows, "full" (13+) \| "fallback" (11–12, best effort) \| "unavailable" (8–10: calls are controlled from the client, their audio stays on the phone; clients say so; since 1.2.2 "blocked": this phone's software gave no call audio in a real call (the downlink capture read only zeros), so its calls are not bridged until a system update or a self-test that hears the call; clients say so); `silent` "full" \| "earpiece" \| "none": how silent the Android phone itself is during a bridged call; `micMute`: the setting "mute the Android phone's microphone during bridged calls", absent from builds without it (clients hide the switch; newer builds keep sending it, true only when `mic` is "mute"); `mic`: the setting "the Android phone's microphone during bridged calls", "auto" (default: a redirect audio mode takes the phone's mic and earpiece out of the call where the phone allows it, else the vendor's own mic-source key mutes it where the phone has one that is known or checked to keep the client's voice, else the mic stays on) \| "mute" \| "open", absent from builds before it (clients then show the `micMute` switch); `micPath`: during a bridged call, what the phone's own mic does, "off" (out of the call) \| "muted" \| "open"; `uplink`: whether the client's voice reaches the call, "checking" \| "ok" \| "muted-locally-fixed" (the phone's mic mute silenced it and was undone; calls on this phone start without it) \| "unverified" \| "off" (no local mic mute this call): this call's check, else what the phone remembers; `clients`: every connected client; `self` marks the receiver, `audio` the one call audio goes to; per SIM: `signal` 0–4, `net` "5G" \| "LTE+" \| "LTE" \| "H+" \| "H" \| "3G" \| "E" \| "2G", `service` "in" \| "none" \| "emergency" \| "off", `roaming`, `country` the SIM's lowercase ISO 3166 code (else the network's; optional, for grouping national numbers on display). Pushed again within ~2 s of a signal / network change). Optional, from builds with the phone tools: `tools:{ussd, find, ringer}` (clients hide the matching controls when absent), `ringer` "normal" \| "vibrate" \| "silent", `dnd` (Do Not Disturb access granted). Optional, from builds with extensions (§7): `caps:["<id>/<major>"]` (the Android phone's extensions), `ext:{"<id>": {…}}` (their status fields, only those the receiving client agreed) |
+| `status` | P→C | `{device, battery, charging, sims:[{slot, sub, name, carrier, number?, signal, net?, service?, roaming?, country?}], defaultSub?, dialer, helper:{state, method?, capture?, up, down, silent?, micMute?, uplink?, mic?, micPath?, audio?, methods?, pick?, fallback?}, wifi, adbWifi, clients?:[{name, kind, self?, audio?}]}` (`helper.method` / `capture`: the call-audio inject / capture method of the current or last call; `audio`: what call audio the phone's Android version allows, "full" (13+) \| "fallback" (11–12, best effort) \| "unavailable" (8–10: calls are controlled from the client, their audio stays on the phone; clients say so; since 1.2.2 "blocked": this phone's software gave no call audio in a real call (the downlink capture read only zeros), so its calls are not bridged until a system update or a self-test that hears the call; clients say so); `silent` "full" \| "earpiece" \| "none": how silent the Android phone itself is during a bridged call; `micMute`: the setting "mute the Android phone's microphone during bridged calls", absent from builds without it (clients hide the switch; newer builds keep sending it, true only when `mic` is "mute"); `mic`: the setting "the Android phone's microphone during bridged calls", "auto" (default: a redirect audio mode takes the phone's mic and earpiece out of the call where the phone allows it, else the vendor's own mic-source key mutes it where the phone has one that is known or checked to keep the client's voice, else the mic stays on) \| "mute" \| "open", absent from builds before it (clients then show the `micMute` switch); `micPath`: during a bridged call, what the phone's own mic does, "off" (out of the call) \| "muted" \| "open"; `uplink`: whether the client's voice reaches the call, "checking" \| "ok" \| "muted-locally-fixed" (the phone's mic mute silenced it and was undone; calls on this phone start without it) \| "unverified" \| "off" (no local mic mute this call): this call's check, else what the phone remembers; `methods`: the call-audio methods this phone offers, `[{id, dir}]` with `dir` "capture" \| "inject" (docs/CALL-AUDIO.md), absent from builds before them (clients show no method picker); `pick`: the user's method picks, `{inject, capture}`, each "auto" (the phone chooses: its self-test's choice, else its ladder minus the methods the user voted down) or a method id; `fallback`: true while the speaker/microphone fallback is on — calls are controlled from the client but never bridged, their audio stays on the Android phone itself (see §5.1); `clients`: every connected client; `self` marks the receiver, `audio` the one call audio goes to; per SIM: `signal` 0–4, `net` "5G" \| "LTE+" \| "LTE" \| "H+" \| "H" \| "3G" \| "E" \| "2G", `service` "in" \| "none" \| "emergency" \| "off", `roaming`, `country` the SIM's lowercase ISO 3166 code (else the network's; optional, for grouping national numbers on display). Pushed again within ~2 s of a signal / network change). Optional, from builds with the phone tools: `tools:{ussd, find, ringer}` (clients hide the matching controls when absent), `ringer` "normal" \| "vibrate" \| "silent", `dnd` (Do Not Disturb access granted). Optional, from builds with extensions (§7): `caps:["<id>/<major>"]` (the Android phone's extensions), `ext:{"<id>": {…}}` (their status fields, only those the receiving client agreed) |
 | `sync` | C→P | `{sms: lastId, calls: lastId, contacts: version, codecs: ["opus", "pcmu"], client?: {kind: "iphone" \| "android", name}, caps?: ["<id>/<major>"]}` (0 / "" for a full sync; `codecs` = what the client can decode/encode, best first; `client` names it in the Android phone's device list; `kind` "android" is the Android client, see §5.1; `caps`: the client's extensions, §7.2, absent when it has none) |
 | `sms.batch` | P→C | `{items:[Sms], more}` |
 | `sms.new` | P→C | `{item: Sms}` |
@@ -202,7 +202,7 @@ numbers are as stored on the Android phone.
 | `audio.stop` | P→C | `{}` |
 | `audio.stats` | P→C | `{summary, helper?}`: the Android phone's half of a call's audio statistics, sent ~0.5 s after `audio.stop` to the client that had the audio (`summary`: one line for its log; `helper`: the shell helper's figures). Optional, informational |
 | `selftest` | C→P | `{}` → `selftest.result` `{methods:[{name, ok, note, delayMs?}], chosen?, silence?, micByTelecom?}` (`delayMs`: an inject method's measured delay into the call uplink; first row `call-audio`: the call's own inject / capture method and whether the phone's mic was muted; rows `mic:<mode>` (`call_redirect`, `call_screening`, `communication_redirect`) test a redirect audio mode: the uplink's level with nothing injected (the phone's mic), the injected tone and the downlink, without and with the mode, with an optional `verdict` "ok" \| "unverified" \| "breaks-downlink" \| "breaks-uplink" \| "refused" \| "no-effect" that the phone remembers for its model; a last row `inject:<method>, phone mic muted` repeats the chosen method with the mic muted, and its answer is remembered like the in-call check's; optional `redirect: {mode: verdict}`, `callMode`) |
-| `audio.set` | C→P | `{mic}` ("auto" \| "mute" \| "open", to Android builds whose status has `helper.mic`) or `{micMute}` (older builds; true reads as "mute", false as "auto"): change the setting "the Android phone's microphone during bridged calls" (it also forgets earlier check results); applied to a running call at once and answered with a `status` |
+| `audio.set` | C→P | `{mic}` ("auto" \| "mute" \| "open", to Android builds whose status has `helper.mic`) or `{micMute}` (older builds; true reads as "mute", false as "auto"): change the setting "the Android phone's microphone during bridged calls" (it also forgets earlier check results); applied to a running call at once and answered with a `status`. From builds whose status has `helper.methods`, any of: `{inject}` / `{capture}` ("auto" or a method id from `helper.methods`: the user's call-audio method pick for that direction, applied to a running call at once), `{fallback}` (bool: the speaker/microphone fallback, see §5.1), `{feedback: {you, them}}` (the user's answers after a self-test during a call: `you` — the other side could hear the client; `them` — the client could hear the other side; the phone attributes them to the methods the call used and remembers them for its model, docs/CALL-AUDIO.md) |
 | `sms.read` | both | `{thread, upTo}`: read on a client; the Android phone marks it read and forwards it to the other clients |
 | `sms.unread` | P→C | `{ids:[id], all}`: the Android phone's unread incoming texts, after every sync and within ~2 s of a read-state change there; everything else is read (`all` false: list capped at 3000, only ids ≥ its smallest are known) |
 | `sms.delete` | C→P | `{ids?:[id], thread?}` → `sms.deleted` `{ok, ids:[id], thread?, err?}` to the asking client (with `re`) and to every other client (see §5.2) |
@@ -263,6 +263,11 @@ no call audio: `helper.audio` "blocked"). A client that receives `elsewhere` end
 owner the peripheral sends `audio.stop` to the old owner, `audio.start` to the new one, and the current
 state of every call to all clients.
 
+The speaker/microphone fallback (`helper.fallback`, set with `audio.set`) is the user-chosen form of a call
+staying on the phone: while it is on, no call is bridged — every call behaves as if it had no owner
+(`elsewhere`, `where` = the Android phone's name) — until the user turns it off again; `call.take` does not
+override it. It needs no helper and no Android version, and is the last resort when no method works.
+
 ### 5.2 Delete, block, mute
 
 The Android phone is the source of truth. A client asks (`sms.delete`, `calls.delete`, `lists.set`), removes the
@@ -280,15 +285,23 @@ conversation also unmutes its thread id.
 
 ### 5.3 Network switches, airplane mode, network mode, Share VPN
 
-`net.set {what, on, sub?, slot?, mode?}`, `what` ∈ `data`, `hotspot`, `bt`, `dataSub` (with `sub`), `airplane`,
+`net.set {what, on, sub?, slot?, mode?, bypass?}`, `what` ∈ `data`, `hotspot`, `bt`, `dataSub` (with `sub`), `airplane`,
 `rat` (with `slot` 0/1 and `mode` "5G" | "4G" | "3G" | "2G": every technology up to that one, like the phone's
-"auto connect" modes), `share`.
+"auto connect" modes), `share`. With `share`, an optional `bypass` array of host names replaces the split-tunnel
+bypass list stored on the Android phone (sanitized there: bare host names, at most 64); absent leaves it unchanged.
 `net.state`: `{data, hotspot, bt, dataSub, vpn, airplane, rat:[{slot, mode}], share, proxy: {port, addrs:[{iface,
-ip, kind: "hotspot"|"bt"|"usb", pac}]}, err?}`. `vpn` is read-only (a VPN is up on the Android phone; it is switched in the
+ip, kind: "hotspot"|"bt"|"usb", pac, tg, qr}], bypass, telegram, offIn?}, err?}`. `vpn` is read-only (a VPN is up on the Android phone; it is switched in the
 VPN app). A `net.state` caused by `share` or `airplane` is also sent to the other clients (without `re`).
 
 Airplane mode keeps Bluetooth on. If no client has been linked for 90 s while airplane mode (switched on from a
 client) is on, the Android phone switches it off by itself; the hotspot / Bluetooth tethering that were on before come back.
+
+Share VPN turns itself off the same way: if no client has been linked for 10 minutes while sharing is on, the
+Android phone switches sharing off; `offIn` in `net.state` is the seconds left, present only while that countdown
+is running. Each address also carries `tg`, a `tg://socks?server=<ip>&port=<port>` deep link that points Telegram
+at the proxy (SOCKS5), and `qr`, the payload a QR code for the setup encodes (the address's PAC URL); `telegram`
+at the proxy level is the preferred address's `tg` link. Hosts in `bypass` (and their subdomains) go DIRECT in
+the PAC file, on top of the built-in plain-hostname and private-range rules.
 
 The proxy at `ip:port` speaks HTTP (absolute-form requests), HTTPS via `CONNECT`, SOCKS5 (no auth, CONNECT) and
 serves `GET /proxy.pac`.
@@ -314,7 +327,7 @@ Frames: `type: u8 ‖ len: u32 ‖ payload`.
 | type | Dir | Payload |
 |---|---|---|
 | 1 HELLO | H→A | JSON `{pid, uid, sdk, version, apk}` (`apk`: the helper's class path; a different one means a stale helper, relaunched) |
-| 2 START | A→H | JSON `{id?, rate, capture, inject, injectMs?, testLine?, mic?, micMute?, micCheck?, redirect?, muteMemory?, active?}` (`id`: echoed in this start's INFO; `auto` tries every method in order, but nothing opens before the phone is in a call's audio mode (or the call has been active 3 s), and the interception API refusing for the mode is retried quietly meanwhile; `injectMs`: cap of the uplink playback buffer, default 40; `mic`: auto \| mute \| open, absent: "mute" when `micMute` is true, else "auto"; `micMute`: with "mute", mute the phone's own microphone this call, default false; `micCheck`: then watch the uplink, default true; `redirect`: `{mode: verdict}` what this phone model showed of the redirect modes, so a failed or unverified one is skipped; `muteMemory`: what this phone model showed of the mic mute, ok \| muted-locally-fixed \| unverified (its VOICE_UPLINK shows nothing) or null; `active`: the call is already active, default true) |
+| 2 START | A→H | JSON `{id?, rate, capture, inject, injectMs?, captureSkip?, injectSkip?, testLine?, mic?, micMute?, micCheck?, redirect?, muteMemory?, active?}` (`id`: echoed in this start's INFO; `auto` tries every method in order, but nothing opens before the phone is in a call's audio mode (or the call has been active 3 s), and the interception API refusing for the mode is retried quietly meanwhile; `captureSkip` / `injectSkip`: method ids `auto` must not try — they open but the user reported the far end did not get through (docs/CALL-AUDIO.md); a skip list that would empty a ladder is ignored; `injectMs`: cap of the uplink playback buffer, default 40; `mic`: auto \| mute \| open, absent: "mute" when `micMute` is true, else "auto"; `micMute`: with "mute", mute the phone's own microphone this call, default false; `micCheck`: then watch the uplink, default true; `redirect`: `{mode: verdict}` what this phone model showed of the redirect modes, so a failed or unverified one is skipped; `muteMemory`: what this phone model showed of the mic mute, ok \| muted-locally-fixed \| unverified (its VOICE_UPLINK shows nothing) or null; `active`: the call is already active, default true) |
 | 3 STOP | A→H | – |
 | 4 DOWN | H→A | PCM 16-bit LE mono, 20 ms |
 | 5 UP | A→H | PCM 16-bit LE mono, 20 ms |
@@ -514,4 +527,75 @@ link. A frame that does not open, a counter gap or an unknown frame byte closes 
 channel reports `protocol`). An idle connection (no frame for 30 s) is closed (`timeout`). Cancelling or losing
 the link mid-transfer closes the TCP side too; partial files stay on the receiver for a later resume, under the
 names the offer gave them.
+
+### 7.11 Built-in: `x.tether.wifiaudio` (version 1)
+
+A Wi-Fi path for call audio (design note: [docs/WIFI-CALL-PATH.md](../docs/WIFI-CALL-PATH.md)). Only the call's
+audio frames move: while the path is up, the §4 audio channel's payloads (`codec ‖ seq ‖ frame`) travel over a
+short-lived TCP connection on the local network the two devices already share (the same Wi-Fi, or the Android
+phone's hotspot) instead of over Bluetooth. Signalling never moves: `call.state`, `audio.start` / `audio.stop`
+and every other control message stay in the sealed session, the wake characteristic (§1) still wakes the client,
+and pairing is unchanged. A client that does not announce the extension, or a phone build without it, simply
+keeps every frame on Bluetooth.
+
+**Roles and types.** The client offers; the Android phone always listens and the client always connects (the
+phone never offers). `cid` is one channel: 16 random bytes, base64url, chosen by the client per offer.
+
+| Type | Direction | Body |
+| --- | --- | --- |
+| `x.tether.wifiaudio` with `id` (the offer) | client → phone | `{cid, key1}`: the channel id and the client's key salt (below) |
+| `x.tether.wifiaudio.accept` with `re` | phone → client | `{cid, host, port, key2}`: where the phone listens (its local-network address and ephemeral port) and its key salt |
+| `x.tether.wifiaudio.decline` with `re` | phone → client | `{cid, why}`: `why` is `busy` (a channel is already open on this link), `unavailable` (no call audio is bridged to this client, or the phone has no local-network address) or `dry` (a test link: nothing real is opened for it) |
+| `x.tether.wifiaudio.down` | either → either | `{cid, why?}`: the channel is closed (call over, path lost, switched off); the peer stops sending on it |
+| `x.tether.wifiaudio.error` | either → either | `{cid, code, msg?}`: the channel failed outside an answer. Codes: `busy`, `io`, `key`, `protocol`, `timeout`, `unavailable` |
+
+Refusals of a request itself (unknown type, too large, a handler that threw) still use §7.4's `error`; an `error`
+answering the offer means the offer was refused, like a decline. At most one channel per link: a second offer
+while one is open is declined `busy`. An offer the phone accepted but nobody connects to within 15 s is dead.
+The client offers only while a call's audio runs on its link (it is triggered by `audio.start`, or by the local
+network appearing mid-call); a channel with no call ends when the call's audio stops.
+
+**Key derivation.** As §7.10, with this extension's info string. Each side contributes a fresh 16-byte salt
+inside the sealed session: the client's `key1` in the offer, the phone's `key2` in the accept. Both sides then
+compute, with `th` the session's transcript hash (§3, known to both sides, never sent):
+
+```
+okm = HKDF-SHA256(salt = th, ikm = key1 ‖ key2, info = "tether/1 x.tether.wifiaudio" ‖ 0x00 ‖ cid, 64 bytes)
+client → phone key = okm[0..32]      phone → client key = okm[32..64]
+```
+
+A side that cannot get its session's `th` from its host cannot offer or accept: it answers with
+`x.tether.wifiaudio.error` `code: "key"`.
+
+**The TCP channel.** The phone listens on `host`:`port` from its accept (an ephemeral port, bound to the
+local-network interface) for one connection, for at most 15 s. Frames are §2 records sealed with the §4 record
+layer under the derived keys (channel byte 0), so counters, nonces and authentication are exactly §4's; the
+plaintext of each frame is one frame byte and a payload:
+
+| Byte | Name | Payload |
+| --- | --- | --- |
+| 0x01 | HELLO | `{cid}` (JSON): the client's first frame; any other first frame, or a different `cid`, closes the connection |
+| 0x02 | AUDIO | one §4 audio payload, verbatim (`codec: u8 ‖ seq: u16 ‖ frame bytes`) |
+| 0x03 | PING | `{ts}` (JSON): the client's clock; sent every 2 s while the channel is up |
+| 0x04 | PONG | `{ts}` (JSON): the phone echoes the PING's body |
+| 0x05 | BYE | empty: this side is closing the channel (the call's audio continues over Bluetooth) |
+| 0x06 | ERR | `{code}` (JSON): either side gives up; the connection closes |
+
+**The path is a per-frame send decision.** A frame's `seq` is assigned by the sender's audio pipeline before
+the path is chosen and keeps counting for the whole call (§4) on either path; receivers accept frames from both
+paths at all times and order them by `seq` exactly as for one path (a frame that arrives after a later one is
+late and dropped, a gap is concealed — §4's rules, unchanged). No frame is sent on both paths on purpose. Each
+side sends on Wi-Fi while its channel is up and the peer was heard from (a PONG, or any frame) within the last
+6 s, and on Bluetooth otherwise; a channel nothing was heard on for 15 s is closed. So a path that appears
+mid-call is picked up frame by frame, and a path that disappears mid-call reverts the same way: no migration
+message exists, and none is needed. When the call's audio stops, either side closes the channel (BYE on the
+channel, `x.tether.wifiaudio.down` on the control channel) and the next call negotiates a fresh one.
+
+**Status.** While a channel to a client is up, the Android phone's `status.ext["x.tether.wifiaudio"]` (§7.5) is
+`{path: "wifi"}`; it is absent otherwise, so a client can show the phone's view of the path next to its own.
+
+**Limits.** One channel per link, one connection per accept, a 15 s accept window, PING every 2 s, the 6 s /
+15 s health rules above. A frame that does not open, a counter gap or an unknown frame byte closes the
+connection (the control channel reports `protocol`). Losing the sealed session closes the channel too: its
+keys die with the session's transcript hash.
 

@@ -28,6 +28,8 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import app.tether.client.R
+import app.tether.client.ext.FilesFeature
+import app.tether.client.ext.digestPicked
 import app.tether.client.link.BleCentral
 import app.tether.client.link.LinkService
 import app.tether.client.model.Search
@@ -463,6 +465,15 @@ class MainActivity : Activity() {
                     sw.addView(label("${ad.optString("kind")}: ${ad.optString("ip")}:${net.optJSONObject("proxy")?.optInt("port")}  ·  ${ad.optString("pac")}", R.color.muted, 12f).apply { setTextIsSelectable(true) })
                 }
             }
+            if (net?.optBoolean("share") == true) net.optJSONObject("proxy")?.let { p ->
+                p.optString("telegram").takeIf { it.isNotEmpty() }?.let { tg ->
+                    sw.addView(label("${getString(R.string.share_telegram)}: $tg", R.color.muted, 12f).apply { setTextIsSelectable(true) })
+                }
+                p.optJSONArray("bypass")?.takeIf { it.length() > 0 }?.let { b ->
+                    sw.addView(label(getString(R.string.share_bypass, (0 until b.length()).joinToString(", ") { b.optString(it) }), R.color.muted, 12f).apply { setTextIsSelectable(true) })
+                }
+                if (p.has("offIn")) sw.addView(label(getString(R.string.share_off_in, p.optInt("offIn") / 60 + 1), R.color.muted, 12f))
+            }
             val sims = s.sims
             if (sims.size > 1) {
                 val dataSub = net?.optInt("dataSub", -1) ?: -1
@@ -502,6 +513,18 @@ class MainActivity : Activity() {
             val m = t.optJSONArray("methods")
             me.addView(label((0 until (m?.length() ?: 0)).joinToString("\n") { i -> m!!.getJSONObject(i).let { "${if (it.optBoolean("ok")) "✓" else "✗"} ${it.optString("name")} ${it.optString("note")}" } }, R.color.muted, 12f))
         }
+        if (s.feedbackPending) {
+            me.addView(label(getString(R.string.feedback_hear_you), R.color.muted, 13f))
+            me.addView(row(
+                pill((if (s.feedbackYou == true) "✓ " else "") + getString(R.string.yes), secondary = s.feedbackYou != true) { s.answerFeedback(true) },
+                pill((if (s.feedbackYou == false) "✓ " else "") + getString(R.string.no), secondary = s.feedbackYou != false) { s.answerFeedback(false) },
+            ))
+            me.addView(label(getString(R.string.feedback_hear_them), R.color.muted, 13f))
+            me.addView(row(
+                pill((if (s.feedbackThem == true) "✓ " else "") + getString(R.string.yes), secondary = s.feedbackThem != true) { s.answerFeedbackThem(true) },
+                pill((if (s.feedbackThem == false) "✓ " else "") + getString(R.string.no), secondary = s.feedbackThem != false) { s.answerFeedbackThem(false) },
+            ))
+        } else if (s.feedbackThanks) me.addView(label(getString(R.string.feedback_thanks), R.color.muted, 12f))
         box.addView(me)
         val sv = ScrollView(this).apply { addView(box) }
         content.addView(sv)
@@ -543,14 +566,14 @@ class MainActivity : Activity() {
         }
         f.note?.let { n ->
             files.addView(label(when (n) {
-                app.tether.client.ext.FilesFeature.Note.SENT -> getString(R.string.files_note_sent)
-                app.tether.client.ext.FilesFeature.Note.RECEIVED -> getString(R.string.files_note_received)
-                app.tether.client.ext.FilesFeature.Note.DECLINED -> getString(R.string.files_note_declined)
-                app.tether.client.ext.FilesFeature.Note.CANCELLED -> getString(R.string.files_note_cancelled)
-                app.tether.client.ext.FilesFeature.Note.NO_NETWORK -> getString(R.string.files_no_network)
-                app.tether.client.ext.FilesFeature.Note.ERROR -> getString(R.string.files_note_error) +
+                FilesFeature.Note.SENT -> getString(R.string.files_note_sent)
+                FilesFeature.Note.RECEIVED -> getString(R.string.files_note_received)
+                FilesFeature.Note.DECLINED -> getString(R.string.files_note_declined)
+                FilesFeature.Note.CANCELLED -> getString(R.string.files_note_cancelled)
+                FilesFeature.Note.NO_NETWORK -> getString(R.string.files_no_network)
+                FilesFeature.Note.ERROR -> getString(R.string.files_note_error) +
                     (f.noteDetail?.let { " ($it)" } ?: "")
-            }, if (n == app.tether.client.ext.FilesFeature.Note.ERROR) R.color.warn else R.color.muted, 13f))
+            }, if (n == FilesFeature.Note.ERROR) R.color.warn else R.color.muted, 13f))
         }
         val received = f.receivedFiles()
         if (received.isNotEmpty() && f.pending == null) {
@@ -576,7 +599,7 @@ class MainActivity : Activity() {
         if (uris.isEmpty()) return
         for (uri in uris) runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         Thread {
-            val picked = app.tether.client.ext.digestPicked(contentResolver, uris)
+            val picked = digestPicked(contentResolver, uris)
             app.main.post { if (picked.isNotEmpty()) app.filesFeature.sendPicked(picked) }
         }.start()
     }

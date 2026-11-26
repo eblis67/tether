@@ -3,6 +3,7 @@ package app.tether.audio
 import android.content.Context
 import android.util.Log
 import app.tether.adb.Adb
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -183,15 +184,19 @@ class HelperBridge(private val ctx: Context) {
      * [testLine]: the call is Tether's own test line (no network behind it): the helper plays the far end's listener.
      * [mic]: the phone-mic setting (MicPath.Setting: auto, mute, open); [micMute]: with "mute", whether to mute this
      * call (see LocalMutes); [micCheck]: then watch the uplink; [redirect]: what this phone remembers of the redirect modes.
+     * [captureSkip] / [injectSkip]: methods `auto` must not try (the user voted them down, docs/CALL-AUDIO.md).
      */
     fun start(rate: Int, capture: String = "auto", inject: String = "auto", injectMs: Int = 40, testLine: Boolean = false,
               mic: String = "auto", micMute: Boolean = false, micCheck: Boolean = true, redirect: JSONObject = JSONObject(),
-              muteMemory: String? = null, active: Boolean = true): Boolean {
+              muteMemory: String? = null, active: Boolean = true,
+              captureSkip: List<String> = emptyList(), injectSkip: List<String> = emptyList()): Boolean {
         val id = ++startId
         lastInfo = null; lastUplink = null; lastMic = null
         return send(START, JSONObject().put("id", id).put("rate", rate).put("capture", capture).put("inject", inject).put("injectMs", injectMs)
             .put("testLine", testLine).put("mic", mic).put("micMute", micMute).put("micCheck", micCheck).put("redirect", redirect)
             .put("muteMemory", muteMemory ?: JSONObject.NULL).put("active", active)
+            .apply { if (captureSkip.isNotEmpty()) put("captureSkip", JSONArray(captureSkip)) }
+            .apply { if (injectSkip.isNotEmpty()) put("injectSkip", JSONArray(injectSkip)) }
             .toString().toByteArray())
     }
 

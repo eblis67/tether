@@ -34,9 +34,15 @@
             "iface": "bt-pan",
             "ip": "192.168.44.1",
             "kind": "bt",
-            "pac": "http://192.168.44.1:8899/proxy.pac"
+            "pac": "http://192.168.44.1:8899/proxy.pac",
+            "tg": "tg://socks?server=192.168.44.1&port=8899",
+            "qr": "http://192.168.44.1:8899/proxy.pac"
           }
-        ]
+        ],
+        "bypass": [
+          "bank.example"
+        ],
+        "telegram": "tg://socks?server=192.168.44.1&port=8899"
       }
     },
     "old": {

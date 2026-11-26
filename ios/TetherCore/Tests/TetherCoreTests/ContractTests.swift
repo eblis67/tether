@@ -165,6 +165,10 @@ final class ContractTests: XCTestCase {
     func testNetStateOptionalFields() throws {
         let n = try body("net.state", "full", as: NetState.self)
         XCTAssertEqual(n.mode(slot: 1), "5G"); XCTAssertEqual(n.can?.bt, true); XCTAssertEqual(n.proxy?.addrs.first?.kind, "bt")
+        XCTAssertEqual(n.proxy?.bypass, ["bank.example"])
+        XCTAssertEqual(n.proxy?.telegram, "tg://socks?server=192.168.44.1&port=8899")
+        XCTAssertEqual(n.proxy?.addrs.first?.tg, "tg://socks?server=192.168.44.1&port=8899")
+        XCTAssertEqual(n.proxy?.addrs.first?.qr, "http://192.168.44.1:8899/proxy.pac")
         let o = try body("net.state", "old", as: NetState.self)
         XCTAssertNil(o.can); XCTAssertNil(o.rat); XCTAssertNil(o.proxy); XCTAssertNil(o.airplane)
         XCTAssertEqual(try body("net.state", "error", as: NetState.self).err, "helper did not answer")

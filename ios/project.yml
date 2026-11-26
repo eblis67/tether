@@ -32,6 +32,9 @@ targets:
         product: TetherCore
       - package: Perception
         product: Perception
+      # The Live Activity's UI (docs/LIVE-ACTIVITY.md): XcodeGen embeds the extension in the app,
+      # and the IPA step copies the whole .app, PlugIns included.
+      - target: TetherLiveActivity
     configFiles:
       Debug: Config/Tether.xcconfig
       Release: Config/Tether.xcconfig
@@ -50,6 +53,30 @@ targets:
         TETHER_ENTITLEMENTS: ""
         TETHER_COMM_NOTIFICATIONS: "NO"
         CODE_SIGN_ENTITLEMENTS: $(TETHER_ENTITLEMENTS)
+  # The Live Activity widget extension (docs/LIVE-ACTIVITY.md). Live Activities begin at iOS 16.1,
+  # so the extension's floor is 16.1 while the app stays at 16.0: on 16.0 the system never loads it.
+  # No entitlements and no App Group: content state travels through ActivityKit itself. The bundle id
+  # must extend the app's, which comes from the same xcconfig the app target uses.
+  TetherLiveActivity:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.1"
+    sources:
+      - path: TetherLiveActivity
+    dependencies:
+      - package: TetherCore
+        product: TetherCore
+    configFiles:
+      Debug: Config/Tether.xcconfig
+      Release: Config/Tether.xcconfig
+    info:
+      path: TetherLiveActivity/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(TETHER_BUNDLE_ID).liveactivity
   TetherTests:
     type: bundle.unit-test
     platform: iOS

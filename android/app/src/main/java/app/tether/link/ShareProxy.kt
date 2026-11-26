@@ -43,6 +43,8 @@ class ShareProxy(private val ctx: Context) {
 
     /** Sharing on: proxy requests are forwarded and the PAC file points at the proxy. */
     @Volatile var sharing = false
+    /** Split-tunnel bypass hosts (sanitized by ProxyRequests): they go DIRECT in the PAC file. Set by the Hub. */
+    @Volatile var bypass: List<String> = emptyList()
     private val listeners = ConcurrentHashMap<String, ServerSocket>()   // ip → listener
     private val ifaceOf = ConcurrentHashMap<String, String>()
     private val pool = Executors.newCachedThreadPool { r -> Thread(r, "share-proxy").apply { isDaemon = true } }
@@ -92,10 +94,27 @@ class ShareProxy(private val ctx: Context) {
         }
     }
 
-    /** For net.state: where clients reach the proxy. */
-    fun json(): JSONObject = JSONObject().put("port", PORT).put("addrs", JSONArray(listeners.keys.filter { it != "127.0.0.1" }.map { ip ->
-        JSONObject().put("iface", ifaceOf[ip] ?: "").put("ip", ip).put("kind", kindOf(ifaceOf[ip] ?: "")).put("pac", "http://$ip:$PORT/proxy.pac")
-    }))
+    /**
+     * For net.state: where clients reach the proxy. Each address carries its PAC URL, the Telegram SOCKS5 deep
+     * link (`tg`) and the QR payload (`qr`: the PAC URL a camera scan opens); the proxy level adds the bypass
+     * list and the preferred address's Telegram link.
+     */
+    fun json(): JSONObject {
+        val ips = listeners.keys.filter { it != "127.0.0.1" }
+        val addrs = ips.map { ip ->
+            JSONObject().put("iface", ifaceOf[ip] ?: "").put("ip", ip).put("kind", kindOf(ifaceOf[ip] ?: ""))
+                .put("pac", "http://$ip:$PORT/proxy.pac")
+                .put("tg", ProxyRequests.telegramLink(ip, PORT))
+                .put("qr", "http://$ip:$PORT/proxy.pac")
+        }
+        val out = JSONObject().put("port", PORT).put("addrs", JSONArray(addrs))
+            .put("bypass", JSONArray(bypass))
+        // The address a setup screen should feature: the hotspot one (what an iPhone joins), else the first.
+        (ips.firstOrNull { kindOf(ifaceOf[it] ?: "") == "hotspot" } ?: ips.firstOrNull())?.let {
+            out.put("telegram", ProxyRequests.telegramLink(it, PORT))
+        }
+        return out
+    }
 
     private fun kindOf(iface: String) = when {
         iface.startsWith("bt-pan") -> "bt"
@@ -174,7 +193,7 @@ class ShareProxy(private val ctx: Context) {
     }
 
     private fun pac(out: OutputStream, localIp: String) {
-        val body = ProxyRequests.pac(sharing, localIp, PORT)
+        val body = ProxyRequests.pac(sharing, localIp, PORT, bypass)
         val bytes = body.toByteArray()
         out.write(("HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nCache-Control: no-cache, max-age=0\r\n" +
             "Content-Length: ${bytes.size}\r\nConnection: close\r\n\r\n").toByteArray())

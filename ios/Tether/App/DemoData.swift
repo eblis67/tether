@@ -10,58 +10,9 @@ extension AppModel {
         let args = ProcessInfo.processInfo.arguments
         guard args.contains("-TetherDemo") || args.contains("-TetherDemoCall") else { return }
         let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let people = [("Sara Ahmadi", "+15550101"), ("Daniel Brooks", "+15550102"), ("Nima", "+15550103"), ("Bank", "7000")]
-        var sms: [Sms] = []
-        var id: Int64 = 1
-        let chat: [(Bool, String, Int)] = [   // (incoming, text, minutes ago)
-            (true, "Hey, are you still coming tonight?", 190), (false, "Yes! Leaving work around six.", 188),
-            (false, "Want me to bring anything?", 187), (true, "Just yourself 😄", 60), (true, "We booked the table for 7:30", 59),
-            (false, "Perfect, see you there", 2)]
-        for (i, p) in people.enumerated() {
-            if i == 0 {
-                for c in chat {
-                    sms.append(Sms(id: id, thread: 1, addr: p.1, body: c.1, date: now - Int64(c.2) * 60_000, box: c.0 ? 1 : 2, read: true, sub: 3))
-                    id += 1
-                }
-                continue
-            }
-            for j in 0..<3 {
-                sms.append(Sms(id: id, thread: Int64(i + 1), addr: p.1, body: j == 2 && p.1 == "7000" ? "Your verification code is 482913" : "Demo message \(j + 1)",
-                               date: now - Int64((i * 3 + (2 - j)) * 600_000), box: j % 2 == 0 ? 1 : 2, read: j < 2, sub: 3))
-                id += 1
-            }
-        }
-        // Thread 5: rich text cases (links, codes, numbers, formatting, Persian and mixed direction).
-        let rich: [(Bool, String, String)] = [   // (incoming, sender, text)
-            (true, "Bank Mellat", "رمز پویا: ۸۲۷۱۶۳\nمبلغ: ۱,۲۵۰,۰۰۰ ریال\nکارت: ۶۰۳۷**۱۲۳۴\nزمان اعتبار: ۱۲۰ ثانیه"),
-            (true, "Bank Mellat", "G-7741 is your Google verification code."),
-            (true, "Bank Mellat", "سلام! لینک پرداخت قبض شما: https://shaparak.ir/pay?id=88213 تا ساعت ۲۰ معتبر است."),
-            (false, "Bank Mellat", "Thanks, see www.example.com and mail support@example.com"),
-            (true, "Bank Mellat", "*Sale:* 50% off today only, _online_ at digikala.com. Code `SAVE10`. Dial *140*1# for balance."),
-            (true, "Bank Mellat", "برای پشتیبانی با ۰۲۱-۸۸۷۷۶۶۵۵ یا ۰۹۱۲۱۲۳۴۵۶۷ تماس بگیرید."),
-            (false, "Bank Mellat", "Call me at +1 (555) 010-0123 تا ساعت ۵ — ok?"),
-        ]
-        for (k, r) in rich.enumerated() {
-            sms.append(Sms(id: id, thread: 5, addr: "+15550105", body: r.2, date: now - Int64((rich.count - k) * 60_000),
-                           box: r.0 ? 1 : 2, read: true, sub: k == 6 ? 3 : 2))
-            id += 1
-        }
-        let contacts = [Contact(id: 50, name: "Bank Mellat", phones: [Phone(n: "+15550105")])] + people.enumerated().map { Contact(id: Int64($0.offset), name: $0.element.0, phones: [Phone(n: $0.element.1)], starred: $0.offset < 2) }
-        // Unknown numbers (not in contacts) show grouped: a test number, a short code, a USSD code.
-        let unknown = ["+10000000001", "+10000000002", "*140#"]
-        let recents = people.enumerated().map { CallEntry(id: Int64($0.offset), num: $0.element.1, date: now - Int64($0.offset) * 3_600_000, dur: 95, type: [1, 2, 3, 1][$0.offset], sub: $0.offset % 2 == 0 ? 3 : 2) }
-            + unknown.enumerated().map { CallEntry(id: Int64(10 + $0.offset), num: $0.element, date: now - Int64(5 + $0.offset) * 3_600_000, dur: 30, type: 2, sub: 3) }
-        sms.append(Sms(id: id, thread: 6, addr: "+10000000003", body: "Demo message from an unknown number", date: now - 30 * 60_000, box: 1, read: true, sub: 3))
-        id += 1
-        injectDemo(sms: sms, contacts: contacts, recents: recents,
-                   status: StatusBody(device: "Android phone", battery: 82, charging: false,
-                                      sims: [SimInfo(slot: 0, sub: 3, name: "Personal", carrier: "Carrier A", signal: 4, net: "LTE", service: "in"),
-                                             SimInfo(slot: 1, sub: 2, name: "Work", carrier: "Carrier B", signal: 2, net: "LTE+", service: "in")],
-                                      defaultSub: 3, dialer: true, helper: HelperInfo(state: "running", method: "intercept", capture: "intercept", up: true, down: true,
-                                                                                       silent: "full", micMute: false, uplink: "ok", mic: "auto", micPath: "off"),
-                                      wifi: true, adbWifi: true,
-                                      tools: .init(ussd: true, find: true, ringer: true), ringer: "vibrate", dnd: false),
-                   lists: BlockLists(blocked: ["7000", "+15550199"], muted: [3], system: true))
+        // The sample phone itself lives in TetherCore (`DemoSample`), shared with the
+        // user-facing demo mode; what follows is only this debug tool’s staging extras.
+        seedDemo(DemoSample.make(now: now))
         // -TetherDemoMessages opens the Messages tab, -TetherDemoThread the first conversation,
         // -TetherDemoNotify posts a sample SMS notification.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {   // after the root view has picked its first tab
@@ -94,9 +45,6 @@ extension AppModel {
                                                  date: now, box: 1, read: false, sub: 3), from: "Bank")
             }
         }
-        net = NetState(data: true, hotspot: true, bt: false, vpn: true, share: true,
-                       proxy: ShareProxyInfo(port: 8118, addrs: [.init(iface: "swlan0", ip: "10.123.181.251", kind: "hotspot",
-                                                                      pac: "http://10.123.181.251:8118/proxy.pac")]))
         if args.contains("-TetherDemoPhoneTools") {
             ussdResult = UssdResult(ok: true, text: "Your balance is 12.40. Valid until 30 Dec.", err: nil)
         }

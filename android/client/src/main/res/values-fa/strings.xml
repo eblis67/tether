@@ -104,6 +104,11 @@
     <string name="save">ذخیره</string>
     <string name="search">جستجو</string>
     <string name="selftest">آزمایش صدا</string>
+    <string name="yes">بله</string>
+    <string name="no">خیر</string>
+    <string name="feedback_hear_you">طرف مقابل صدای شما را شنید؟</string>
+    <string name="feedback_hear_them">شما صدای طرف مقابل را شنیدید؟</string>
+    <string name="feedback_thanks">ممنون — گوشی دیگر این را برای تماس‌های بعدی‌اش به خاطر می‌سپارد.</string>
     <string name="send">ارسال</string>
     <string name="send_again">ارسال دوباره</string>
     <string name="sending">در حال ارسال…</string>
@@ -131,6 +136,9 @@
     <string name="unpair">لغو جفت‌سازی</string>
     <string name="unpair_confirm">جفت‌سازی با گوشی اندروید لغو شود؟ پیامک‌ها، مخاطبین و تماس‌های آن از این گوشی حذف می‌شوند.</string>
     <string name="vpn_up">یک VPN روی گوشی اندروید فعال است</string>
+    <string name="share_telegram">پروکسی تلگرام</string>
+    <string name="share_bypass">رد نشدن از پروکسی: %1$s</string>
+    <string name="share_off_in">اشتراک VPN حدود %1$d دقیقه دیگر خودش خاموش می‌شود (هیچ دستگاهی وصل نیست)</string>
     <string name="waiting_for_phone">در انتظار گوشی اندروید…</string>
     <string name="you">شما</string>
     <string name="mic_denied">اجازهٔ میکروفون خاموش است: طرف مقابل صدای شما را نمی‌شنود. در تنظیمات › برنامه‌ها › مجوزها › میکروفون اجازه دهید.</string>

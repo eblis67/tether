@@ -169,8 +169,8 @@ class DebugReceiver : BroadcastReceiver() {
         // share on|off|loopback|noloopback|state: the Share VPN proxy (loopback = also on 127.0.0.1 for adb-forward tests)
         "share" -> {
             when (intent.getStringExtra("on")) {
-                "on" -> { app.hub.share.sharing = true; app.prefs.edit().putBoolean("share_vpn", true).apply() }
-                "off" -> { app.hub.share.sharing = false; app.prefs.edit().putBoolean("share_vpn", false).apply() }
+                "on" -> app.hub.setShare(true)
+                "off" -> app.hub.setShare(false)
                 "loopback" -> app.hub.share.loopbackForTests = true
                 "noloopback" -> app.hub.share.loopbackForTests = false
             }

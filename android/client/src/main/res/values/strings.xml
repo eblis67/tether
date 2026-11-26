@@ -105,6 +105,11 @@
     <string name="save">Save</string>
     <string name="search">Search</string>
     <string name="selftest">Audio self-test</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="feedback_hear_you">Could the other side hear you?</string>
+    <string name="feedback_hear_them">Could you hear the other side?</string>
+    <string name="feedback_thanks">Thanks — the other phone remembers that for its next calls.</string>
     <string name="send">Send</string>
     <string name="send_again">Send again</string>
     <string name="sending">Sending…</string>
@@ -132,6 +137,9 @@
     <string name="unpair">Unpair</string>
     <string name="unpair_confirm">Unpair the Android phone? Its texts, contacts and calls are removed from this phone.</string>
     <string name="vpn_up">A VPN is up on the Android phone</string>
+    <string name="share_telegram">Telegram proxy</string>
+    <string name="share_bypass">Bypassing the proxy: %1$s</string>
+    <string name="share_off_in">Share VPN turns itself off in about %1$d min (no device linked)</string>
     <string name="waiting_for_phone">Waiting for the Android phone…</string>
     <string name="you">You</string>
     <string name="mic_denied">Microphone permission is off: the other side cannot hear you. Allow it in Settings › Apps › Permissions › Microphone.</string>
