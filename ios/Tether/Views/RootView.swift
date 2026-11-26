@@ -208,12 +208,12 @@ struct StatusStrip: View {
     private var stateText: LocalizedStringKey {
         if model.isDemo { return "Demo" }
         switch model.linkState {
-        case .connected: "Connected"
-        case .connecting, .handshaking: "Connecting…"
-        case .poweredOff: "Bluetooth is off"
-        case .unauthorized: "Bluetooth not allowed"
-        case .unpaired: "Not paired"
-        case .searching: model.isPaired ? "Out of reach" : "Not paired"
+        case .connected: return "Connected"
+        case .connecting, .handshaking: return "Connecting…"
+        case .poweredOff: return "Bluetooth is off"
+        case .unauthorized: return "Bluetooth not allowed"
+        case .unpaired: return "Not paired"
+        case .searching: return model.isPaired ? "Out of reach" : "Not paired"
         }
     }
 
