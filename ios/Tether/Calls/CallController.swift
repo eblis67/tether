@@ -91,6 +91,8 @@ final class CallController: NSObject {
     private var endedHere = Set<UUID>()
     /// Android phone call ids hung up here: late updates for them must not bring the call back (TetherCore, tested).
     private var hungUp = HangUpGuard()
+    /// Re-asks for a hang-up the Android phone has not confirmed yet, per call id (see armEndRetry).
+    private var endRetries: [String: Task<Void, Never>] = [:]
 
     /// Screen off at the ear, like a native call: proximity monitoring while a call is up and its audio is on the
     /// earpiece (not on speaker, headphones or AirPods). CallKit does this for its own screen only.
@@ -231,6 +233,7 @@ final class CallController: NSObject {
             model.link.send(c.state == "ringing" ? MsgType.callReject : MsgType.callEnd, CallRef(cid: c.cid))
             return
         }
+        if c.isEnded { cancelEndRetry(c.cid) }   // the end we asked for: no more re-asking
         let prev = lastState[c.cid]
         lastState[c.cid] = c.isEnded ? nil : c.state
         let handle = CXHandle(type: .phoneNumber, value: c.num)
@@ -349,8 +352,13 @@ final class CallController: NSObject {
             provider.reportOutgoingCall(with: uuid, startedConnectingAt: Date())
         }
         if c.state == "active" || c.state == "holding", reportedConnected.insert(uuid).inserted {
-            provider.reportOutgoingCall(with: uuid, connectedAt: c.since.map { Date(millis: $0) } ?? Date())
+            provider.reportOutgoingCall(with: uuid, connectedAt: connectedDate(c))
         }
+    }
+
+    /// When the call connected, on our clock: the Android phone's `since` is its own wall clock (CallClock).
+    private func connectedDate(_ c: CallInfo) -> Date {
+        CallClock.connectedAt(sinceMs: c.since, peerOffsetMs: model.link.peerClockOffsetMs) ?? Date()
     }
 
     private func mirrorAnswer(_ uuid: UUID) {
@@ -393,7 +401,7 @@ final class CallController: NSObject {
         var s = CallScreen(uuid: uuid, number: c.num, name: model.name(for: c.num) ?? c.name, state: c.state,
                            incoming: c.isIncoming, sub: c.sub)
         s.held = c.state == "holding"
-        if c.state == "active" { s.connectedAt = c.since.map { Date(millis: $0) } ?? Date() }
+        if c.state == "active" { s.connectedAt = connectedDate(c) }
         return s
     }
 
@@ -407,7 +415,7 @@ final class CallController: NSObject {
         s.state = c.state
         s.sub = c.sub
         s.held = c.state == "holding"
-        if c.state == "active", s.connectedAt == nil { s.connectedAt = c.since.map { Date(millis: $0) } ?? Date() }
+        if c.state == "active", s.connectedAt == nil { s.connectedAt = connectedDate(c) }
         // Only take over the screen for the current call, or when nothing is shown.
         if force || model.callScreen == nil || model.callScreen?.uuid == uuid || model.callScreen?.state == "ended" {
             let fresh = model.callScreen?.uuid != uuid
@@ -433,7 +441,12 @@ final class CallController: NSObject {
         for (_, uuid) in uuids { reportEnded(uuid, .failed) }
         uuids.removeAll(); cids.removeAll(); lastState.removeAll(); info.removeAll(); remote.removeAll()
         if let p = pendingOutgoing { reportEnded(p, .failed); pendingOutgoing = nil }
-        hungUp.reset(); endedHere.removeAll(); answeredHere.removeAll(); startPerformed.removeAll(); mirrored.removeAll()
+        // The hang-up guard survives the drop on purpose: a hang-up sent into a dying (or dead) session was
+        // dropped by the link without a sound, and the call is still live on the Android phone. On reconnect
+        // its replayed state meets the guard, which re-asks for the end instead of resurrecting the call.
+        endedHere.removeAll(); answeredHere.removeAll(); startPerformed.removeAll(); mirrored.removeAll()
+        for t in endRetries.values { t.cancel() }
+        endRetries.removeAll()
         reportedConnecting.removeAll(); reportedConnected.removeAll(); cancelledDialAt = nil; speakerWanted = false
         holdRequested.removeAll(); dialWatchdog?.cancel(); pendingNumber = ""; cancelledNumber = ""
         model.callScreen = nil
@@ -536,7 +549,9 @@ extension CallController: CXProviderDelegate {
             self.uuids.removeAll(); self.cids.removeAll(); self.lastState.removeAll(); self.info.removeAll()
             self.pendingOutgoing = nil; self.mirrored.removeAll(); self.answeredHere.removeAll()
             self.reportedConnecting.removeAll(); self.reportedConnected.removeAll(); self.startPerformed.removeAll()
-            self.remote.removeAll(); self.hungUp.reset(); self.endedHere.removeAll()
+            self.remote.removeAll(); self.endedHere.removeAll()   // the hang-up guard stays (see linkLost)
+            for t in self.endRetries.values { t.cancel() }
+            self.endRetries.removeAll()
             self.audioSessionActive = false; self.speakerWanted = false
             self.model.callScreen = nil
             self.model.audio.stop()
@@ -634,6 +649,7 @@ extension CallController {
             let ringing = lastState[cid] == "ringing"
             model.link.send(ringing ? MsgType.callReject : MsgType.callEnd, CallRef(cid: cid))
             hungUp.hungUp(cid)
+            armEndRetry(cid, ringing: ringing)
             uuids[cid] = nil
             cids[uuid] = nil
             lastState[cid] = nil
@@ -646,6 +662,25 @@ extension CallController {
         }
         cleanup(uuid)
     }
+
+    /// The one `call.end` above can be lost: the link drops a send into a session that is going away
+    /// without a sound, and a settled active call sends no further states for the guard's "ask again
+    /// after 2 s" to ride on. So ask again on a timer until the Android phone confirms the end (the
+    /// guard forgets after 30 s; the same verb as the first ask — CallRegistry.end turns a still-
+    /// ringing call away, so a ringing call must be re-rejected, not re-ended).
+    private func armEndRetry(_ cid: String, ringing: Bool) {
+        endRetries[cid]?.cancel()
+        endRetries[cid] = Task { @MainActor [weak self] in
+            for wait in [2.0, 4.0] {
+                try? await Task.sleep(for: .seconds(wait))
+                guard let self, !Task.isCancelled, self.hungUp.contains(cid) else { return }
+                LinkJournal.shared.add("call \(cid): end not confirmed, asking again")
+                self.model.link.send(ringing ? MsgType.callReject : MsgType.callEnd, CallRef(cid: cid))
+            }
+        }
+    }
+
+    private func cancelEndRetry(_ cid: String) { endRetries.removeValue(forKey: cid)?.cancel() }
 
     func performMute(_ uuid: UUID, _ on: Bool) {
         model.audio.muted = on

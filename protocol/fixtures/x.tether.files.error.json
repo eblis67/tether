@@ -1,0 +1,8 @@
+{
+  "t": "x.tether.files.error",
+  "dir": "both",
+  "variants": {
+    "checksum": { "tid": "AAECAwQFBgcICQoLDA0ODw", "code": "checksum" },
+    "busy": { "tid": "AAECAwQFBgcICQoLDA0ODw", "code": "busy", "msg": "a transfer is already open" }
+  }
+}

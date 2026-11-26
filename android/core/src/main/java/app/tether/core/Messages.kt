@@ -80,6 +80,8 @@ object Ext {
     const val ERR_FAILED = "failed"
     /** The built-in diagnostics extension (§7.9). */
     const val ECHO = "x.tether.echo"
+    /** The built-in file transfer extension (§7.10). */
+    const val FILES = "x.tether.files"
 }
 
 data class Sms(val id: Long, val thread: Long, val addr: String, val body: String, val date: Long,

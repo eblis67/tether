@@ -446,3 +446,72 @@ Link diagnostics, registered on every side (the Android phone, the iPhone, the A
 The asker gets the control round trip (`now − ts`) and the clock offset (`at − (ts + rtt / 2)`); a larger `data` measures
 throughput within the size limit. A message with neither `id` nor `re` is ignored. A test message type that no build
 registers, `x.org.example.unknown`, pins rule 3 in the fixtures.
+
+### 7.10 Built-in: `x.tether.files` (version 1)
+
+File and photo transfer between the two paired devices. The sealed session (§4) carries only the negotiation;
+the bytes themselves move over a short-lived TCP connection on the local network the two devices already share
+(the same Wi-Fi, or the Android phone's hotspot), encrypted with a one-time key derived for this transfer. Nothing
+leaves the two devices: no server, no account, and the receiver listens only while a transfer it accepted is open.
+
+**Types.** `tid` is one transfer: 16 random bytes, base64url. A file `name` is a basename only (no `/`, no `\`,
+never `.` or `..`, at most 255 UTF-8 bytes); a receiver refuses a transfer whose offer breaks this. `sha256` is
+the file's SHA-256, base64url. Either side may offer; the other side is the receiver of the bytes.
+
+| Type | Direction | Body |
+| --- | --- | --- |
+| `x.tether.files` (offer page) | sender → receiver | `{tid, page, pages, key1, files}`: `files` is `[{name, size, sha256}]`, `key1` the sender's key salt (below). Pages of one `tid` are sent in order; only the last page carries an `id`, so only it is answered |
+| `x.tether.files.list` with `id` (request) | either → either | `{path?, page}`: a directory or media listing of the other device (`path` omitted: its shared roots) |
+| `x.tether.files.list` with `re` (answer) | | `{entries, page, pages}`: `entries` is `[{name, size, kind}]`, `kind` `"file"` or `"dir"` |
+| `x.tether.files.accept` with `re` | receiver → sender | `{tid, host, port, key2, have}`: where the receiver listens (its local-network address), its key salt, and `have`: `[{name, have}]`, the bytes it already holds of each file |
+| `x.tether.files.decline` with `re` | receiver → sender | `{tid, why?}` |
+| `x.tether.files.done` | receiver → sender | `{tid, files, bytes}`: every file arrived and verified |
+| `x.tether.files.cancel` | either → either | `{tid, why?}`: the transfer is abandoned; what arrived stays and can be resumed |
+| `x.tether.files.error` | either → either | `{tid, code, msg?}`: a transfer failed outside an answer. Codes: `busy`, `checksum`, `io`, `key`, `offset`, `protocol`, `timeout` |
+
+Refusals of a request itself (unknown type, too large, a handler that threw) still use §7.4's `error`; an `error`
+answering the offer's last page means the offer was refused, like a decline. An offer page's body stays under
+12 KiB (the sender splits the file list); a listing page likewise. At most one transfer per link at a time: a
+second offer while one is open is ignored, and its sender is told `x.tether.files.error` `code: "busy"`. An offer
+not accepted within 120 s is dead.
+
+**Key derivation.** The traffic keys are never the link keys (§4) and are never reused. Each side contributes a
+fresh 16-byte salt inside the sealed session: the sender's `key1` in the offer, the receiver's `key2` in the
+accept. Both sides then compute, with `th` the session's transcript hash (§3, known to both sides, never sent):
+
+```
+okm = HKDF-SHA256(salt = th, ikm = key1 ‖ key2, info = "tether/1 x.tether.files" ‖ 0x00 ‖ tid, 64 bytes)
+sender → receiver key = okm[0..32]      receiver → sender key = okm[32..64]
+```
+
+A side that cannot get its session's `th` from its host cannot offer or accept: it answers with
+`x.tether.files.error` `code: "key"` (stage note: the core libraries take `th` from the hosting app).
+
+**The TCP session.** The receiver listens on `host`:`port` from its accept (an ephemeral port, bound to the
+local-network interface) for one connection, for at most 120 s. Frames are §2 records sealed with the §4 record
+layer under the derived keys (channel byte 0), so counters, nonces and authentication are exactly §4's; the
+plaintext of each frame is one frame byte and a payload:
+
+| Byte | Name | Payload |
+| --- | --- | --- |
+| 0x01 | HELLO | `{tid}` (JSON): the sender's first frame; any other `tid` closes the connection |
+| 0x02 | FILE | `{i, name, size, off}` (JSON): file `i` follows, starting at byte `off` |
+| 0x03 | DATA | raw chunk, at most 16 KiB, of the current file |
+| 0x04 | ACK | `{i, ok, have}` (JSON), receiver → sender: the file is complete; `ok` says its SHA-256 matched the offer |
+| 0x05 | BYE | empty: the sender is done, after the last ACK |
+| 0x06 | ERR | `{code}` (JSON): either side gives up; the connection closes |
+
+The sender waits for a file's ACK before starting the next file, so a dropped connection loses at most the file
+in flight, and a later offer of the same files resumes it: the accept's `have` is the receiver's stored length
+per file, the sender's FILE starts there (`off`), and the receiver seeds its SHA-256 with the stored prefix before
+the new bytes. A FILE whose `off` is not the receiver's stored length is answered with ERR `offset`. A file whose
+digest differs is ACKed `ok: false` and reported over the control channel with `x.tether.files.error`
+`code: "checksum"`; it is never kept as complete. When every file is ACKed `ok`, the receiver sends
+`x.tether.files.done`.
+
+**Limits.** At most 1 024 files in one transfer, a file at most 2^41 bytes, 16 KiB data chunks, one transfer per
+link. A frame that does not open, a counter gap or an unknown frame byte closes the connection (the control
+channel reports `protocol`). An idle connection (no frame for 30 s) is closed (`timeout`). Cancelling or losing
+the link mid-transfer closes the TCP side too; partial files stay on the receiver for a later resume, under the
+names the offer gave them.
+

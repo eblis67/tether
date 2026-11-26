@@ -21,7 +21,7 @@ final class CallGuardTests: XCTestCase {
         XCTAssertEqual(g.check(cid: "c1", ended: false, now: t.addingTimeInterval(5)), .pass)
     }
 
-    func testLinkDropResetsEverything() {
+    func testResetForgetsHungUpCalls() {
         var g = HangUpGuard()
         g.hungUp("c1"); g.reset()
         XCTAssertEqual(g.check(cid: "c1", ended: false), .pass)

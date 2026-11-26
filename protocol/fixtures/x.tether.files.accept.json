@@ -1,0 +1,20 @@
+{
+  "t": "x.tether.files.accept",
+  "dir": "both",
+  "variants": {
+    "full": {
+      "tid": "AAECAwQFBgcICQoLDA0ODw",
+      "host": "192.168.0.102",
+      "port": 41001,
+      "key2": "MjIyMjIyMjIyMjIyMjIyMg",
+      "have": [ { "name": "IMG_1001.jpg", "have": 1000000 } ]
+    },
+    "fresh": {
+      "tid": "AAECAwQFBgcICQoLDA0ODw",
+      "host": "192.168.0.102",
+      "port": 41001,
+      "key2": "MjIyMjIyMjIyMjIyMjIyMg",
+      "have": []
+    }
+  }
+}
