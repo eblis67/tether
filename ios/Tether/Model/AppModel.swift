@@ -510,8 +510,8 @@ final class AppModel {
         guard linkState.isConnected, !isDemo else { return }
         syncing = true
         incrementalSync = !full && !data.sms.isEmpty
-        // From the last *completed* sync: a text that came in live during an interrupted sync must not make us
-        // skip the rest of it.
+        // From the last page received (pages arrive oldest first, so that point is complete): a text
+        // that came in live during an interrupted sync does not move it, so the rest is never skipped.
         let lastSms = full ? 0 : (data.smsSyncedUpTo ?? (data.sms.map(\.id).max() ?? 0))
         let lastCall = full ? 0 : (data.recents.map(\.id).max() ?? 0)
         link.send(MsgType.sync, SyncBodyV1(sms: lastSms, calls: lastCall, contacts: full ? "" : data.contactsVersion,
@@ -832,6 +832,14 @@ final class AppModel {
                 let b = try Control.body(SmsBatch.self, from: payload)
                 let recent = Int64(Date().addingTimeInterval(-6 * 3600).timeIntervalSince1970 * 1000)
                 merge(sms: b.items, notify: incrementalSync && b.items.contains { $0.incoming && !$0.read && $0.date > recent })
+                // Pages arrive oldest first over one ordered stream, so everything up to this page's
+                // newest id is already here: move the resume point with every page, not only at the
+                // end. A link that drops mid-sync then continues from here on the next connect
+                // instead of downloading everything again.
+                if let m = b.items.map(\.id).filter({ $0 > 0 }).max(), m > (data.smsSyncedUpTo ?? 0) {
+                    data.smsSyncedUpTo = m
+                    persist()
+                }
                 if !b.more {
                     syncing = false; lastSync = Date()
                     data.smsSyncedUpTo = data.sms.map(\.id).filter { $0 > 0 }.max()
