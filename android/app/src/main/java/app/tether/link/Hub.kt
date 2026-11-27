@@ -82,6 +82,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     /** Call-audio control runs apart from sync/status work so it is never queued behind a big sync. */
     private val audioCtl = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "audio-ctl") }
     private val smsRequests = ConcurrentHashMap<Int, Pair<Connection, Int>>()
+    /** Texts that arrived while no client was connected: held for the next connect, never dropped. */
+    private val pendingSms = PendingSms()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     val audio = AudioSession()
     private val radioPushPending = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -166,7 +168,18 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         if (share.sharing) bg { shareFailSafe(true) }
         // Call events go out from the Telecom callback itself, ahead of anything queued (ring latency).
         CallRegistry.addListener { info -> onCall(info) }
-        app.sms.observe { s -> if (forwardable(s)) targets().forEach { if (!app.lists.isMuted(s.thread)) wake(it); it.send(Message(T.SMS_NEW, JSONObject().put("item", s.json()))) } }
+        app.sms.observe { s ->
+            if (forwardable(s)) {
+                val ts = targets()
+                if (ts.isEmpty()) {
+                    // No client is connected to take it now and the live send is one-shot: hold the text
+                    // (pushed on the next connect, in onEstablished) and nudge the iPhone to come back,
+                    // instead of the text waiting until the app is next opened.
+                    pendingSms.add(s)
+                    pulseBurst()
+                } else ts.forEach { if (!app.lists.isMuted(s.thread)) wake(it); it.send(Message(T.SMS_NEW, JSONObject().put("item", s.json()))) }
+            }
+        }
         // Start from the newest row now, so the first call logged after a restart is pushed live too.
         bg { if (lastCallId < 0) lastCallId = app.callLog.since(0, 1).lastOrNull()?.id ?: 0 }
         app.callLog.observe { bg { pushRecentCalls() } }
@@ -238,6 +251,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         LinkLog.add("link up (${c.name}, ${c.transport.label}) from ${LinkLog.short(c.transport.address)}")
         refresh()
         c.send(Message(T.CALL_LIST, JSONObject().put("calls", JSONArray(CallRegistry.list().map { callJson(it, c) }))))
+        // Texts that arrived while this client was away were held, not dropped: hand them over now,
+        // ahead of the sync the client is about to ask for (its batch copy then just dedupes by id).
+        for (s in pendingSms.drain()) c.send(Message(T.SMS_NEW, JSONObject().put("item", s.json())))
         // A client paired just now has no kind yet (iPhone or Android phone): it says so in its first sync.
         if (newlyPaired) kindPending.add(c) else holdLeFor(c)
         ext(c)
