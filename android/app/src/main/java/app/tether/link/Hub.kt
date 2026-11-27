@@ -71,9 +71,13 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     private val smsRequests = ConcurrentHashMap<Int, Pair<Connection, Int>>()
     /** Texts that arrived while no client was connected: held for the next connect, never dropped. */
     private val pendingSms = PendingSms()
-    /** Read marks from a client (thread -> newest id) that have not landed in the SMS store yet:
-     *  retried by the periodic pass until they do, so a refused write is never lost for good. */
-    private val pendingReadMarks = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+    /** Client read marks are retried promptly after a refused provider write, and periodically as a backstop. */
+    private val readSync = SmsReadSync(
+        unreadCount = { thread, upTo -> app.sms.unreadCount(thread, upTo) },
+        markRead = { thread, upTo -> app.sms.markRead(thread, upTo) },
+        grantWrite = { Adb.allowSmsWrite(app) },
+        schedule = { delayMs, retry -> work.schedule({ retry() }, delayMs, TimeUnit.MILLISECONDS) },
+    )
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     val audio = AudioSession()
     private val radioPushPending = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -97,22 +101,11 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         broadcast(unreadMessage(ids))
     }
 
-    /** Retries read marks that were refused when they arrived (no WRITE_SMS grant, helper down).
-     *  One grant attempt per pass, then every pending mark is written; a mark leaves the list only
-     *  when the store provably shows nothing unread up to it any more. The iPhone re-announces all
-     *  its read marks on every connect, so even marks from before this build get retried here. */
+    /** Periodic backstop for read marks whose prompt retry was refused. */
     private fun retryReadMarks() {
-        if (pendingReadMarks.isEmpty()) return
-        val grant = runCatching { Adb.allowSmsWrite(app) }.getOrNull()?.trim()
-        var landed = 0
-        for ((thread, upTo) in pendingReadMarks) {
-            runCatching { app.sms.markRead(thread, upTo) }
-            if (runCatching { app.sms.unreadCount(thread, upTo) }.getOrDefault(-1) == 0) {
-                pendingReadMarks.remove(thread, upTo); landed++
-            }
-        }
-        if (landed > 0) LinkLog.add("read marks applied ($landed conversation(s))")
-        else if (pendingReadMarks.isNotEmpty()) Log.i(TAG, "read marks still pending: ${pendingReadMarks.size} (grant: $grant)")
+        val result = readSync.retry()
+        if (result.landed > 0) LinkLog.add("read marks applied (${result.landed} conversation(s))")
+        else if (result.pending > 0) Log.i(TAG, "read marks still pending: ${result.pending} (grant: ${result.grant})")
     }
 
     private fun unreadMessage(ids: List<Long>) = Message(T.SMS_UNREAD, JSONObject().put("ids", JSONArray(ids)).put("all", ids.size < 3000))
@@ -336,15 +329,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             T.SMS_READ -> bg {
                 val thread = m.b.optLong("thread", -1); val upTo = m.b.optLong("upTo", -1)
                 if (thread >= 0 && upTo > 0) {
-                    // Remember every read mark until it has provably landed. The write needs the
-                    // WRITE_SMS app-op; when the grant is missing (fresh install) or the helper is
-                    // down, the write is refused — and a burst of marks (the iPhone's "mark all as
-                    // read" sends one per conversation) must not each block on a shell grant.
-                    // Failed marks stay here and the periodic pass retries them with one grant.
-                    if (!dry(c)) pendingReadMarks.merge(thread, upTo) { a, b -> maxOf(a, b) }
-                    val pending = app.sms.unreadCount(thread, upTo)
-                    val n = if (dry(c) || pending == 0) 0 else app.sms.markRead(thread, upTo)
-                    if (!dry(c) && app.sms.unreadCount(thread, upTo) == 0) pendingReadMarks.remove(thread, upTo)
+                    // Keep failed marks queued; a short coalesced retry grants WRITE_SMS once for a
+                    // burst, rather than leaving the Android conversation unread until the next minute.
+                    val n = if (dry(c)) 0 else readSync.mark(thread, upTo)
                     Log.i(TAG, "sms.read thread=$thread upTo=$upTo -> $n row(s)")
                     targets().filter { it !== c }.forEach { it.send(Message(T.SMS_READ, JSONObject().put("thread", thread).put("upTo", upTo))) }
                 }
