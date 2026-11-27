@@ -93,6 +93,11 @@ final class CallController: NSObject {
     private var hungUp = HangUpGuard()
     /// Re-asks for a hang-up the Android phone has not confirmed yet, per call id (see armEndRetry).
     private var endRetries: [String: Task<Void, Never>] = [:]
+    /// Repeating re-asks for a hang-up (every 5 s) while the guard still holds the call: the timed
+    /// retries above stop after two tries and the guard's re-ask needs a fresh sighting of the call,
+    /// but a settled call on a quiet link produces no sightings. This loop is the guarantee that a
+    /// hang-up keeps being asked for until the Android phone confirms the call is over.
+    private var endTimers: [String: Task<Void, Never>] = [:]
 
     /// Screen off at the ear, like a native call: proximity monitoring while a call is up and its audio is on the
     /// earpiece (not on speaker, headphones or AirPods). CallKit does this for its own screen only.
@@ -231,6 +236,17 @@ final class CallController: NSObject {
         case .dropAndResend:
             // Still not ended on the Android phone 2 s after we hung up: ask again.
             model.link.send(c.state == "ringing" ? MsgType.callReject : MsgType.callEnd, CallRef(cid: c.cid))
+            armEndTimer(c.cid, ringing: c.state == "ringing")
+            return
+        }
+        if !c.isEnded, !hungUp.contains(c.cid), hungUp.matchesHungUpNumber(c.num),
+           c.state == "active" || c.state == "ringing" || c.state == "holding" {
+            // The same call under a new id (the Android phone app restarted mid-call and the call
+            // came back renamed): the user's hang-up belongs to it. Guard it under this id, ask for
+            // its end, and never present it as a new call.
+            hungUp.hungUp(c.cid, number: c.num)
+            model.link.send(c.state == "ringing" ? MsgType.callReject : MsgType.callEnd, CallRef(cid: c.cid))
+            armEndTimer(c.cid, ringing: c.state == "ringing")
             return
         }
         if c.isEnded { cancelEndRetry(c.cid) }   // the end we asked for: no more re-asking
@@ -649,8 +665,9 @@ extension CallController {
         if let cid = cids[uuid] {
             let ringing = lastState[cid] == "ringing"
             model.link.send(ringing ? MsgType.callReject : MsgType.callEnd, CallRef(cid: cid))
-            hungUp.hungUp(cid)
+            hungUp.hungUp(cid, number: info[uuid]?.num)
             armEndRetry(cid, ringing: ringing)
+            armEndTimer(cid, ringing: ringing)
             uuids[cid] = nil
             cids[uuid] = nil
             lastState[cid] = nil
@@ -681,7 +698,21 @@ extension CallController {
         }
     }
 
-    private func cancelEndRetry(_ cid: String) { endRetries.removeValue(forKey: cid)?.cancel() }
+    private func cancelEndRetry(_ cid: String) {
+        endRetries.removeValue(forKey: cid)?.cancel()
+        endTimers.removeValue(forKey: cid)?.cancel()
+    }
+
+    private func armEndTimer(_ cid: String, ringing: Bool) {
+        if endTimers[cid] != nil { return }
+        endTimers[cid] = Task { @MainActor [weak self] in
+            while true {
+                try? await Task.sleep(for: .seconds(5))
+                guard let self, !Task.isCancelled, self.hungUp.contains(cid) else { return }
+                self.model.link.send(ringing ? MsgType.callReject : MsgType.callEnd, CallRef(cid: cid))
+            }
+        }
+    }
 
     func performMute(_ uuid: UUID, _ on: Bool) {
         model.audio.muted = on

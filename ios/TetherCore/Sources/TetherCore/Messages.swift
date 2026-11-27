@@ -556,19 +556,33 @@ public struct AudioFrame: Equatable, Sendable {
 public struct HangUpGuard: Sendable {
     public enum Verdict: Equatable, Sendable { case pass, drop, dropAndResend }
     private var hungUp: [String: Date] = [:]
+    private var numbers: [String: String] = [:]   // cid → match key of its number
     public init() {}
 
-    public mutating func hungUp(_ cid: String, at: Date = Date()) { hungUp[cid] = at }
-    public mutating func reset() { hungUp.removeAll() }
-    public mutating func forget(_ cid: String) { hungUp[cid] = nil }
+    public mutating func hungUp(_ cid: String, number: String? = nil, at: Date = Date()) {
+        hungUp[cid] = at
+        if let number { numbers[cid] = PhoneNumber.matchKey(number) }
+    }
+    public mutating func reset() { hungUp.removeAll(); numbers.removeAll() }
+    public mutating func forget(_ cid: String) { hungUp[cid] = nil; numbers[cid] = nil }
     /// Forget every guarded call except the ones still reported live (a call list arrived without
     /// the others: they are over on the Android phone too, so there is nothing left to re-ask for).
-    public mutating func forgetExcept(_ live: Set<String>) { hungUp = hungUp.filter { live.contains($0.key) } }
+    public mutating func forgetExcept(_ live: Set<String>) {
+        hungUp = hungUp.filter { live.contains($0.key) }
+        numbers = numbers.filter { live.contains($0.key) }
+    }
     public func contains(_ cid: String) -> Bool { hungUp[cid] != nil }
+    /// A live call whose number matches a call the user already hung up, under a different id (the
+    /// Android phone app restarted mid-call and the call came back with a new id): the hang-up
+    /// belongs to it too.
+    public func matchesHungUpNumber(_ number: String) -> Bool {
+        let key = PhoneNumber.matchKey(number)
+        return !key.isEmpty && numbers.values.contains(key)
+    }
 
     public mutating func check(cid: String, ended: Bool, now: Date = Date()) -> Verdict {
         guard let t = hungUp[cid] else { return .pass }          // any other call, including every new one
-        if ended { hungUp[cid] = nil; return .pass }               // the end we wanted: let it close what is left
+        if ended { hungUp[cid] = nil; numbers[cid] = nil; return .pass }   // the end we wanted: let it close what is left
         let age = now.timeIntervalSince(t)
         if age > 2 { hungUp[cid] = now; return .dropAndResend }    // still live on the Android phone: ask again
         return .drop
