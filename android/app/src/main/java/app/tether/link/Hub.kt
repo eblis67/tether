@@ -173,10 +173,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 val ts = targets()
                 if (ts.isEmpty()) {
                     // No client is connected to take it now and the live send is one-shot: hold the text
-                    // (pushed on the next connect, in onEstablished) and nudge the iPhone to come back,
-                    // instead of the text waiting until the app is next opened.
+                    // (pushed on the next connect, in onEstablished) instead of the text waiting until the
+                    // app is next opened. No LE pulse here on purpose: the regular reconnect rhythm brings
+                    // the iPhone back, and extra pulses fought the link (connect/disconnect flapping).
                     pendingSms.add(s)
-                    pulseBurst()
                 } else ts.forEach { if (!app.lists.isMuted(s.thread)) wake(it); it.send(Message(T.SMS_NEW, JSONObject().put("item", s.json()))) }
             }
         }
