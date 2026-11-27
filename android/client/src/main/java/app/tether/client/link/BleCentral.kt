@@ -148,9 +148,6 @@ class BleCentral(private val ctx: Context, private val identity: Identity, priva
     /** A control message with its own `id` / `re` (extensions). */
     fun sendMessage(m: Message): Boolean = session?.takeIf { it.isUp }?.sendMessage(m) ?: false
 
-    /** The live session's transcript hash (§3), for extensions that derive one-time keys (x.tether.files). */
-    fun transcriptHash(): ByteArray? = session?.transcriptHash
-
     /** The app came to the front without a session: start over now, forgetting the back-off. */
     fun appActive() = h.post {
         if (!identity.isPaired || session != null || settingUp) return@post

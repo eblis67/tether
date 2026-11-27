@@ -1,8 +1,0 @@
-{
-  "t": "x.tether.files.decline",
-  "dir": "both",
-  "variants": {
-    "full": { "tid": "AAECAwQFBgcICQoLDA0ODw", "why": "no space" },
-    "minimal": { "tid": "AAECAwQFBgcICQoLDA0ODw" }
-  }
-}

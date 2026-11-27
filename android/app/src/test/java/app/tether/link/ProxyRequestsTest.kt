@@ -17,30 +17,6 @@ class ProxyRequestsTest {
         assertEquals("function FindProxyForURL(url, host) { return \"DIRECT\"; }", ProxyRequests.pac(false, "192.168.44.1", 8899))
     }
 
-    @Test fun pacSendsBypassHostsDirect() {
-        val on = ProxyRequests.pac(true, "192.168.44.1", 8899, listOf("bank.example", "local.shop"))
-        assertTrue(on.contains("if (host == \"bank.example\" || dnsDomainIs(host, \"bank.example\")) return \"DIRECT\";"))
-        assertTrue(on.contains("if (host == \"local.shop\" || dnsDomainIs(host, \"local.shop\")) return \"DIRECT\";"))
-        // The bypass rules sit before the proxy rule, and the plain PAC is unchanged without a list.
-        assertTrue(on.indexOf("bank.example") < on.indexOf("PROXY 192.168.44.1:8899"))
-        assertEquals(ProxyRequests.pac(true, "192.168.44.1", 8899), ProxyRequests.pac(true, "192.168.44.1", 8899, emptyList()))
-        // Sharing off: DIRECT for everything, bypass list or not.
-        assertEquals("function FindProxyForURL(url, host) { return \"DIRECT\"; }",
-            ProxyRequests.pac(false, "192.168.44.1", 8899, listOf("bank.example")))
-    }
-
-    @Test fun bypassListIsSanitized() {
-        val clean = ProxyRequests.sanitizeBypass(listOf(
-            " Bank.Example ", "https://www.bank.example/login", "*.shop.local", "bank.example",
-            "not a host", "localhost", "a..b.com", "-bad.com", "ok-site.org.", ""))
-        assertEquals(listOf("bank.example", "www.bank.example", "shop.local", "ok-site.org"), clean)
-        assertEquals(ProxyRequests.MAX_BYPASS, ProxyRequests.sanitizeBypass((1..100).map { "h$it.example" }).size)
-    }
-
-    @Test fun telegramLinkIsASocksDeepLink() {
-        assertEquals("tg://socks?server=192.168.44.1&port=8118", ProxyRequests.telegramLink("192.168.44.1", 8118))
-    }
-
     @Test fun connectTargets() {
         assertEquals("example.com" to 443, ProxyRequests.connectTarget("example.com:443"))
         assertEquals("example.com" to 8443, ProxyRequests.connectTarget("example.com:8443"))

@@ -28,8 +28,6 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import app.tether.client.R
-import app.tether.client.ext.FilesFeature
-import app.tether.client.ext.digestPicked
 import app.tether.client.link.BleCentral
 import app.tether.client.link.LinkService
 import app.tether.client.model.Search
@@ -465,15 +463,6 @@ class MainActivity : Activity() {
                     sw.addView(label("${ad.optString("kind")}: ${ad.optString("ip")}:${net.optJSONObject("proxy")?.optInt("port")}  ·  ${ad.optString("pac")}", R.color.muted, 12f).apply { setTextIsSelectable(true) })
                 }
             }
-            if (net?.optBoolean("share") == true) net.optJSONObject("proxy")?.let { p ->
-                p.optString("telegram").takeIf { it.isNotEmpty() }?.let { tg ->
-                    sw.addView(label("${getString(R.string.share_telegram)}: $tg", R.color.muted, 12f).apply { setTextIsSelectable(true) })
-                }
-                p.optJSONArray("bypass")?.takeIf { it.length() > 0 }?.let { b ->
-                    sw.addView(label(getString(R.string.share_bypass, (0 until b.length()).joinToString(", ") { b.optString(it) }), R.color.muted, 12f).apply { setTextIsSelectable(true) })
-                }
-                if (p.has("offIn")) sw.addView(label(getString(R.string.share_off_in, p.optInt("offIn") / 60 + 1), R.color.muted, 12f))
-            }
             val sims = s.sims
             if (sims.size > 1) {
                 val dataSub = net?.optInt("dataSub", -1) ?: -1
@@ -494,8 +483,6 @@ class MainActivity : Activity() {
             box.addView(sw)
         }
 
-        renderFiles(box)
-
         // This phone
         val me = card()
         me.addView(label(getString(R.string.this_phone).uppercase(), R.color.accent, 12f, bold = true))
@@ -513,102 +500,10 @@ class MainActivity : Activity() {
             val m = t.optJSONArray("methods")
             me.addView(label((0 until (m?.length() ?: 0)).joinToString("\n") { i -> m!!.getJSONObject(i).let { "${if (it.optBoolean("ok")) "✓" else "✗"} ${it.optString("name")} ${it.optString("note")}" } }, R.color.muted, 12f))
         }
-        if (s.feedbackPending) {
-            me.addView(label(getString(R.string.feedback_hear_you), R.color.muted, 13f))
-            me.addView(row(
-                pill((if (s.feedbackYou == true) "✓ " else "") + getString(R.string.yes), secondary = s.feedbackYou != true) { s.answerFeedback(true) },
-                pill((if (s.feedbackYou == false) "✓ " else "") + getString(R.string.no), secondary = s.feedbackYou != false) { s.answerFeedback(false) },
-            ))
-            me.addView(label(getString(R.string.feedback_hear_them), R.color.muted, 13f))
-            me.addView(row(
-                pill((if (s.feedbackThem == true) "✓ " else "") + getString(R.string.yes), secondary = s.feedbackThem != true) { s.answerFeedbackThem(true) },
-                pill((if (s.feedbackThem == false) "✓ " else "") + getString(R.string.no), secondary = s.feedbackThem != false) { s.answerFeedbackThem(false) },
-            ))
-        } else if (s.feedbackThanks) me.addView(label(getString(R.string.feedback_thanks), R.color.muted, 12f))
         box.addView(me)
         val sv = ScrollView(this).apply { addView(box) }
         content.addView(sv)
         sv.post { sv.scrollTo(0, keepScroll) }
-    }
-
-    /**
-     * File transfer (`x.tether.files`): pick and send, answer an incoming offer, watch progress, see what
-     * arrived. All state lives in [app.tether.client.ext.FilesFeature]; this only draws it and starts the picker.
-     */
-    private fun renderFiles(box: LinearLayout) {
-        val f = app.filesFeature
-        val files = card()
-        files.addView(label(getString(R.string.section_files).uppercase(), R.color.accent, 12f, bold = true))
-        when {
-            f.pending != null -> {
-                val p = f.pending!!
-                files.addView(label(getString(R.string.files_offer_from, p.peer), size = 16f))
-                for (e in p.entries.take(6)) files.addView(label("${e.name} · ${fmtSize(e.size)}", R.color.muted, 13f))
-                if (p.entries.size > 6) files.addView(label(getString(R.string.files_and_more, p.entries.size - 6), R.color.muted, 13f))
-                files.addView(row(
-                    pill(getString(R.string.files_accept)) { f.acceptPending() },
-                    pill(getString(R.string.files_decline), secondary = true) { f.declinePending() },
-                ))
-            }
-            f.active != null -> {
-                val a = f.active!!
-                files.addView(label(getString(if (a.sending) R.string.files_sending else R.string.files_receiving, a.names.firstOrNull() ?: ""), size = 16f))
-                val pct = if (a.total > 0) (a.done * 100 / a.total).toInt() else 0
-                files.addView(label(getString(R.string.files_progress, fmtSize(a.done), fmtSize(a.total), pct), R.color.muted, 13f))
-                files.addView(pill(getString(R.string.files_cancel), secondary = true) { f.cancelActive() })
-            }
-            f.session() == null -> files.addView(label(
-                getString(if (app.link.isConnected) R.string.files_not_supported else R.string.files_need_link), R.color.muted, 13f))
-            else -> {
-                files.addView(pill(getString(R.string.files_send)) { pickFiles() })
-                files.addView(label(getString(R.string.files_same_wifi), R.color.muted, 13f))
-            }
-        }
-        f.note?.let { n ->
-            files.addView(label(when (n) {
-                FilesFeature.Note.SENT -> getString(R.string.files_note_sent)
-                FilesFeature.Note.RECEIVED -> getString(R.string.files_note_received)
-                FilesFeature.Note.DECLINED -> getString(R.string.files_note_declined)
-                FilesFeature.Note.CANCELLED -> getString(R.string.files_note_cancelled)
-                FilesFeature.Note.NO_NETWORK -> getString(R.string.files_no_network)
-                FilesFeature.Note.ERROR -> getString(R.string.files_note_error) +
-                    (f.noteDetail?.let { " ($it)" } ?: "")
-            }, if (n == FilesFeature.Note.ERROR) R.color.warn else R.color.muted, 13f))
-        }
-        val received = f.receivedFiles()
-        if (received.isNotEmpty() && f.pending == null) {
-            files.addView(label(getString(R.string.files_received_title), size = 16f))
-            for (file in received.take(5)) files.addView(label("${file.name} · ${fmtSize(file.length())}", R.color.muted, 13f))
-        }
-        box.addView(files)
-    }
-
-    private fun pickFiles() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("*/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        startActivityForResult(intent, REQ_PICK_FILES)
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQ_PICK_FILES || resultCode != RESULT_OK || data == null) return
-        val uris = ArrayList<Uri>()
-        data.clipData?.let { clip -> for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let(uris::add) }
-        if (uris.isEmpty()) data.data?.let(uris::add)
-        if (uris.isEmpty()) return
-        for (uri in uris) runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-        Thread {
-            val picked = digestPicked(contentResolver, uris)
-            app.main.post { if (picked.isNotEmpty()) app.filesFeature.sendPicked(picked) }
-        }.start()
-    }
-
-    private fun fmtSize(bytes: Long): String = when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
-        bytes < 1024 * 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024))
-        else -> "%.2f GB".format(bytes / (1024.0 * 1024 * 1024))
     }
 
     private fun showLog() {
@@ -622,6 +517,5 @@ class MainActivity : Activity() {
     companion object {
         const val EXTRA_TAB = "tab"; const val EXTRA_NUMBER = "number"
         const val TAB_RECENTS = 0; const val TAB_CONTACTS = 1; const val TAB_KEYPAD = 2; const val TAB_MESSAGES = 3; const val TAB_LINK = 4
-        const val REQ_PICK_FILES = 7
     }
 }

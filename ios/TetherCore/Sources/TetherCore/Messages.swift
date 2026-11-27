@@ -169,30 +169,6 @@ public struct SimInfo: Codable, Equatable, Hashable, Sendable, Identifiable {
     }
 }
 
-/// One call-audio method the Android phone offers (status `helper.methods`, docs/CALL-AUDIO.md):
-/// a capture or inject route of its shell helper.
-public struct AudioMethod: Codable, Equatable, Sendable, Hashable {
-    public var id: String
-    /// "capture" (the other side's voice) or "inject" (this client's voice into the call).
-    public var dir: String
-    public init(id: String, dir: String) { self.id = id; self.dir = dir }
-}
-
-/// The user's call-audio method picks (status `helper.pick`): "auto" or a method id, per direction.
-public struct AudioPick: Codable, Equatable, Sendable {
-    public var inject: String
-    public var capture: String
-    public init(inject: String, capture: String) { self.inject = inject; self.capture = capture }
-}
-
-/// The user's answers after a self-test during a call (`audio.set`): could the other side hear the
-/// client (`you`), and could the client hear the other side (`them`).
-public struct AudioFeedback: Codable, Equatable, Sendable {
-    public var you: Bool
-    public var them: Bool
-    public init(you: Bool, them: Bool) { self.you = you; self.them = them }
-}
-
 public struct HelperInfo: Codable, Equatable, Sendable {
     public var state: String
     /// Inject method of the current or last call ("intercept", "telephony_tx", …).
@@ -216,18 +192,11 @@ public struct HelperInfo: Codable, Equatable, Sendable {
     /// What call audio this Android version allows: "full" (13+), "fallback" (11-12, best effort), "unavailable"
     /// (8 to 10: calls are controlled from the iPhone but their audio stays on the Android phone). Nil from older builds.
     public var audio: String?
-    /// The call-audio methods this phone offers (nil from builds before them: no method picker).
-    public var methods: [AudioMethod]?
-    /// The user's method picks: "auto" or a method id, per direction. Nil from builds before them.
-    public var pick: AudioPick?
-    /// The speaker/microphone fallback is on: calls are controlled here but stay on the Android phone itself.
-    public var fallback: Bool?
     public init(state: String, method: String? = nil, capture: String? = nil, up: Bool = false, down: Bool = false,
                 silent: String? = nil, micMute: Bool? = nil, uplink: String? = nil, mic: String? = nil, micPath: String? = nil,
-                audio: String? = nil, methods: [AudioMethod]? = nil, pick: AudioPick? = nil, fallback: Bool? = nil) {
+                audio: String? = nil) {
         self.state = state; self.method = method; self.capture = capture; self.up = up; self.down = down; self.silent = silent
         self.micMute = micMute; self.uplink = uplink; self.mic = mic; self.micPath = micPath; self.audio = audio
-        self.methods = methods; self.pick = pick; self.fallback = fallback
     }
 
     /// The Android phone cannot bridge call audio at all (Android 8 to 10).
@@ -428,24 +397,10 @@ public struct NetState: Codable, Equatable, Sendable {
 public struct ShareProxyInfo: Codable, Equatable, Sendable {
     public struct Addr: Codable, Equatable, Sendable, Hashable {
         public var iface: String; public var ip: String; public var kind: String; public var pac: String
-        /// Telegram's SOCKS5 deep link for this address (nil from older Android builds).
-        public var tg: String?
-        /// The payload a QR code for the setup encodes: this address's PAC URL (nil from older builds).
-        public var qr: String?
-        public init(iface: String, ip: String, kind: String, pac: String, tg: String? = nil, qr: String? = nil) {
-            self.iface = iface; self.ip = ip; self.kind = kind; self.pac = pac; self.tg = tg; self.qr = qr
-        }
+        public init(iface: String, ip: String, kind: String, pac: String) { self.iface = iface; self.ip = ip; self.kind = kind; self.pac = pac }
     }
     public var port: Int; public var addrs: [Addr]
-    /// Split-tunnel bypass list stored on the phone: these hosts go DIRECT in the PAC file (nil from older builds).
-    public var bypass: [String]?
-    /// The preferred address's Telegram deep link (nil from older builds, or when there is no address).
-    public var telegram: String?
-    /// Seconds until Share VPN turns itself off; present only while no client is linked (nil otherwise).
-    public var offIn: Int?
-    public init(port: Int, addrs: [Addr], bypass: [String]? = nil, telegram: String? = nil, offIn: Int? = nil) {
-        self.port = port; self.addrs = addrs; self.bypass = bypass; self.telegram = telegram; self.offIn = offIn
-    }
+    public init(port: Int, addrs: [Addr]) { self.port = port; self.addrs = addrs }
 
     /// The phone's address on a network this device is on (same IPv4 /24 as one of `local`), if any.
     public func reachable(from local: [String]) -> Addr? {
@@ -460,10 +415,8 @@ public struct NetSet: Codable, Equatable, Sendable {
     public var what: String; public var on: Bool; public var sub: Int?
     /// For `what` = "rat": SIM slot and generation ("5G", "4G", "3G", "2G").
     public var slot: Int?; public var mode: String?
-    /// For `what` = "share": when present, replaces the bypass list stored on the phone.
-    public var bypass: [String]?
-    public init(what: String, on: Bool, sub: Int? = nil, slot: Int? = nil, mode: String? = nil, bypass: [String]? = nil) {
-        self.what = what; self.on = on; self.sub = sub; self.slot = slot; self.mode = mode; self.bypass = bypass
+    public init(what: String, on: Bool, sub: Int? = nil, slot: Int? = nil, mode: String? = nil) {
+        self.what = what; self.on = on; self.sub = sub; self.slot = slot; self.mode = mode
     }
 }
 /// Carrier (USSD) codes: `ussd.send` → `ussd.result`. Codes are `*` or `#`, then digits / `*` / `#`, ending in `#`, at most 32 characters.
@@ -492,22 +445,12 @@ public struct RingerResult: Codable, Equatable, Sendable {
     public init(ok: Bool, mode: String? = nil, err: String? = nil) { self.ok = ok; self.mode = mode; self.err = err }
 }
 /// Changes the Android phone's microphone setting (answered with a `status`): `mic` "auto" | "mute" | "open" for
-/// Android builds that report `helper.mic`, else the older switch `micMute`. Builds that report `helper.methods`
-/// also take a method pick (`inject` / `capture`: "auto" or a method id), the speaker/microphone fallback
-/// (`fallback`), and the user's answers after a self-test during a call (`feedback`).
+/// Android builds that report `helper.mic`, else the older switch `micMute`.
 public struct AudioSet: Codable, Equatable, Sendable {
     public var micMute: Bool?
     public var mic: String?
-    public var inject: String?
-    public var capture: String?
-    public var fallback: Bool?
-    public var feedback: AudioFeedback?
     public init(micMute: Bool) { self.micMute = micMute }
     public init(mic: String) { self.mic = mic }
-    public init(inject: String) { self.inject = inject }
-    public init(capture: String) { self.capture = capture }
-    public init(fallback: Bool) { self.fallback = fallback }
-    public init(feedback: AudioFeedback) { self.feedback = feedback }
 }
 public struct SelftestMethod: Codable, Equatable, Sendable, Hashable {
     public var name: String; public var ok: Bool; public var note: String?
@@ -516,9 +459,6 @@ public struct SelftestMethod: Codable, Equatable, Sendable, Hashable {
 public struct SelftestResult: Codable, Equatable, Sendable {
     public var methods: [SelftestMethod]; public var chosen: String?
     public init(methods: [SelftestMethod], chosen: String? = nil) { self.methods = methods; self.chosen = chosen }
-    /// The test ran during a live call (an inject row exists; without a call the only row says so):
-    /// the user can judge that call, so the app asks the audio feedback questions.
-    public var testedLiveCall: Bool { methods.contains { $0.name.hasPrefix("inject:") } }
 }
 /// Delete messages by id, or a whole conversation (`thread`). The Android phone deletes them and sends
 /// `sms.deleted` to every client, so a deletion on the iPhone also disappears from the Mac.
@@ -608,7 +548,11 @@ public struct AudioFrame: Equatable, Sendable {
 }
 
 /// What the iPhone does with a call state for a call it already hung up (the Android phone may still send states that
-/// were on their way): drop them, ask again if the Android phone still reports the call 2 s later, forget after an end.
+/// were on their way): drop them, and ask again whenever the Android phone still reports the call alive after 2 s.
+/// There is no giving up while the call is still reported live: an end lost to a dying link (the retries are
+/// cancelled when the link drops) would otherwise leave the real call running on the Android phone — with the
+/// audio bridge still up — while this phone shows nothing. The entry is forgotten only when the Android phone
+/// reports the call ended, or when a call list no longer contains it (see CallController.reconcile).
 public struct HangUpGuard: Sendable {
     public enum Verdict: Equatable, Sendable { case pass, drop, dropAndResend }
     private var hungUp: [String: Date] = [:]
@@ -616,14 +560,17 @@ public struct HangUpGuard: Sendable {
 
     public mutating func hungUp(_ cid: String, at: Date = Date()) { hungUp[cid] = at }
     public mutating func reset() { hungUp.removeAll() }
+    public mutating func forget(_ cid: String) { hungUp[cid] = nil }
+    /// Forget every guarded call except the ones still reported live (a call list arrived without
+    /// the others: they are over on the Android phone too, so there is nothing left to re-ask for).
+    public mutating func forgetExcept(_ live: Set<String>) { hungUp = hungUp.filter { live.contains($0.key) } }
     public func contains(_ cid: String) -> Bool { hungUp[cid] != nil }
 
     public mutating func check(cid: String, ended: Bool, now: Date = Date()) -> Verdict {
         guard let t = hungUp[cid] else { return .pass }          // any other call, including every new one
         if ended { hungUp[cid] = nil; return .pass }               // the end we wanted: let it close what is left
         let age = now.timeIntervalSince(t)
-        if age > 30 { hungUp[cid] = nil; return .drop }            // give up asking; never resurrect it
-        if age > 2 { hungUp[cid] = now; return .dropAndResend }
+        if age > 2 { hungUp[cid] = now; return .dropAndResend }    // still live on the Android phone: ask again
         return .drop
     }
 }

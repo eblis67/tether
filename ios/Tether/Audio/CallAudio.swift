@@ -175,14 +175,6 @@ final class CallAudio: @unchecked Sendable {
         set { flags { _muted = newValue } }
     }
 
-    /// The Wi-Fi call path's uplink sink (§7.11): offered each captured frame before the link; returning
-    /// true means the frame went over Wi-Fi. Set by the app model; nil keeps everything on Bluetooth.
-    private var _wifiSink: ((AudioFrame) -> Bool)?
-    var wifiSink: ((AudioFrame) -> Bool)? {
-        get { flags { _wifiSink } }
-        set { flags { _wifiSink = newValue } }
-    }
-
     /// Local ringback while an outgoing call is dialing; cleared when the call connects or real audio arrives.
     var ringback: Bool {
         get { flags { _ringback } }
@@ -580,10 +572,7 @@ final class CallAudio: @unchecked Sendable {
             let chunk = silent ? [Int16](repeating: 0, count: frame) : Array(captureAcc.prefix(frame))
             captureAcc.removeFirst(frame)
             if let payload = coder.encode(chunk) {
-                let frame = AudioFrame(codec: coder.id, seq: seq, payload: payload)
-                // The Wi-Fi call path (§7.11) takes the frame when it is the chosen path; the sequence
-                // number is assigned before the choice, so the Android phone orders both paths together.
-                if wifiSink?(frame) != true { link.sendAudio(frame) }
+                link.sendAudio(AudioFrame(codec: coder.id, seq: seq, payload: payload))
                 seq &+= 1
             }
         }

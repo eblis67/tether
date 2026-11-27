@@ -1,10 +1,7 @@
 import AVFoundation
-import CoreImage.CIFilterBuiltins
 import Perception
-import PhotosUI
 import SwiftUI
 import TetherCore
-import UniformTypeIdentifiers
 
 struct LinkView: View {
     @Environment(\.appModel) private var model
@@ -17,31 +14,11 @@ struct LinkView: View {
         NavigationStack {
             ScrollViewReader { scroller in
             List {
-                if model.isDemo {
-                    Section {
-                        HStack(spacing: 14) {
-                            Image(systemName: "play.circle.fill")
-                                .font(.system(size: 34))
-                                .foregroundStyle(.orange)
-                                .frame(width: 48)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Sample phone").font(.headline)
-                                Text("A made-up phone, so you can look around.").font(.subheadline).foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 6)
-                        Button("Exit demo") {
-                            model.exitDemo()
-                            if !model.isPaired { Router.shared.tab = .link }
-                        }
-                    }
-                } else if !model.isPaired {
+                if !model.isPaired {
                     SetupGuideSection(
                         status: stateLine,
-                        linkState: model.linkState,
-                        scan: { scanning = true },
-                        tryDemo: { model.enterDemo(); Router.shared.tab = .messages }
-                    )
+                        linkState: model.linkState
+                    ) { scanning = true }
                 } else {
                     Section {
                         HStack(spacing: 14) {
@@ -194,56 +171,6 @@ struct LinkView: View {
                                 }
                             }
                         }
-                        if model.audioFeedbackPending {
-                            LabeledContent("Could the other side hear you?") {
-                                HStack(spacing: 16) {
-                                    Button { model.answerAudioFeedback(you: true) } label: {
-                                        HStack(spacing: 4) { Text("Yes"); if model.audioFeedbackYou == true { Image(systemName: "checkmark") } }
-                                    }
-                                    Button { model.answerAudioFeedback(you: false) } label: {
-                                        HStack(spacing: 4) { Text("No"); if model.audioFeedbackYou == false { Image(systemName: "checkmark") } }
-                                    }
-                                }
-                            }
-                            LabeledContent("Could you hear the other side?") {
-                                HStack(spacing: 16) {
-                                    Button { model.answerAudioFeedback(them: true) } label: {
-                                        HStack(spacing: 4) { Text("Yes"); if model.audioFeedbackThem == true { Image(systemName: "checkmark") } }
-                                    }
-                                    Button { model.answerAudioFeedback(them: false) } label: {
-                                        HStack(spacing: 4) { Text("No"); if model.audioFeedbackThem == false { Image(systemName: "checkmark") } }
-                                    }
-                                }
-                            }
-                        } else if model.audioFeedbackThanks {
-                            Text("Thanks — the Android phone remembers that for its next calls.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-                        if s.helper.methods != nil {
-                            Picker("Call audio on", selection: Binding(get: { s.helper.fallback == true }, set: { model.setAudioFallback($0) })) {
-                                Text("This iPhone").tag(false)
-                                Text("The Android phone itself").tag(true)
-                            }
-                            .disabled(!model.linkState.isConnected)
-                            if s.helper.fallback == true {
-                                Text("You answer, place and end calls here, but you hear and speak on the Android phone itself. Use this when no call-audio method works.")
-                                    .font(.footnote).foregroundStyle(.orange)
-                            } else {
-                                Picker("Your voice method", selection: Binding(get: { AudioMethodOptions.selection(s.helper, dir: "inject") }, set: { model.setAudioMethod(dir: "inject", $0) })) {
-                                    ForEach(AudioMethodOptions.options(s.helper, dir: "inject"), id: \.self) { id in
-                                        Text(id == "auto" ? String(localized: "Automatic") : id).tag(id)
-                                    }
-                                }
-                                .disabled(!model.linkState.isConnected)
-                                Picker("Their voice method", selection: Binding(get: { AudioMethodOptions.selection(s.helper, dir: "capture") }, set: { model.setAudioMethod(dir: "capture", $0) })) {
-                                    ForEach(AudioMethodOptions.options(s.helper, dir: "capture"), id: \.self) { id in
-                                        Text(id == "auto" ? String(localized: "Automatic") : id).tag(id)
-                                    }
-                                }
-                                .disabled(!model.linkState.isConnected)
-                            }
-                        }
-                        WifiAudioRows()
                     } header: {
                         Text("Call audio")
                     } footer: {
@@ -255,11 +182,7 @@ struct LinkView: View {
                     }
                 }
 
-                FilesSection()
-
                 PhoneLinksSection()
-
-                LiveActivitySection()
 
                 Section {
                     NavigationLink {
@@ -281,16 +204,9 @@ struct LinkView: View {
                     }
                     Button("Sync everything again") { model.requestSync(full: true) }.disabled(!model.linkState.isConnected)
                     NavigationLink("Link log") { LinkLogView() }
-                    if model.isPaired && !model.isDemo {
+                    if model.isPaired {
                         Button("Pair again") { scanning = true }
                         Button("Unpair", role: .destructive) { confirmUnpair = true }
-                    }
-                }
-                if model.isPaired && !model.isDemo {
-                    Section {
-                        Button("Try the demo") { model.enterDemo(); Router.shared.tab = .messages }
-                    } footer: {
-                        Text("Explore a sample phone with made-up data. Your real phone and its data stay untouched.")
                     }
                 }
                 #if DEBUG
@@ -348,7 +264,6 @@ private struct SetupGuideSection: View {
     let status: String
     let linkState: TetherLink.State
     let scan: () -> Void
-    let tryDemo: () -> Void
 
     /// The app's own teal (Assets › AccentColor), as on every other screen.
     private let accent = Color("AccentColor")
@@ -400,20 +315,6 @@ private struct SetupGuideSection: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(accent)
                 }
-
-                Button(action: tryDemo) {
-                    Label("Try the demo", systemImage: "play.circle")
-                        .font(.body.weight(.semibold))
-                        .multilineTextAlignment(.center)
-                        .padding(.vertical, 6)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .tint(accent)
-
-                Text("No Android phone yet? Explore a sample phone with made-up calls, texts and contacts first.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -494,7 +395,6 @@ struct VPNSection: View {
             NetToggle(title: "Share VPN", icon: "network.badge.shield.half.filled", what: "share", value: model.net?.share)
             if model.net?.share == true {
                 IPhoneProxySetup(proxy: model.net?.proxy)
-                ShareSetupDetails(proxy: model.net?.proxy)
             }
         } header: {
             Text("VPN")
@@ -541,115 +441,6 @@ struct IPhoneProxySetup: View {
             }
         } label: {
             Label("Use it on this iPhone", systemImage: "iphone")
-        }
-    }
-}
-
-/// A QR code rendered from a payload string (Core Image), black on white at any size.
-struct QRCodeImage: View {
-    let payload: String
-
-    var body: some View {
-        if let img = Self.image(payload) {
-            Image(uiImage: img).interpolation(.none).resizable().scaledToFit()
-        }
-    }
-
-    private static func image(_ payload: String) -> UIImage? {
-        let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(payload.utf8)
-        filter.correctionLevel = "M"
-        guard let out = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 10, y: 10)) else { return nil }
-        guard let cg = CIContext().createCGImage(out, from: out.extent) else { return nil }
-        return UIImage(cgImage: cg)
-    }
-}
-
-/// The guided Share VPN setup (docs/INTERNET-SHARING.md): the setup QR for a second device, the Telegram
-/// link, the auto-off state, and the split-tunnel bypass list the phone bakes into its PAC file.
-struct ShareSetupDetails: View {
-    @Environment(\.appModel) private var model
-    let proxy: ShareProxyInfo?
-
-    var body: some View { WithPerceptionTracking { bodyContent } }
-
-    @ViewBuilder private var bodyContent: some View {
-        if let proxy, let payload = proxy.qrPayload {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Setup code for another device", systemImage: "qrcode")
-                    .font(.footnote.weight(.semibold))
-                QRCodeImage(payload: payload)
-                    .frame(width: 148, height: 148)
-                    .frame(maxWidth: .infinity)
-                Text("Another iPhone or iPad can scan this after joining the hotspot: it opens the proxy setup link.")
-                    .foregroundStyle(.secondary)
-            }
-            .font(.footnote)
-        }
-        if let tg = proxy?.telegramLink, let url = URL(string: tg) {
-            HStack {
-                Label("Telegram", systemImage: "paperplane")
-                Spacer()
-                Link(String(localized: "Set up"), destination: url)
-                Button { UIPasteboard.general.string = tg; model.flash(String(localized: "Copied")) } label: {
-                    Image(systemName: "doc.on.doc")
-                }.buttonStyle(.borderless)
-            }
-            .font(.footnote)
-        }
-        if let off = proxy?.offIn {
-            Text(String(localized: "No device is linked: Share VPN turns itself off in \(off / 60 + 1) min."))
-                .font(.footnote).foregroundStyle(.secondary)
-        } else {
-            Text("If every device disconnects, Share VPN turns itself off after 10 minutes.")
-                .font(.footnote).foregroundStyle(.secondary)
-        }
-        BypassListEditor(proxy: proxy)
-    }
-}
-
-/// The split-tunnel bypass list: hosts that skip the proxy (banks, local sites). Stored on the Android
-/// phone and baked into its PAC file; every change here replaces the list wholesale.
-struct BypassListEditor: View {
-    @Environment(\.appModel) private var model
-    let proxy: ShareProxyInfo?
-    @State private var newHost = ""
-
-    var body: some View { WithPerceptionTracking { bodyContent } }
-
-    @ViewBuilder private var bodyContent: some View {
-        let hosts = proxy?.bypass ?? []
-        DisclosureGroup {
-            VStack(alignment: .leading, spacing: 8) {
-                if hosts.isEmpty {
-                    Text("No sites yet. Sites on this list open directly, without the VPN: banks and local sites usually work better that way.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(hosts, id: \.self) { h in
-                    HStack {
-                        Text(h).font(.callout.monospaced())
-                            .environment(\.layoutDirection, .leftToRight)
-                        Spacer()
-                        Button(role: .destructive) { model.setShareBypass(hosts.filter { $0 != h }) } label: {
-                            Image(systemName: "trash")
-                        }.buttonStyle(.borderless)
-                    }
-                }
-                HStack {
-                    TextField("example.com", text: $newHost)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .environment(\.layoutDirection, .leftToRight)
-                    Button(String(localized: "Add")) {
-                        if let h = ShareSetup.sanitizedBypass([newHost]).first, !hosts.contains(h) {
-                            model.setShareBypass(hosts + [h]); newHost = ""
-                        }
-                    }.buttonStyle(.borderless)
-                    .disabled(ShareSetup.sanitizedBypass([newHost]).isEmpty)
-                }
-            }
-            .font(.footnote)
-        } label: {
-            Label("Sites that bypass the VPN", systemImage: "arrow.triangle.branch")
         }
     }
 }
@@ -743,48 +534,6 @@ struct PhoneLinksSection: View {
             Text("Numbers in other apps")
         } footer: {
             Text("Calls made here also appear in the Phone app's Recents; tapping one calls back through the Android phone. To call numbers you tap in other apps, choose this app in Settings › Apps › Default Apps › Calling (needs a paid Apple developer account), or use the \"Call with\" shortcut in the Shortcuts app.")
-        }
-    }
-}
-
-/// The Wi-Fi call path rows of the Call audio section (§7.11): the switch, and — while a call's audio
-/// runs — the path the call is actually taking. On unless switched off.
-struct WifiAudioRows: View {
-    @Environment(\.appModel) private var model
-    @AppStorage(WifiAudioFeature.enabledKey) private var enabled = true
-
-    var body: some View { WithPerceptionTracking { bodyContent } }
-
-    @ViewBuilder private var bodyContent: some View {
-        Toggle(isOn: $enabled) { Label("Wi-Fi call path", systemImage: "wifi") }
-            .onChangeCompat(of: enabled) { _ in model.wifiAudioSettingChanged() }
-        if model.wifiAudioInCall {
-            LabeledContent("Call path", value: model.wifiAudioPath == .wifi ? String(localized: "Wi-Fi") : String(localized: "Bluetooth"))
-        }
-        Text("At home, on the same Wi-Fi as the Android phone, the call's sound can travel over Wi-Fi instead of Bluetooth — clearer, with less delay. Bluetooth stays in charge and takes over at once if Wi-Fi falters.")
-            .font(.footnote).foregroundStyle(.secondary)
-    }
-}
-
-/// The Live Activity's switch (docs/LIVE-ACTIVITY.md): the Android phone's signal and battery on
-/// the Lock Screen and in the Dynamic Island while linked. On unless switched off; the demo never
-/// starts one, so the section hides there.
-struct LiveActivitySection: View {
-    @Environment(\.appModel) private var model
-    @AppStorage(LiveActivityController.enabledKey) private var enabled = true
-
-    var body: some View { WithPerceptionTracking { bodyContent } }
-
-    @ViewBuilder private var bodyContent: some View {
-        if model.isPaired && !model.isDemo {
-            Section {
-                Toggle(isOn: $enabled) { Label("Live Activity", systemImage: "livephoto") }
-                    .onChangeCompat(of: enabled) { _ in model.refreshLiveActivity() }
-            } header: {
-                Text("Lock Screen")
-            } footer: {
-                Text("Shows the Android phone's signal and battery on the Lock Screen and in the Dynamic Island while you are linked, and the call you are on. Needs iOS 16.1 or later.")
-            }
         }
     }
 }
@@ -1272,97 +1021,6 @@ private struct QRScanner: UIViewControllerRepresentable {
                   value != last else { return }
             last = value
             onCode?(value)
-        }
-    }
-}
-
-
-/// File transfers (x.tether.files, protocol §7.10): pick and send, answer offers, watch progress. The offer is
-/// answered only here (or not at all): receiving starts from the Receive tap, like the Android apps.
-struct FilesSection: View {
-    @Environment(\.appModel) private var model
-    @State private var photoItems: [PhotosPickerItem] = []
-    @State private var pickingPhotos = false
-    @State private var pickingFiles = false
-
-    var body: some View { WithPerceptionTracking { bodyContent } }
-
-    @ViewBuilder private var bodyContent: some View {
-        Section {
-            if let incoming = model.filesIncoming {
-                Text("Files from \(incoming.from)").font(.headline)
-                ForEach(Array(incoming.entries.prefix(6)), id: \.name) { e in
-                    LabeledContent(e.name, value: ByteCountFormatter.string(fromByteCount: e.size, countStyle: .file))
-                }
-                if incoming.entries.count > 6 {
-                    Text("… and \(incoming.entries.count - 6) more").font(.footnote).foregroundStyle(.secondary)
-                }
-                HStack {
-                    Button("Receive") { model.acceptFiles() }.buttonStyle(.borderedProminent)
-                    Button("Decline", role: .destructive) { model.declineFiles() }
-                }
-            } else if let phase = model.filesPhase {
-                switch phase {
-                case .sending(let name, let fraction):
-                    progressRow(String(localized: "Sending \(name)…"), fraction)
-                case .receiving(let name, let fraction):
-                    progressRow(String(localized: "Receiving \(name)…"), fraction)
-                }
-                Button("Cancel transfer", role: .destructive) { model.cancelFiles() }
-            } else {
-                Button { if model.isDemo { model.demoGuard() } else { pickingPhotos = true } } label: { Label("Send a photo or video", systemImage: "photo.on.rectangle.angled") }
-                    .disabled(!model.isDemo && !canSend)
-                Button { if model.isDemo { model.demoGuard() } else { pickingFiles = true } } label: { Label("Send a file", systemImage: "doc.badge.plus") }
-                    .disabled(!model.isDemo && !canSend)
-                if model.isDemo {
-                    Text("Sending files needs a real Android phone — in the demo you can only look around.").font(.footnote).foregroundStyle(.secondary)
-                } else if !model.linkState.isConnected {
-                    Text("Connect to the Android phone to send or receive files.").font(.footnote).foregroundStyle(.secondary)
-                } else if !model.filesSupported {
-                    Text("The Android phone cannot transfer files (older build).").font(.footnote).foregroundStyle(.secondary)
-                }
-            }
-            if let note = model.filesNote {
-                Text(note).font(.footnote).foregroundStyle(.secondary)
-            }
-            if !model.filesReceivedNames.isEmpty {
-                Text("Received files").font(.subheadline).foregroundStyle(.secondary)
-                ForEach(model.filesReceivedNames, id: \.self) { name in Text(name).font(.footnote) }
-            }
-        } header: {
-            Text("Files")
-        } footer: {
-            Text("Both devices must be on the same Wi-Fi, or one connected to the other's hotspot. Files move directly between the devices; nothing is uploaded anywhere.")
-        }
-        .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, matching: .any(of: [.images, .videos]))
-        .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-            if case .success(let urls) = result {
-                model.sendFiles(urls.map { FilesPick(name: $0.lastPathComponent, url: $0, data: nil) })
-            }
-        }
-        .onChangeCompat(of: photoItems) { items in
-            guard !items.isEmpty else { return }
-            Task {
-                var picks: [FilesPick] = []
-                for (i, item) in items.enumerated() {
-                    if let data = try? await item.loadTransferable(type: Data.self) {
-                        let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
-                        picks.append(FilesPick(name: "photo-\(i + 1).\(ext)", url: nil, data: data))
-                    }
-                }
-                photoItems = []
-                if !picks.isEmpty { model.sendFiles(picks) }
-            }
-        }
-    }
-
-    private var canSend: Bool { model.linkState.isConnected && model.filesSupported }
-
-    @ViewBuilder private func progressRow(_ title: String, _ fraction: Double) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.subheadline)
-            ProgressView(value: fraction)
-            Text("\(Int(fraction * 100))%").font(.caption).foregroundStyle(.secondary)
         }
     }
 }

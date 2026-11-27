@@ -66,39 +66,12 @@ final class AppModel {
     @PerceptionIgnored let extensions = ExtensionRegistry(log: { LinkJournal.shared.add("ext: \($0)") })
     @PerceptionIgnored let extensionPort: LinkExtensionPort
     @PerceptionIgnored let echo = EchoExtension()
-    /// `x.tether.files` (§7.10) and its app host, created in `registerExtensions` (the extension's key material
-    /// is the live session's transcript hash).
-    @PerceptionIgnored private(set) var filesExt: FilesExtension?
-    @PerceptionIgnored private(set) var filesFeature: FilesFeature?
-    /// `x.tether.wifiaudio` (§7.11) and its app host, created in `registerExtensions`.
-    @PerceptionIgnored private(set) var wifiAudioExt: WifiAudioExtension?
-    @PerceptionIgnored private(set) var wifiAudioFeature: WifiAudioFeature?
-    /// The Wi-Fi call path for the Link tab: whether call audio is running, and the path frames are taking.
-    var wifiAudioInCall = false
-    var wifiAudioPath: WifiAudioPath = .bluetooth
-    /// File transfers (Link tab), driven by FilesFeature.
-    var filesIncoming: FilesIncomingOffer?
-    var filesPhase: FilesPhase?
-    var filesNote: String?
-    var filesReceivedNames: [String] = []
-    /// The Android phone speaks `x.tether.files` and a session is up.
-    var filesSupported: Bool { filesExt.flatMap { extensions.session(for: $0) } != nil }
     /// The last result of the Debug developer row's echo test (Link tab).
     var extensionLine: String?
     @PerceptionIgnored lazy var calls = CallController(model: self)
     @PerceptionIgnored lazy var audio = CallAudio(model: self, link: link)
-    /// The Live Activity on the Lock Screen / Dynamic Island (docs/LIVE-ACTIVITY.md): fed by
-    /// `refreshLiveActivity` whenever one of its inputs (link, status, call, demo, pairing) changes.
-    @PerceptionIgnored let liveActivity = LiveActivityController()
 
     private(set) var linkState: TetherLink.State = .unpaired
-    /// The user-facing demo ("Try with a Sample Phone", docs/DEMO-MODE.md): a runtime session over a
-    /// stashed real snapshot. Distinct from the DEBUG launch-arg `demoMode`, which is fixed at launch.
-    private(set) var isDemo = false
-    /// Either demo is on: nothing is saved, and no action reaches a real phone.
-    var demoActive: Bool { isDemo || AppModel.demoMode }
-    /// The real synced data while the demo runs (restored verbatim by `exitDemo`).
-    @PerceptionIgnored private var stashedSnapshot: Snapshot?
     private(set) var data: Snapshot
     var status: StatusBody? { data.lastStatus }
     var lastError: String?
@@ -115,12 +88,6 @@ final class AppModel {
     }
     var lastSync: Date?
     var selftest: SelftestResult?
-    /// A self-test ran during a call: the user is asked whether the other side heard them (and the other
-    /// way round); the answers go to the Android phone, which remembers them per method (docs/CALL-AUDIO.md).
-    var audioFeedbackPending = false
-    var audioFeedbackYou: Bool?
-    var audioFeedbackThem: Bool?
-    var audioFeedbackThanks = false
     /// Conversations read while the link was down: thread → newest id read, sent on reconnect.
     @PerceptionIgnored private var pendingRead: [Int64: Int64] = [:]
     /// Mobile data / hotspot / Bluetooth tethering on the Android phone; nil until first asked.
@@ -170,106 +137,25 @@ final class AppModel {
         #endif
     }
 
-    // MARK: demo mode (docs/DEMO-MODE.md)
-
-    /// Fills the model with the sample phone. Used by `enterDemo` and by the DEBUG launch-arg demo.
-    func seedDemo(_ sample: DemoSampleData) {
-        var snap = Snapshot()
-        snap.sms = sample.sms; snap.contacts = sample.contacts; snap.recents = sample.recents
-        snap.lastStatus = sample.status; snap.lists = sample.lists; snap.contactsVersion = "demo"
-        // The Recents badge counts one missed call: "seen" sits just below the newest missed call.
-        snap.recentsSeenUpTo = (sample.recents.filter { $0.type == 3 }.map(\.id).max() ?? 1) - 1
-        data = snap
-        net = sample.net
-        filesReceivedNames = sample.receivedFileNames
+    #if DEBUG
+    func injectDemo(sms: [Sms], contacts: [Contact], recents: [CallEntry], status: StatusBody, lists: BlockLists? = nil) {
+        data.sms = sms; data.contacts = contacts; data.recents = recents; data.lastStatus = status; data.lists = lists
         rebuildIndex()
     }
-
-    /// Starts the demo: the real snapshot is stashed in memory and nothing is saved while it runs
-    /// (`persist` is gated on `demoActive`), so the real data survives untouched — on disk all along,
-    /// and in memory through the stash.
-    func enterDemo() {
-        guard !isDemo, !AppModel.runningTests else { return }
-        stashedSnapshot = data
-        isDemo = true
-        clearTransients()
-        seedDemo(DemoSample.make(now: Int64(Date().timeIntervalSince1970 * 1000)))
-        refreshLiveActivity()   // the demo never shows on the Lock Screen: this ends a running activity
-    }
-
-    /// Ends the demo: the stashed real snapshot comes back, the sample data is dropped, and a sync
-    /// picks up anything the real phone sent meanwhile (its messages were dropped by `received`,
-    /// and the restored snapshot still points at the pre-demo sync position).
-    func exitDemo() {
-        guard isDemo else { return }
-        isDemo = false
-        if let stashedSnapshot { data = stashedSnapshot }
-        stashedSnapshot = nil
-        clearTransients()
-        filesReceivedNames = []
-        filesFeature?.refreshReceived()
-        rebuildIndex()
-        Notifications.shared.updateBadge(unreadTotal + missedCount)
-        if linkState.isConnected { requestSync(); refreshNet() }
-        refreshLiveActivity()   // the real phone's activity comes back if it is still linked
-    }
-
-    /// State that belongs to one phone (the real one, or the sample one) and must not leak across
-    /// entering or leaving the demo.
-    private func clearTransients() {
-        net = nil; netPending = nil
-        selftest = nil; ussdResult = nil; ussdPending = false; finding = false; phoneToolError = nil
-        lastError = nil; lastSync = nil; syncing = false
-        filesIncoming = nil; filesPhase = nil; filesNote = nil
-        audioFeedbackPending = false; audioFeedbackYou = nil; audioFeedbackThem = nil; audioFeedbackThanks = false
-    }
-
-    /// In the demo, an action that needs the real Android phone explains itself instead of failing
-    /// quietly or pretending to work. True when the caller must stop.
-    @discardableResult
-    func demoGuard() -> Bool {
-        guard demoActive else { return false }
-        lastError = String(localized: "This is a demo with a sample phone — that only works with a real Android phone.")
-        return true
-    }
+    #endif
 
     /// Add your extension here (one line), see docs/EXTENDING.md.
     private func registerExtensions() {
-        let files = FilesExtension(keyMaterial: { [weak self] in self?.link.transcriptHash })
-        filesExt = files
-        let wifiAudio = WifiAudioExtension(keyMaterial: { [weak self] in self?.link.transcriptHash })
-        wifiAudioExt = wifiAudio
-        for e in [echo, files, wifiAudio] as [TetherExtension] {
+        for e in [echo] as [TetherExtension] {
             do { try extensions.register(e) } catch { NSLog("[ext] not registered: %@", "\(error)") }
         }
-        let feature = FilesFeature(model: self)
-        filesFeature = feature
-        feature.wire(files)
-        let wifiFeature = WifiAudioFeature(model: self)
-        wifiAudioFeature = wifiFeature
-        wifiFeature.wire(wifiAudio)
-        // Captured call audio goes to the Wi-Fi channel first when it is the chosen path (§7.11).
-        audio.wifiSink = { [weak wifiFeature] frame in wifiFeature?.sendUplink(frame) ?? false }
         // An extension switched off after repeated failures: the Android phone learns it with a new sync.
         extensions.onCapsChanged = { [weak self] in self?.requestSync() }
         extensions.start()
     }
 
-    // MARK: file transfers (x.tether.files, Link tab)
-
-    func sendFiles(_ picks: [FilesPick]) { if !demoGuard() { filesFeature?.send(picks) } }
-    func acceptFiles() { filesFeature?.accept() }
-    func declineFiles() { filesFeature?.decline() }
-    func cancelFiles() { filesFeature?.cancel() }
-
-    // MARK: Wi-Fi call path (x.tether.wifiaudio, Link tab)
-
-    /// The Link tab's Wi-Fi call path switch changed (the value itself lives in UserDefaults).
-    func wifiAudioSettingChanged() { wifiAudioFeature?.settingChanged() }
-
     /// Debug builds (Link › Developer): one x.tether.echo round trip to the Android phone.
     func echoTest() {
-        guard !demoGuard() else { return }
         guard let s = extensions.session(for: echo) else {
             extensionLine = "The Android phone does not speak x.tether.echo (older build, or not linked)"; return
         }
@@ -348,8 +234,7 @@ final class AppModel {
             data.readUpTo[thread] = newest
             // Read here means read everywhere: the Android phone and the other device follow.
             // (Placeholder ids of messages still being sent are negative and never the newest real id.)
-            // In the demo the read mark stays local: a sample thread id must never reach a real phone.
-            if newest > 0 && !isDemo {
+            if newest > 0 {
                 if linkState.isConnected { link.send(MsgType.smsRead, SmsRead(thread: thread, upTo: newest)) }
                 else { pendingRead[thread] = newest }
             }
@@ -365,14 +250,12 @@ final class AppModel {
     func isBlocked(_ number: String) -> Bool { blockLists.isBlocked(number) }
 
     private func requireLink() -> Bool {
-        if demoGuard() { return false }
         if linkState.isConnected { return true }
         lastError = String(localized: "The Android phone is not connected.")
         return false
     }
 
     func deleteConversation(_ thread: Int64) {
-        guard !demoGuard() else { return }
         // A conversation that only exists here (texts still waiting to be sent) needs no phone.
         if thread < 0 || !data.sms.contains(where: { $0.thread == thread && $0.id > 0 }) {
             applyDeleted(ids: [], thread: thread); return
@@ -383,7 +266,6 @@ final class AppModel {
     }
 
     func deleteMessages(_ ids: [Int64]) {
-        guard !demoGuard() else { return }
         let real = ids.filter { $0 > 0 }
         if !real.isEmpty {
             guard requireLink() else { return }
@@ -464,9 +346,9 @@ final class AppModel {
         photoIndex = p
     }
 
-    private func persist() { if !demoActive && !AppModel.runningTests { store.save(data) } }
+    private func persist() { if !AppModel.demoMode && !AppModel.runningTests { store.save(data) } }
     /// Saved at once (the outbox of a text sent from a notification must survive the app being suspended).
-    func persistNow() { if !demoActive && !AppModel.runningTests { store.saveNow(data) } }
+    func persistNow() { if !AppModel.demoMode && !AppModel.runningTests { store.saveNow(data) } }
 
     /// Unit tests only: start from the given snapshot with no sync in progress.
     func resetForTests(_ snapshot: Snapshot = Snapshot()) {
@@ -476,8 +358,6 @@ final class AppModel {
         smsIndex = [:]; pendingSms = [:]; incrementalSync = false
         net = nil; netPending = nil; ussdResult = nil; ussdPending = false; finding = false; phoneToolError = nil
         lastError = nil; selftest = nil; syncing = false; openThread = nil
-        audioFeedbackPending = false; audioFeedbackYou = nil; audioFeedbackThem = nil; audioFeedbackThanks = false
-        isDemo = false; stashedSnapshot = nil
         extensions.linkDown(); extensionPort.isUp = false; extensionLine = nil
         rebuildIndex()
     }
@@ -485,8 +365,6 @@ final class AppModel {
     // MARK: actions
 
     func pair(_ code: PairingCode) {
-        if isDemo { exitDemo() }   // a pairing change always acts on the real state, never the sample
-        liveActivity.endNow()      // the Lock Screen showed the previous phone, if any
         lastError = nil
         data = Snapshot()
         store.wipe()
@@ -495,8 +373,6 @@ final class AppModel {
     }
 
     func unpair() {
-        if isDemo { exitDemo() }
-        liveActivity.endNow()
         link.unpair()
         data = Snapshot()
         store.wipe()
@@ -507,7 +383,7 @@ final class AppModel {
     @PerceptionIgnored private var incrementalSync = false
 
     func requestSync(full: Bool = false) {
-        guard linkState.isConnected, !isDemo else { return }
+        guard linkState.isConnected else { return }
         syncing = true
         incrementalSync = !full && !data.sms.isEmpty
         // From the last page received (pages arrive oldest first, so that point is complete): a text
@@ -539,7 +415,6 @@ final class AppModel {
         let text = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         guard text.utf8.count <= 12_000 else { lastError = String(localized: "Message too long"); return }
-        guard !demoGuard() else { return }
         // Local placeholder until the Android phone's provider row arrives through sms.new. Ids are negative and unique.
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let localId = -max(now, (data.sms.map { -$0.id }.max() ?? 0) + 1)
@@ -579,17 +454,14 @@ final class AppModel {
     }
 
     func dial(_ number: String, sub: Int?) {
-        guard !demoGuard() else { return }
         calls.startOutgoing(number: number, sub: sub)
     }
 
     func addContact(name: String, phones: [Phone], emails: [String]) {
-        guard !demoGuard() else { return }
         link.send(MsgType.contactAdd, ContactAdd(name: name, phones: phones, emails: emails), expectReply: true)
     }
 
     func updateContact(id: Int64, name: String, phones: [Phone], emails: [String]) {
-        guard !demoGuard() else { return }
         // Show the edit at once; the Android phone's answer (and the re-sync it triggers) settles it.
         if let i = data.contacts.firstIndex(where: { $0.id == id }) {
             data.contacts[i].name = name; data.contacts[i].phones = phones; data.contacts[i].emails = emails
@@ -609,7 +481,6 @@ final class AppModel {
 
     /// Chooses which SIM carries mobile data on the Android phone.
     func setDataSim(_ sub: Int) {
-        guard !demoGuard() else { return }
         guard linkState.isConnected else { return }
         netPending = "dataSub"
         net?.err = nil
@@ -624,7 +495,6 @@ final class AppModel {
 
     /// Preferred network of a SIM slot on the Android phone (5G / 4G / 3G / 2G, "auto connect" like its own menu).
     func setNetworkMode(slot: Int, _ mode: String) {
-        guard !demoGuard() else { return }
         guard linkState.isConnected else { return }
         netPending = "rat\(slot)"
         net?.err = nil
@@ -643,7 +513,6 @@ final class AppModel {
     }
 
     func setNet(_ what: String, on: Bool) {
-        guard !demoGuard() else { return }
         guard linkState.isConnected else { return }
         netPending = what
         net?.err = nil
@@ -657,25 +526,8 @@ final class AppModel {
         }
     }
 
-    /// Replaces the Share VPN bypass list on the Android phone (hosts that skip the proxy; §5.3).
-    /// The list rides on a `share` set with the switch's current state, so the switch itself does not move.
-    func setShareBypass(_ hosts: [String]) {
-        guard !demoGuard() else { return }
-        guard linkState.isConnected else { return }
-        netPending = "share"
-        net?.err = nil
-        link.send(MsgType.netSet, NetSet(what: "share", on: net?.share ?? true, bypass: ShareSetup.sanitizedBypass(hosts)), expectReply: true)
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(35))
-            guard let self, self.netPending == "share" else { return }
-            self.netPending = nil
-            self.net?.err = String(localized: "The Android phone did not answer.")
-        }
-    }
-
     /// Carrier code (balance etc.) on a SIM of the Android phone; the answer arrives as `ussd.result` (up to 30 s).
     func sendUssd(_ code: String, sub: Int?) {
-        guard !demoGuard() else { return }
         let code = code.trimmingCharacters(in: .whitespaces)
         guard linkState.isConnected, !ussdPending else { return }
         guard UssdCode.isValid(code) else {
@@ -693,14 +545,12 @@ final class AppModel {
     }
 
     func setFinding(_ on: Bool) {
-        guard !demoGuard() else { return }
         guard linkState.isConnected else { return }
         phoneToolError = nil
         link.send(MsgType.phoneFind, PhoneFind(on: on), expectReply: true)
     }
 
     func setRinger(_ mode: String) {
-        guard !demoGuard() else { return }
         guard linkState.isConnected else { return }
         phoneToolError = nil
         link.send(MsgType.ringerSet, RingerSet(mode: mode), expectReply: true)
@@ -708,7 +558,6 @@ final class AppModel {
 
     /// The Android phone's "mute its own microphone during bridged calls"; shown at once, confirmed by its next status.
     func setPhoneMicMute(_ on: Bool) {
-        guard !demoGuard() else { return }
         guard linkState.isConnected, var st = data.lastStatus, st.helper.micMute != nil else { return }
         link.send(MsgType.audioSet, AudioSet(micMute: on))
         st.helper.micMute = on
@@ -718,7 +567,6 @@ final class AppModel {
     /// The Android phone's "its own microphone during bridged calls" ("auto", "mute", "open"; Android builds that report
     /// `helper.mic`); shown at once, confirmed by its next status.
     func setPhoneMic(_ mic: String) {
-        guard !demoGuard() else { return }
         guard linkState.isConnected, var st = data.lastStatus, st.helper.mic != nil else { return }
         link.send(MsgType.audioSet, AudioSet(mic: mic))
         st.helper.mic = mic
@@ -727,64 +575,16 @@ final class AppModel {
     }
 
     func runSelftest() {
-        guard !demoGuard() else { return }
         selftest = nil
-        audioFeedbackPending = false; audioFeedbackYou = nil; audioFeedbackThem = nil; audioFeedbackThanks = false
         link.send(MsgType.selftest, Empty(), expectReply: true)
     }
 
-    /// The user's call-audio method pick for one direction ("auto" or a method id; Android builds that report
-    /// `helper.methods`); shown at once, confirmed by its next status.
-    func setAudioMethod(dir: String, _ id: String) {
-        guard !demoGuard() else { return }
-        guard linkState.isConnected, var st = data.lastStatus, st.helper.methods != nil else { return }
-        let pick = st.helper.pick ?? AudioPick(inject: "auto", capture: "auto")
-        if dir == "inject" {
-            link.send(MsgType.audioSet, AudioSet(inject: id))
-            st.helper.pick = AudioPick(inject: id, capture: pick.capture)
-        } else {
-            link.send(MsgType.audioSet, AudioSet(capture: id))
-            st.helper.pick = AudioPick(inject: pick.inject, capture: id)
-        }
-        data.lastStatus = st
-    }
-
-    /// The speaker/microphone fallback: calls are controlled here but stay on the Android phone itself.
-    func setAudioFallback(_ on: Bool) {
-        guard !demoGuard() else { return }
-        guard linkState.isConnected, var st = data.lastStatus, st.helper.methods != nil else { return }
-        link.send(MsgType.audioSet, AudioSet(fallback: on))
-        st.helper.fallback = on
-        data.lastStatus = st
-    }
-
-    /// One of the two feedback answers; when both are in, they are sent together.
-    func answerAudioFeedback(you: Bool) { audioFeedbackYou = you; sendAudioFeedbackIfComplete() }
-    func answerAudioFeedback(them: Bool) { audioFeedbackThem = them; sendAudioFeedbackIfComplete() }
-
-    private func sendAudioFeedbackIfComplete() {
-        guard let you = audioFeedbackYou, let them = audioFeedbackThem else { return }
-        link.send(MsgType.audioSet, AudioSet(feedback: AudioFeedback(you: you, them: them)))
-        audioFeedbackPending = false; audioFeedbackYou = nil; audioFeedbackThem = nil
-        audioFeedbackThanks = true
-    }
-
     // MARK: link events (main actor)
-
-    /// One of the Live Activity's inputs changed (docs/LIVE-ACTIVITY.md): let its controller
-    /// re-decide. Cheap when nothing changed — the policy compares states.
-    func refreshLiveActivity() { liveActivity.refresh(from: self) }
 
     func linkChanged(_ s: TetherLink.State) {
         let wasConnected = linkState.isConnected
         linkState = s
         if case .connected(let t) = s { extensionPort.transport = t }
-        if isDemo {
-            // The demo runs on its own data: no sync, no outbox flush, no microphone prompt, and
-            // `received` drops whatever the real phone sends until the demo ends.
-            if !s.isConnected { extensionPort.isUp = false }
-            return
-        }
         if s.isConnected && !wasConnected {
             // Before the sync: it carries what the extensions speak.
             extensionPort.isUp = true
@@ -798,7 +598,6 @@ final class AppModel {
         if !s.isConnected && wasConnected {
             extensionPort.isUp = false
             extensions.linkDown()
-            wifiAudioFeature?.linkDown()
             calls.linkLost()
             remoteCalls = []
             // A sync cut off mid-way must start clean next time.
@@ -810,7 +609,6 @@ final class AppModel {
             pendingSms = [:]
             syncing = false
         }
-        refreshLiveActivity()
     }
 
     func linkFailed(_ reason: String) {
@@ -818,16 +616,12 @@ final class AppModel {
     }
 
     func received(_ h: MessageHeader, _ payload: Data) {
-        // In the demo the real phone's messages must not leak into the sample data (nor the sample
-        // into it); what arrives meanwhile is fetched again by the sync on `exitDemo`.
-        guard !isDemo else { return }
         do {
             switch h.t {
             case MsgType.status:
                 // Kept in memory; saved with the next real change (a full snapshot write per status was wasted).
                 data.lastStatus = try Control.body(StatusBody.self, from: payload)
                 extensions.peerCaps(data.lastStatus?.caps)   // absent (older Android builds): no extensions
-                refreshLiveActivity()
             case MsgType.smsBatch:
                 let b = try Control.body(SmsBatch.self, from: payload)
                 let recent = Int64(Date().addingTimeInterval(-6 * 3600).timeIntervalSince1970 * 1000)
@@ -959,10 +753,8 @@ final class AppModel {
                 else { calls.dialAccepted() }
             case MsgType.audioStart:
                 audio.configure(try Control.body(AudioStart.self, from: payload))
-                wifiAudioFeature?.callAudioStarted()
             case MsgType.audioStop:
                 audio.remoteStopped()
-                wifiAudioFeature?.callAudioEnded()
             case MsgType.audioStats:
                 LinkJournal.shared.add("Android phone call audio: " + (try Control.body(AudioStats.self, from: payload)).summary)
             case MsgType.netState:
@@ -989,10 +781,6 @@ final class AppModel {
                 if let e = r.err { phoneToolError = e }
             case MsgType.selftestResult:
                 selftest = try Control.body(SelftestResult.self, from: payload)
-                // A test during a live call is one the user can judge: ask whether the other side heard them.
-                if selftest?.testedLiveCall == true {
-                    audioFeedbackPending = true; audioFeedbackYou = nil; audioFeedbackThem = nil; audioFeedbackThanks = false
-                }
             default:
                 // Extension types (x.…) and errors answering an extension's request; everything else stays ignored.
                 _ = extensions.route(h, payload)
@@ -1017,7 +805,6 @@ final class AppModel {
         #endif
         // An answered or outgoing call brings the call screen up when the app is in front.
         if !c.isEnded && c.state != "ringing" && callScreen != nil && !showCallScreen && !callScreenDismissed { showCallScreen = true }
-        refreshLiveActivity()   // the activity features the current call
     }
 
     /// The user minimised the call screen for this call (a banner lets them return).

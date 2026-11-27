@@ -30,10 +30,6 @@ import app.tether.TetherApp
 import app.tether.adb.Adb
 import app.tether.adb.ConnectOrder
 import app.tether.core.PairingCode
-import app.tether.core.ext.WifiAudioPolicy
-import app.tether.ext.FilesFeature
-import app.tether.ext.digestPicked
-import app.tether.helper.AudioMethods
 import app.tether.helper.CallAudio
 import app.tether.helper.LocalMutes
 import app.tether.helper.MicPath
@@ -42,7 +38,6 @@ import app.tether.link.LinkService
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
-import org.json.JSONObject
 
 class MainActivity : Activity() {
     private lateinit var app: TetherApp
@@ -90,15 +85,8 @@ class MainActivity : Activity() {
         render()
     }
 
-    private var tickCount = 0
-
     private fun tick() {
-        main.postDelayed({
-            tickCount++
-            // While Share VPN is on, re-render every ~15 s so its auto-off countdown stays honest.
-            if (qrUntil > 0 || (app.hub.share.sharing && tickCount % 15 == 0)) render()
-            tick()
-        }, 1000)
+        main.postDelayed({ if (qrUntil > 0) render(); tick() }, 1000)
     }
 
     private fun missingPerms() = perms.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }.toTypedArray()
@@ -162,9 +150,6 @@ class MainActivity : Activity() {
         row.addView(button(getString(R.string.pair_iphone)) { showQr() })
         link.addView(row)
 
-        renderFiles()
-        renderShare()
-
         // Setup
         val setup = card(getString(R.string.section_setup))
         setup.addView(label(getString(R.string.setup_intro), R.color.muted, 13f))
@@ -212,12 +197,6 @@ class MainActivity : Activity() {
                 (h.optString("capture").takeIf { it.isNotEmpty() }?.let { " · " + getString(R.string.helper_capture, it) } ?: "") else getString(R.string.helper_stopped)) {
             Thread { app.hub.helper.ensureRunning(); app.hub.refresh() }.start()
         })
-        // The Wi-Fi call path (§7.11): while a call's audio runs, say which path it is taking.
-        if (app.hub.audio.running) {
-            val target = app.hub.audio.target
-            val wifi = target != null && app.hub.wifiAudioFeature.pathFor(target) == WifiAudioPolicy.Path.WIFI
-            audio.addView(label(getString(R.string.call_path) + ": " + getString(if (wifi) R.string.call_path_wifi else R.string.call_path_bt), R.color.muted, 13f))
-        }
         // The phone's own microphone during bridged calls (issue #2): by default a redirect audio mode takes it out of the
         // call where the phone allows it (MicPath); muting it is opt-in, since on some phones that also mutes the iPhone.
         if (app.hub.helper.audioLevel() != "unavailable") {
@@ -264,41 +243,6 @@ class MainActivity : Activity() {
                     else -> R.string.uplink_unverified
                 }), if (u == "muted-locally-fixed") R.color.warn else R.color.muted, 13f))
             }
-        }
-        // Call-audio methods (docs/CALL-AUDIO.md): the user's pick per direction and the speaker/microphone
-        // fallback — the same choices the iPhone's Link tab offers (audio.set), remembered per phone model.
-        if (app.hub.helper.audioLevel() != "unavailable") {
-            val ms = app.hub.audio.methodState()
-            val fallback = app.hub.audio.fallbackOn()
-            val sdk = android.os.Build.VERSION.SDK_INT
-            fun methodRow(group: RadioGroup, text: String, checked: Boolean, onClick: () -> Unit) {
-                group.addView(RadioButton(this).apply {
-                    id = View.generateViewId(); this.text = text; textSize = 15f; setTextColor(color(R.color.text))
-                    isChecked = checked
-                    setOnClickListener { Thread { onClick(); app.hub.pushStatus() }.start() }
-                })
-            }
-            audio.addView(label(getString(R.string.method_title), R.color.text, 16f))
-            audio.addView(label(getString(R.string.method_inject_title), R.color.muted, 13f))
-            val injGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL; setPadding(0, dp(2), 0, dp(2)) }
-            methodRow(injGroup, getString(R.string.method_choice_auto), !fallback && ms.manualInject == null) {
-                app.hub.audio.setFallback(false); app.hub.audio.setManual(AudioMethods.Dir.INJECT, null)
-            }
-            for (m in AudioMethods.injectLadder(sdk)) methodRow(injGroup, m.id, !fallback && ms.manualInject == m.id) {
-                app.hub.audio.setFallback(false); app.hub.audio.setManual(AudioMethods.Dir.INJECT, m.id)
-            }
-            methodRow(injGroup, getString(R.string.method_choice_phone), fallback) { app.hub.audio.setFallback(true) }
-            audio.addView(injGroup)
-            audio.addView(label(getString(R.string.method_capture_title), R.color.muted, 13f))
-            val capGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL; setPadding(0, dp(2), 0, dp(2)) }
-            methodRow(capGroup, getString(R.string.method_choice_auto), ms.manualCapture == null) {
-                app.hub.audio.setManual(AudioMethods.Dir.CAPTURE, null)
-            }
-            for (m in AudioMethods.captureLadder(sdk)) methodRow(capGroup, m.id, ms.manualCapture == m.id) {
-                app.hub.audio.setManual(AudioMethods.Dir.CAPTURE, m.id)
-            }
-            audio.addView(capGroup)
-            audio.addView(label(getString(if (fallback) R.string.method_fallback_note else R.string.method_auto_note), R.color.muted, 13f))
         }
         app.hub.lastSelftest?.let { st ->
             val methods = st.optJSONArray("methods")
@@ -391,132 +335,6 @@ class MainActivity : Activity() {
     }
 
     /**
-     * File transfer (`x.tether.files`): pick and send, answer an incoming offer, watch progress, see what
-     * arrived. All state lives in [app.tether.ext.FilesFeature]; this only draws it and starts the picker.
-     */
-    private fun renderFiles() {
-        val f = app.hub.filesFeature
-        val files = card(getString(R.string.section_files))
-        val session = f.session()
-        when {
-            f.pending != null -> {
-                val p = f.pending!!
-                files.addView(label(getString(R.string.files_offer_from, p.peer), R.color.text, 16f))
-                for (e in p.entries.take(6)) files.addView(label("${e.name} · ${fmtSize(e.size)}", R.color.muted, 13f))
-                if (p.entries.size > 6) files.addView(label(getString(R.string.files_and_more, p.entries.size - 6), R.color.muted, 13f))
-                val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                r.addView(button(getString(R.string.files_accept)) { f.acceptPending() })
-                r.addView(button(getString(R.string.files_decline), secondary = true) { f.declinePending() })
-                files.addView(r)
-            }
-            f.active != null -> {
-                val a = f.active!!
-                files.addView(label(getString(if (a.sending) R.string.files_sending else R.string.files_receiving, a.names.firstOrNull() ?: ""),
-                    R.color.text, 16f))
-                val pct = if (a.total > 0) (a.done * 100 / a.total).toInt() else 0
-                files.addView(label(getString(R.string.files_progress, fmtSize(a.done), fmtSize(a.total), pct), R.color.muted, 13f))
-                files.addView(button(getString(R.string.files_cancel), secondary = true) { f.cancelActive() })
-            }
-            session == null -> files.addView(label(
-                getString(if (app.hub.conn?.isUp == true) R.string.files_not_supported else R.string.files_need_link), R.color.muted, 13f))
-            else -> {
-                files.addView(button(getString(R.string.files_send)) { pickFiles() })
-                files.addView(label(getString(R.string.files_same_wifi), R.color.muted, 13f))
-            }
-        }
-        f.note?.let { n ->
-            files.addView(label(when (n) {
-                FilesFeature.Note.SENT -> getString(R.string.files_note_sent)
-                FilesFeature.Note.RECEIVED -> getString(R.string.files_note_received)
-                FilesFeature.Note.DECLINED -> getString(R.string.files_note_declined)
-                FilesFeature.Note.CANCELLED -> getString(R.string.files_note_cancelled)
-                FilesFeature.Note.NO_NETWORK -> getString(R.string.files_no_network)
-                FilesFeature.Note.ERROR -> getString(R.string.files_note_error) +
-                    (f.noteDetail?.let { " ($it)" } ?: "")
-            }, if (n == FilesFeature.Note.ERROR) R.color.warn else R.color.muted, 13f))
-        }
-        val received = f.receivedFiles()
-        if (received.isNotEmpty() && f.pending == null) {
-            files.addView(label(getString(R.string.files_received_title), R.color.text, 16f))
-            for (file in received.take(5)) files.addView(label("${file.name} · ${fmtSize(file.length())}", R.color.muted, 13f))
-        }
-    }
-
-    /**
-     * Share VPN setup (`ShareProxy`): while sharing is on, this card is the surface iTell shows as a QR code —
-     * the iPhone joins the hotspot and scans it. Everything shown is the same state clients get in `net.state`
-     * (`Hub.share.json()`), read straight from the hub.
-     */
-    private fun renderShare() {
-        val share = card(getString(R.string.section_share))
-        val hub = app.hub
-        if (!hub.share.sharing) {
-            share.addView(label(getString(R.string.share_off), R.color.muted, 13f))
-            return
-        }
-        val proxy = hub.share.json()
-        val addrs = proxy.optJSONArray("addrs")
-        var addr: JSONObject? = null
-        if (addrs != null) for (i in 0 until addrs.length()) {
-            val a = addrs.getJSONObject(i)
-            if (addr == null) addr = a
-            if (a.optString("kind") == "hotspot") { addr = a; break }
-        }
-        val chosen = addr
-        if (chosen == null) {
-            share.addView(label(getString(R.string.share_on_no_addr), R.color.muted, 13f))
-        } else {
-            share.addView(label(getString(R.string.share_qr_hint), R.color.text, 13f))
-            share.addView(ImageView(this).apply {
-                setImageBitmap(qrImage(chosen.optString("qr"))); adjustViewBounds = true
-                layoutParams = LinearLayout.LayoutParams(dp(260), dp(260)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(8) }
-            })
-            share.addView(label(getString(R.string.share_pac_label), R.color.muted, 13f))
-            share.addView(label(chosen.optString("pac"), R.color.text, 13f).apply { setTextIsSelectable(true) })
-            share.addView(label(getString(R.string.share_telegram_label), R.color.muted, 13f))
-            share.addView(label(chosen.optString("tg"), R.color.text, 13f).apply { setTextIsSelectable(true) })
-        }
-        val bypassN = proxy.optJSONArray("bypass")?.length() ?: 0
-        if (bypassN > 0) share.addView(label(getString(R.string.share_bypass_n, bypassN), R.color.muted, 13f))
-        val offIn = hub.shareOffIn()
-        share.addView(label(if (offIn != null) getString(R.string.share_autooff_in, (offIn + 59) / 60)
-            else getString(R.string.share_autooff_note), R.color.muted, 13f))
-    }
-
-    private fun pickFiles() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("*/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        startActivityForResult(intent, REQ_PICK_FILES)
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQ_PICK_FILES || resultCode != RESULT_OK || data == null) return
-        val uris = ArrayList<android.net.Uri>()
-        data.clipData?.let { clip -> for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let(uris::add) }
-        if (uris.isEmpty()) data.data?.let(uris::add)
-        if (uris.isEmpty()) return
-        for (uri in uris) runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-        Toast.makeText(this, R.string.files_preparing, Toast.LENGTH_SHORT).show()
-        Thread {
-            val picked = digestPicked(contentResolver, uris)
-            main.post {
-                if (picked.isEmpty() || !app.hub.filesFeature.sendPicked(picked))
-                    Toast.makeText(this, R.string.files_note_error, Toast.LENGTH_SHORT).show()
-                render()
-            }
-        }.start()
-    }
-
-    private fun fmtSize(bytes: Long): String = when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
-        bytes < 1024 * 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024))
-        else -> "%.2f GB".format(bytes / (1024.0 * 1024 * 1024))
-    }
-
-    /**
      * The link log (the same lines as `tools/dbg.sh linklog`: link, call-audio and mic events, no message text, no
      * numbers), with Share and Copy, so a bug report needs no computer. A header says which app, phone and Android.
      */
@@ -580,16 +398,11 @@ class MainActivity : Activity() {
     /** The QR code holds the `tether://pair?c=…` link (the iPhone's Camera opens it in Cellular), or for Cellular 1.1
      *  the `tether1:` form of the same code. */
     private fun drawQr(code: PairingCode) {
-        qrBitmap = qrImage(if (qrLegacy) code.encode() else code.link())
-    }
-
-    /** A QR code bitmap for any payload (pairing link, Share VPN setup link). */
-    private fun qrImage(payload: String): Bitmap {
         val size = 720
-        val m = QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, size, size,
+        val m = QRCodeWriter().encode(if (qrLegacy) code.encode() else code.link(), BarcodeFormat.QR_CODE, size, size,
             mapOf(EncodeHintType.MARGIN to 1))
         val px = IntArray(size * size) { if (m[it % size, it / size]) Color.BLACK else Color.WHITE }   // theme: ok, a QR code must be black on white
-        return Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888)
+        qrBitmap = Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888)
     }
 
     // ------------------------------------------------------------------ tiny view helpers
@@ -598,7 +411,6 @@ class MainActivity : Activity() {
     private fun color(id: Int) = getColor(id)
 
     companion object {
-        const val REQ_PICK_FILES = 7
         private const val PREF_WIZARD_OFFERED = "wizard_offered"
         private const val PREF_WIZARD_DONE = "wizard_done"
     }

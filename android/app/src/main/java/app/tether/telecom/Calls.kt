@@ -48,7 +48,11 @@ object CallRegistry {
 
     fun cidOf(c: Call): String = ids.getOrPut(c) { UUID.randomUUID().toString().substring(0, 8).also { calls[it] = c } }
 
-    fun list(): List<CallInfo> = calls.values.map(::info)
+    /** Live calls only: a disconnected call whose removal callback never ran (the system froze the
+     *  app at that moment) must not be resurrected into every snapshot the clients reconcile from. */
+    fun list(): List<CallInfo> = calls.values
+        .filter { it.stateCompat() != Call.STATE_DISCONNECTED && it.stateCompat() != Call.STATE_DISCONNECTING }
+        .map(::info)
 
     /** Exactly this call (no "the only call" fallback), and only on Tether's own test line: what a test client may touch. */
     fun isTestCall(ctx: android.content.Context, cid: String): Boolean =
@@ -71,6 +75,13 @@ object CallRegistry {
     }
 
     internal fun added(c: Call) {
+        // The in-call service can re-deliver a call as a new object after a rebind. The old object for
+        // the same line, already disconnected, is a zombie (its removal was lost, e.g. the app was
+        // frozen then): retire it, so snapshots and the one-call fallback in chooseCall stay truthful.
+        val uri = c.details.handle?.toString()
+        calls.values.filter { old -> old !== c && old.stateCompat() == Call.STATE_DISCONNECTED &&
+            old.details.handle?.toString() == uri && old.details.accountHandle == c.details.accountHandle }
+            .forEach { removed(it) }
         cidOf(c)
         c.registerCallback(callback)
         publish(c)

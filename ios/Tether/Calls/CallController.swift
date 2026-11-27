@@ -428,6 +428,7 @@ final class CallController: NSObject {
     /// After a reconnect: end CallKit calls the Android phone no longer has.
     func reconcile(with list: [CallInfo]) {
         let live = Set(list.filter { !$0.isEnded }.map(\.cid))
+        hungUp.forgetExcept(live)   // a hung-up call the Android phone no longer lists is over: stop re-asking
         for cid in remote.keys where !live.contains(cid) { remote[cid] = nil }
         for (cid, uuid) in uuids where !live.contains(cid) {
             reportEnded(uuid, .remoteEnded)

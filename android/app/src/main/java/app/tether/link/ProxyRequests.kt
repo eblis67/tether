@@ -6,40 +6,14 @@ import java.net.InetAddress
 /** Request parsing of the Share VPN proxy (ShareProxy), kept free of sockets so it is unit-tested (ProxyRequestsTest). */
 object ProxyRequests {
     /** The PAC file: through the proxy (HTTP, then SOCKS5, then direct) while sharing, DIRECT otherwise; local names always direct. */
-    fun pac(sharing: Boolean, ip: String, port: Int, bypass: List<String> = emptyList()): String {
-        if (!sharing) return "function FindProxyForURL(url, host) { return \"DIRECT\"; }"
-        val lines = ArrayList<String>()
-        lines += "function FindProxyForURL(url, host) {"
-        lines += "  if (isPlainHostName(host) || isInNet(host, \"10.0.0.0\", \"255.0.0.0\") || isInNet(host, \"172.16.0.0\", \"255.240.0.0\") ||"
-        lines += "      isInNet(host, \"192.168.0.0\", \"255.255.0.0\") || isInNet(host, \"127.0.0.0\", \"255.0.0.0\") || shExpMatch(host, \"*.local\"))"
-        lines += "    return \"DIRECT\";"
-        for (h in bypass) lines += "  if (host == \"$h\" || dnsDomainIs(host, \"$h\")) return \"DIRECT\";"
-        lines += "  return \"PROXY $ip:$port; SOCKS5 $ip:$port; DIRECT\";"
-        lines += "}"
-        return lines.joinToString("\n")
-    }
-
-    /**
-     * The user's split-tunnel bypass list, cleaned for storage and for the PAC file: bare lower-case host names
-     * only (a pasted scheme, path, port, leading "*." or trailing dot is stripped), duplicates and anything that
-     * is not a plausible host name dropped, at most [MAX_BYPASS] entries.
-     */
-    fun sanitizeBypass(raw: List<String>): List<String> {
-        val out = LinkedHashSet<String>()
-        for (r in raw) {
-            var h = r.trim().lowercase()
-            h = h.substringAfter("://", h).substringBefore('/').substringBefore(':').removePrefix("*.").trimEnd('.')
-            if (h.length in 1..253 && h.contains('.') && h.all { it.isLetterOrDigit() || it == '-' || it == '.' } &&
-                !h.startsWith('.') && !h.startsWith('-') && !h.contains("..")) out.add(h)
-            if (out.size >= MAX_BYPASS) break
-        }
-        return out.toList()
-    }
-
-    /** Telegram's SOCKS5 deep link for this proxy address (Telegram speaks SOCKS5; there is no MTProto server). */
-    fun telegramLink(ip: String, port: Int) = "tg://socks?server=$ip&port=$port"
-
-    const val MAX_BYPASS = 64
+    fun pac(sharing: Boolean, ip: String, port: Int): String = if (sharing) """
+            function FindProxyForURL(url, host) {
+              if (isPlainHostName(host) || isInNet(host, "10.0.0.0", "255.0.0.0") || isInNet(host, "172.16.0.0", "255.240.0.0") ||
+                  isInNet(host, "192.168.0.0", "255.255.0.0") || isInNet(host, "127.0.0.0", "255.0.0.0") || shExpMatch(host, "*.local"))
+                return "DIRECT";
+              return "PROXY $ip:$port; SOCKS5 $ip:$port; DIRECT";
+            }
+        """.trimIndent() else "function FindProxyForURL(url, host) { return \"DIRECT\"; }"
 
     /** A CONNECT target `host:port` (IPv6 in brackets); port 443 when missing or not a number. */
     fun connectTarget(target: String): Pair<String, Int> =

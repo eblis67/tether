@@ -117,11 +117,6 @@ public final class TetherLink: NSObject {
         }
     }
 
-    /// The live session's transcript hash (§3), for extensions that derive one-time keys from it
-    /// (`x.tether.files`): the host owns the session, the extension never sees its traffic keys.
-    /// Nil while no session is up (the keys are dropped with the session).
-    public var transcriptHash: Data? { keys?.transcriptHash }
-
     /// Sends a control message; returns the request id (use it to match `re` in replies). `re`: this answers the
     /// Android phone's request with that id (extensions, protocol §7).
     @discardableResult

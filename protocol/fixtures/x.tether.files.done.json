@@ -1,7 +1,0 @@
-{
-  "t": "x.tether.files.done",
-  "dir": "both",
-  "variants": {
-    "full": { "tid": "AAECAwQFBgcICQoLDA0ODw", "files": 2, "bytes": 2000000579 }
-  }
-}

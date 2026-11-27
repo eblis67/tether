@@ -66,11 +66,6 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
     var netPending: String? = null; private set
     var netError: String? = null; private set
     var selftest: JSONObject? = null; private set
-    /** After a self-test that ran during a call: the two feedback answers, sent together when both are in. */
-    var feedbackPending = false; private set
-    var feedbackYou: Boolean? = null; private set
-    var feedbackThem: Boolean? = null; private set
-    var feedbackThanks = false; private set
     var problem: Problem? = null
     var syncing = false; private set
     var lastSync = 0L; private set
@@ -268,19 +263,7 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
         netAskedAt = fx.now()
         link.send(T.NET_GET, JSONObject(), expectReply = true)
     }
-    fun runSelftest() {
-        selftest = null; feedbackPending = false; feedbackYou = null; feedbackThem = null; feedbackThanks = false
-        link.send(T.SELFTEST, JSONObject(), expectReply = true); fx.changed()
-    }
-
-    /** One of the two feedback answers; when both are in, they are sent together (docs/CALL-AUDIO.md). */
-    fun answerFeedback(you: Boolean) { feedbackYou = you; sendFeedbackIfComplete(); fx.changed() }
-    fun answerFeedbackThem(them: Boolean) { feedbackThem = them; sendFeedbackIfComplete(); fx.changed() }
-    private fun sendFeedbackIfComplete() {
-        val you = feedbackYou ?: return; val them = feedbackThem ?: return
-        link.send(T.AUDIO_SET, JSONObject().put("feedback", JSONObject().put("you", you).put("them", them)))
-        feedbackPending = false; feedbackYou = null; feedbackThem = null; feedbackThanks = true
-    }
+    fun runSelftest() { selftest = null; link.send(T.SELFTEST, JSONObject(), expectReply = true); fx.changed() }
 
     // ------------------------------------------------------------------ sync and texts
 
@@ -486,12 +469,7 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
                 // A state pushed because another client flipped a switch must not clear our own pending one.
                 if (re != null) netPending = null
             }
-            T.SELFTEST_RESULT -> {
-                selftest = b
-                // A test during a live call is one the user can judge: ask the feedback questions.
-                val live = b.optJSONArray("methods").mapObjects { it.optString("name") }.any { it.startsWith("inject:") }
-                if (live) { feedbackPending = true; feedbackYou = null; feedbackThem = null; feedbackThanks = false }
-            }
+            T.SELFTEST_RESULT -> selftest = b
             T.ERROR -> problem = Problem(Problem.OTHER, b.optString("msg"))
             T.PONG, T.PING -> return true
             else -> return false

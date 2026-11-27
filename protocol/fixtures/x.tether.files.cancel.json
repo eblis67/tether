@@ -1,8 +1,0 @@
-{
-  "t": "x.tether.files.cancel",
-  "dir": "both",
-  "variants": {
-    "full": { "tid": "AAECAwQFBgcICQoLDA0ODw", "why": "changed my mind" },
-    "minimal": { "tid": "AAECAwQFBgcICQoLDA0ODw" }
-  }
-}

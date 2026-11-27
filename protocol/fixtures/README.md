@@ -32,8 +32,6 @@ kept out of the `T` / `MsgType` / §5 parity and checked on their own. Both cont
 side's extension registry:
 
 - `x.tether.echo.json`: the built-in echo; every `request` variant is answered exactly like the `reply` variants.
-- `x.tether.files*.json`: the built-in file transfer (§7.10): offer pages, accept/decline, done, cancel, error.
-- `x.tether.wifiaudio*.json`: the built-in Wi-Fi call path (§7.11): offer, accept/decline, down, error.
 - `x.org.example.unknown.json`: a type no build registers. A request with an `id` is refused with the body of
   `error.json`'s `extension` variant; without an `id` it is ignored.
 - The `caps` and `ext` fields of `sync` and `status` are in their own fixtures (`full`, `android`, `unknown`); the

@@ -34,8 +34,6 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     private var pendingStatic: ByteArray? = null
     private var pairing = false
     @Volatile var session: SecureSession? = null; private set
-    /** The session's transcript hash (§3), kept for extensions that derive one-time keys (x.tether.files). */
-    @Volatile var transcriptHash: ByteArray? = null; private set
     /** Normal lane (sync pages, status…) and priority lane (handshake, call events, audio). */
     private val queue = LinkedBlockingDeque<Item>()
     private val prio = LinkedBlockingDeque<Item>()
@@ -166,7 +164,6 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
             State.FINISH -> {
                 val hs = handshake ?: throw HandshakeException("rejected peer kept talking")
                 val (s, fin) = hs.receiveFinish(r)
-                transcriptHash = hs.keys?.th
                 if (pairing && transport.label == "memory") {
                     keys.closePairing() // on-device test session: never replaces the real pairing
                 } else if (pairing) {

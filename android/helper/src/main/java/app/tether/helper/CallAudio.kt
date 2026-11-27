@@ -67,9 +67,16 @@ object CallAudio {
      */
     const val MIN_SDK_AUDIO = 30
     const val FULL_SDK_AUDIO = 33
-    /** The ladders live in the registry ([AudioMethods]): one source of truth for what this Android offers. */
-    val captureMethods: List<String> get() = AudioMethods.captureLadder(Build.VERSION.SDK_INT).map { it.id }
-    val injectMethods: List<String> get() = AudioMethods.injectLadder(Build.VERSION.SDK_INT).map { it.id }
+    val captureMethods: List<String> get() = when {
+        Build.VERSION.SDK_INT >= FULL_SDK_AUDIO -> listOf("intercept", "voice_downlink", "telephony_rx", "voice_call")
+        Build.VERSION.SDK_INT >= MIN_SDK_AUDIO -> listOf("voice_downlink", "voice_call", "telephony_rx")
+        else -> emptyList()
+    }
+    val injectMethods: List<String> get() = when {
+        Build.VERSION.SDK_INT >= FULL_SDK_AUDIO -> listOf("intercept", "telephony_tx", "policy_mix")
+        Build.VERSION.SDK_INT >= MIN_SDK_AUDIO -> listOf("telephony_tx")
+        else -> emptyList()
+    }
 
     private val am get() = ShellEnv.audioManager
 
