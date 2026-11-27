@@ -36,6 +36,24 @@ jobs:
             "$SDKMANAGER" "platforms;android-36"
           fi
 
+      # One fixed release key for every build (GitHub Secrets): without it each CI runner signs with a
+      # fresh debug key, Android refuses to update the installed app, and every install wipes its data
+      # (pairing, settings) — the cause of the re-pair / unstable-link reports on 2026-11-27.
+      - name: Restore release signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/phone-release.jks"
+          cat > android/local.properties <<EOF
+          tether.signing.storeFile=$RUNNER_TEMP/phone-release.jks
+          tether.signing.storePassword=$STORE_PASSWORD
+          tether.signing.keyAlias=$KEY_ALIAS
+          tether.signing.keyPassword=$KEY_PASSWORD
+          EOF
+
       - name: Build release APK
         run: cd android && chmod +x gradlew && ./gradlew :app:assembleRelease --stacktrace
 
