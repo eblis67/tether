@@ -228,6 +228,20 @@ final class AppModel {
         return sim.name.isEmpty ? String(localized: "SIM \(sim.slot + 1)") : sim.name
     }
 
+    /// "Mark all as read": every conversation at once. Live messages behave — their read marks
+    /// arrive from the Android phone — but a backlog built up while the mirror was behind never
+    /// corrected itself (the historical rows' flags live on the Android phone and nothing rewrites
+    /// history). This clears it here and tells the Android phone too, one thread at a time, exactly
+    /// like opening each conversation would.
+    func markAllRead() {
+        let threads = conversations.filter { $0.unread > 0 }.map(\.thread)
+        guard !threads.isEmpty else { return }
+        for thread in threads {
+            markRead(thread: thread)
+            Notifications.shared.clearSms(thread: thread)
+        }
+    }
+
     func markRead(thread: Int64) {
         let newest = data.sms.filter { $0.thread == thread }.map(\.id).max() ?? 0
         if (data.readUpTo[thread] ?? 0) < newest {
