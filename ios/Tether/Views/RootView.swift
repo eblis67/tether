@@ -97,7 +97,6 @@ struct RootView: View {
             // Presented content does not always inherit environment objects: pass them explicitly.
             InCallView().environment(\.appModel, AppModel.shared).environment(\.router, Router.shared)
         }
-        .preferredColorScheme(.dark)
         .tint(Color("AccentColor"))
         .task {
             if !model.isPaired && !model.isDemo { router.tab = .link }
