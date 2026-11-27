@@ -410,6 +410,11 @@ final class AppModel {
                                            caps: extensions.caps.isEmpty ? nil : extensions.caps))
         // Conversations read while out of reach.
         for (thread, upTo) in pendingRead { link.send(MsgType.smsRead, SmsRead(thread: thread, upTo: upTo)) }
+        // Every read mark is re-announced with each sync: a mark sent while the Android phone could
+        // not write it (its store grant missing after a fresh install) was otherwise never repeated —
+        // the readUpTo gate believes the phone was already told — so the Android kept those messages
+        // unread for good. The Android applies marks idempotently and retries refused ones itself.
+        for (thread, upTo) in data.readUpTo where upTo > 0 { link.send(MsgType.smsRead, SmsRead(thread: thread, upTo: upTo)) }
         pendingRead.removeAll()
         // Once: everything read on this device before read state was shared with the Android phone.
         if !UserDefaults.standard.bool(forKey: "readStateBackfilled") {
