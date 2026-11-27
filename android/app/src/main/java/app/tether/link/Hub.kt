@@ -76,7 +76,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     private val radioPushPending = java.util.concurrent.atomic.AtomicBoolean(false)
     private val endedSent = ConcurrentHashMap<String, Long>()
     private val unreadPushPending = java.util.concurrent.atomic.AtomicBoolean(false)
-    @Volatile private var lastUnread = ""
+    @Volatile private var lastUnread: String? = null   // null = never sent: an empty list is a real state, not "nothing to send"
     /** Slow helper work (network switches up to ~50 s, self-test up to 40 s) runs here, not on the hub thread
      *  that SMS sends, reads, deletes and sync share. */
     private val slow = Executors.newSingleThreadExecutor { r -> Thread(r, "hub-slow") }
