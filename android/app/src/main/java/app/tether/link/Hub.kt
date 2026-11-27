@@ -71,6 +71,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     private val smsRequests = ConcurrentHashMap<Int, Pair<Connection, Int>>()
     /** Texts that arrived while no client was connected: held for the next connect, never dropped. */
     private val pendingSms = PendingSms()
+    /** Read marks from a client (thread -> newest id) that have not landed in the SMS store yet:
+     *  retried by the periodic pass until they do, so a refused write is never lost for good. */
+    private val pendingReadMarks = java.util.concurrent.ConcurrentHashMap<Long, Long>()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     val audio = AudioSession()
     private val radioPushPending = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -92,6 +95,24 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         if (targets().isEmpty()) return   // nobody to tell: keep the change pending for the next connect
         lastUnread = key
         broadcast(unreadMessage(ids))
+    }
+
+    /** Retries read marks that were refused when they arrived (no WRITE_SMS grant, helper down).
+     *  One grant attempt per pass, then every pending mark is written; a mark leaves the list only
+     *  when the store provably shows nothing unread up to it any more. The iPhone re-announces all
+     *  its read marks on every connect, so even marks from before this build get retried here. */
+    private fun retryReadMarks() {
+        if (pendingReadMarks.isEmpty()) return
+        val grant = runCatching { Adb.allowSmsWrite(app) }.getOrNull()?.trim()
+        var landed = 0
+        for ((thread, upTo) in pendingReadMarks) {
+            runCatching { app.sms.markRead(thread, upTo) }
+            if (runCatching { app.sms.unreadCount(thread, upTo) }.getOrDefault(-1) == 0) {
+                pendingReadMarks.remove(thread, upTo); landed++
+            }
+        }
+        if (landed > 0) LinkLog.add("read marks applied ($landed conversation(s))")
+        else if (pendingReadMarks.isNotEmpty()) Log.i(TAG, "read marks still pending: ${pendingReadMarks.size} (grant: $grant)")
     }
 
     private fun unreadMessage(ids: List<Long>) = Message(T.SMS_UNREAD, JSONObject().put("ids", JSONArray(ids)).put("all", ids.size < 3000))
@@ -171,7 +192,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         }
         // Signal / network type changes reach the iPhone within ~2 s (several changes at once send one status).
         app.sims.watch { if (radioPushPending.compareAndSet(false, true)) work.schedule({ radioPushPending.set(false); runCatching { pushStatus() } }, 2, TimeUnit.SECONDS) }
-        work.scheduleWithFixedDelay({ runCatching { pushStatus(); watchdog(); pushUnreadIfChanged() }.onFailure { Log.e(TAG, "watchdog", it) } }, 60, 60, TimeUnit.SECONDS)
+        work.scheduleWithFixedDelay({ runCatching { pushStatus(); watchdog(); pushUnreadIfChanged(); retryReadMarks() }.onFailure { Log.e(TAG, "watchdog", it) } }, 60, 60, TimeUnit.SECONDS)
         work.scheduleWithFixedDelay({ runCatching { stallCheck() } }, 5, 5, TimeUnit.SECONDS)
         work.scheduleWithFixedDelay({ runCatching { lePulse() } }, LinkPolicy.PULSE_EVERY_S, LinkPolicy.PULSE_EVERY_S, TimeUnit.SECONDS)
         pulseBurst()   // a restart drops the iPhone's session like an app close does
@@ -315,14 +336,15 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             T.SMS_READ -> bg {
                 val thread = m.b.optLong("thread", -1); val upTo = m.b.optLong("upTo", -1)
                 if (thread >= 0 && upTo > 0) {
+                    // Remember every read mark until it has provably landed. The write needs the
+                    // WRITE_SMS app-op; when the grant is missing (fresh install) or the helper is
+                    // down, the write is refused — and a burst of marks (the iPhone's "mark all as
+                    // read" sends one per conversation) must not each block on a shell grant.
+                    // Failed marks stay here and the periodic pass retries them with one grant.
+                    if (!dry(c)) pendingReadMarks.merge(thread, upTo) { a, b -> maxOf(a, b) }
                     val pending = app.sms.unreadCount(thread, upTo)
-                    var n = if (dry(c) || pending == 0) 0 else app.sms.markRead(thread, upTo)
-                    // Without the WRITE_SMS app-op Android ignores the write silently (0 rows) or refuses it:
-                    // grant it through adb and retry once (fresh install, or the default SMS app changed).
-                    if (!dry(c) && pending > 0 && n <= 0) {
-                        Log.i(TAG, "sms.read: write ignored, granting WRITE_SMS: ${runCatching { Adb.allowSmsWrite(app) }.getOrNull()?.trim()}")
-                        n = app.sms.markRead(thread, upTo)
-                    }
+                    val n = if (dry(c) || pending == 0) 0 else app.sms.markRead(thread, upTo)
+                    if (!dry(c) && app.sms.unreadCount(thread, upTo) == 0) pendingReadMarks.remove(thread, upTo)
                     Log.i(TAG, "sms.read thread=$thread upTo=$upTo -> $n row(s)")
                     targets().filter { it !== c }.forEach { it.send(Message(T.SMS_READ, JSONObject().put("thread", thread).put("upTo", upTo))) }
                 }
