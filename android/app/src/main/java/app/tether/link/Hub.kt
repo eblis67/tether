@@ -81,6 +81,19 @@ class Hub(private val app: TetherApp) : ConnectionListener {
      *  that SMS sends, reads, deletes and sync share. */
     private val slow = Executors.newSingleThreadExecutor { r -> Thread(r, "hub-slow") }
     /** sms.unread: the Android phone's unread incoming ids; `all` false when capped (then only newer ones are known). */
+    /** Sends the unread mirror when it changed since the last send. The change listener is the fast
+     *  path; this also runs periodically and on every connect, because the listener's one broadcast
+     *  can be lost on a dying session (sends drop silently) — and then nothing would ever correct the
+     *  client's read marks again: they stayed wrong for good (everything read here, 412 unread there). */
+    private fun pushUnreadIfChanged() {
+        val ids = app.sms.unreadIds() ?: return
+        val key = ids.joinToString(",")
+        if (key == lastUnread) return
+        if (targets().isEmpty()) return   // nobody to tell: keep the change pending for the next connect
+        lastUnread = key
+        broadcast(unreadMessage(ids))
+    }
+
     private fun unreadMessage(ids: List<Long>) = Message(T.SMS_UNREAD, JSONObject().put("ids", JSONArray(ids)).put("all", ids.size < 3000))
 
     private fun slowBg(block: () -> Unit) = slow.execute { try { block() } catch (t: Throwable) { Log.e(TAG, "hub task failed", t) } }
@@ -153,14 +166,12 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         app.sms.changeListener = {
             if (unreadPushPending.compareAndSet(false, true)) work.schedule({
                 unreadPushPending.set(false)
-                val ids = app.sms.unreadIds() ?: return@schedule
-                val key = ids.joinToString(",")
-                if (key != lastUnread) { lastUnread = key; broadcast(unreadMessage(ids)) }
+                pushUnreadIfChanged()
             }, 2, TimeUnit.SECONDS)
         }
         // Signal / network type changes reach the iPhone within ~2 s (several changes at once send one status).
         app.sims.watch { if (radioPushPending.compareAndSet(false, true)) work.schedule({ radioPushPending.set(false); runCatching { pushStatus() } }, 2, TimeUnit.SECONDS) }
-        work.scheduleWithFixedDelay({ runCatching { pushStatus(); watchdog() }.onFailure { Log.e(TAG, "watchdog", it) } }, 60, 60, TimeUnit.SECONDS)
+        work.scheduleWithFixedDelay({ runCatching { pushStatus(); watchdog(); pushUnreadIfChanged() }.onFailure { Log.e(TAG, "watchdog", it) } }, 60, 60, TimeUnit.SECONDS)
         work.scheduleWithFixedDelay({ runCatching { stallCheck() } }, 5, 5, TimeUnit.SECONDS)
         work.scheduleWithFixedDelay({ runCatching { lePulse() } }, LinkPolicy.PULSE_EVERY_S, LinkPolicy.PULSE_EVERY_S, TimeUnit.SECONDS)
         pulseBurst()   // a restart drops the iPhone's session like an app close does
@@ -220,6 +231,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         // Texts that arrived while this client was away were held, not dropped: hand them over now,
         // ahead of the sync the client is about to ask for (its batch copy then just dedupes by id).
         for (s in pendingSms.drain()) c.send(Message(T.SMS_NEW, JSONObject().put("item", s.json())))
+        // The read marks may have changed while this client was away: re-send the unread mirror.
+        bg { pushUnreadIfChanged() }
         // A client paired just now has no kind yet (iPhone or Android phone): it says so in its first sync.
         if (newlyPaired) kindPending.add(c) else holdLeFor(c)
         ext(c)
