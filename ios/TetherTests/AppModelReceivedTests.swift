@@ -11,6 +11,23 @@ final class AppModelReceivedTests: XCTestCase {
         await MainActor.run { AppModel.shared.resetForTests() }
     }
 
+    // MARK: control panel (§5.4)
+
+    /// The panel starts all-off; the phone's state is adopted when newer, and a local flip is kept.
+    func testFeaturesStateAdoptedWhenNewer() {
+        XCTAssertEqual(m.features, .default)
+        feed(m, wire(MsgType.featuresState, FeaturesBody(features: [Feature.ussd: true], rev: 4)))
+        XCTAssertTrue(m.features.isOn(Feature.ussd))
+        XCTAssertEqual(m.features.rev, 4)
+        // An older state does not roll it back.
+        feed(m, wire(MsgType.featuresState, FeaturesBody(features: [:], rev: 2)))
+        XCTAssertTrue(m.features.isOn(Feature.ussd))
+        // A flip here moves the revision past the phone's.
+        m.setFeature(Feature.internet, true)
+        XCTAssertTrue(m.features.isOn(Feature.internet))
+        XCTAssertEqual(m.features.rev, 5)
+    }
+
     // MARK: SMS
 
     /// A sync page builds conversations, newest first, with unread counts; the sync point advances per page.

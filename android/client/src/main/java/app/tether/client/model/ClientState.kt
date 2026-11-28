@@ -3,6 +3,7 @@ package app.tether.client.model
 import app.tether.core.CallEntry
 import app.tether.core.Contact
 import app.tether.core.Ext
+import app.tether.core.FeatureSettings
 import app.tether.core.Phone
 import app.tether.core.Sms
 import app.tether.core.T
@@ -68,6 +69,17 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
     val threadSim = HashMap<String, Int>()
     var status: JSONObject? = null; private set
     var lists = BlockLists(); private set
+    /** Control panel state (protocol §5.4): this client's copy; the Android phone is the source of truth. */
+    var features = FeatureSettings(); private set
+
+    /** A switch flipped here: kept locally at once and sent whole; while the link is down it is re-sent
+     *  when the phone's older state arrives (see the FEATURES_STATE case), so the flip still lands. */
+    fun setFeature(id: String, on: Boolean) {
+        if (features.isOn(id) == on) return
+        features = features.with(id, on)
+        if (link.isConnected) link.send(T.FEATURES_SET, features.json(id))
+        persist()
+    }
     var smsSyncedUpTo: Long? = null; private set
     var outbox: List<OutboxItem> = emptyList(); private set
     var recentsSeenUpTo: Long? = null; private set
@@ -452,6 +464,13 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
                 lists.muted.forEach { fx.clearSms(it) }
                 persist()
             }
+            T.FEATURES_STATE -> {
+                val incoming = FeatureSettings.of(b)
+                val merged = features.adopt(incoming)
+                if (merged != features) { features = merged; persist() }
+                // Ours is newer (a switch flipped while the link was down): send it so the phone adopts it.
+                else if (incoming.rev < features.rev && link.isConnected) link.send(T.FEATURES_SET, features.json())
+            }
             T.SYNC_IDS -> {
                 val more = if (b.has("more")) b.opt("more") else false
                 if (more !is Boolean) {
@@ -598,7 +617,7 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
     fun wipe() {
         resetPendingIds()
         sms = emptyList(); contacts = emptyList(); recents = emptyList(); contactsVersion = ""
-        readUpTo.clear(); starred.clear(); drafts.clear(); threadSim.clear(); status = null; lists = BlockLists(); smsSyncedUpTo = null
+        readUpTo.clear(); starred.clear(); drafts.clear(); threadSim.clear(); status = null; lists = BlockLists(); features = FeatureSettings(); smsSyncedUpTo = null
         outbox = emptyList(); recentsSeenUpTo = null; net = null; pendingRead.clear(); pendingSms.clear(); smsIndex.clear()
         rebuildIndex(); persist()
     }
@@ -621,6 +640,7 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
         .put("drafts", JSONObject(drafts as Map<*, *>))
         .put("threadSim", JSONObject(threadSim as Map<*, *>))
         .put("lists", lists.json())
+        .put("features", features.json())
         .put("outbox", JSONArray(outbox.map { JSONObject().put("to", it.to).put("body", it.body).put("placeholder", it.placeholder).apply { it.sub?.let { s -> put("sub", s) } } }))
         .apply {
             status?.let { put("status", it) }
@@ -639,6 +659,7 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
         o.optJSONObject("threadSim")?.let { r -> r.keys().forEach { threadSim[it] = r.optInt(it) } }
         status = o.optJSONObject("status")
         lists = o.optJSONObject("lists")?.let(BlockLists::of) ?: BlockLists()
+        features = FeatureSettings.of(o.optJSONObject("features"))
         smsSyncedUpTo = o.optLongOrNull("smsSyncedUpTo")
         recentsSeenUpTo = o.optLongOrNull("recentsSeenUpTo")
         outbox = o.optJSONArray("outbox").mapObjects { OutboxItem(it.optString("to"), it.optString("body"), it.optIntOrNull("sub"), it.optLong("placeholder")) }

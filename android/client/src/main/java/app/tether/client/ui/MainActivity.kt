@@ -31,6 +31,7 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import app.tether.client.R
+import app.tether.core.Feature
 import app.tether.client.link.BleCentral
 import app.tether.client.link.LinkService
 import app.tether.client.model.RecentsLayout
@@ -867,6 +868,28 @@ class MainActivity : Activity() {
         ))
         box.addView(phone)
 
+        // Control panel (protocol §5.4): every extra feature is off until switched on here or on
+        // another phone; a switch flipped anywhere applies on every phone.
+        if (app.identity.isPaired) {
+            val panel = card()
+            panel.addView(label(getString(R.string.panel).uppercase(), R.color.accent, 12f, bold = true))
+            for (id in Feature.ALL.filter { it in Feature.AVAILABLE }) {
+                panel.addView(Switch(this).apply {
+                    text = getString(when (id) {
+                        Feature.INTERNET -> R.string.feature_internet
+                        Feature.USSD -> R.string.feature_ussd
+                        Feature.FIND -> R.string.feature_find
+                        else -> R.string.feature_ringer
+                    })
+                    textSize = 16f; setTextColor(col(R.color.text)); isChecked = s.features.isOn(id)
+                    setPadding(0, dp(8), 0, dp(8))
+                    setOnCheckedChangeListener { _, v -> if (v != s.features.isOn(id)) s.setFeature(id, v) }
+                })
+            }
+            panel.addView(label(getString(R.string.panel_note), R.color.muted, 12f))
+            box.addView(panel)
+        }
+
         // Switches
         if (connected) {
             if (s.net == null && s.netPending == null) s.refreshNet()
@@ -884,10 +907,12 @@ class MainActivity : Activity() {
                 })
             }
             toggle(R.string.mobile_data, "data", net?.optBoolean("data"))
-            toggle(R.string.hotspot, "hotspot", net?.optBoolean("hotspot"), can?.optBoolean("hotspot", true) ?: true)
-            toggle(R.string.bt_tethering, "bt", net?.optBoolean("bt"), can?.optBoolean("bt", true) ?: true)
+            // Internet sharing is a control-panel feature (§5.4): off, its switches are not shown at all.
+            val sharing = s.features.isOn(Feature.INTERNET)
+            toggle(R.string.hotspot, "hotspot", net?.optBoolean("hotspot"), sharing && (can?.optBoolean("hotspot", true) ?: true))
+            toggle(R.string.bt_tethering, "bt", net?.optBoolean("bt"), sharing && (can?.optBoolean("bt", true) ?: true))
             toggle(R.string.airplane, "airplane", net?.optBoolean("airplane"))
-            toggle(R.string.share_vpn, "share", net?.optBoolean("share"))
+            toggle(R.string.share_vpn, "share", net?.optBoolean("share"), sharing)
             if (net?.optBoolean("vpn") == true) sw.addView(label(getString(R.string.vpn_up), R.color.ok, 13f))
             net?.optJSONObject("proxy")?.optJSONArray("addrs")?.let { a ->
                 if (net.optBoolean("share")) for (i in 0 until a.length()) a.getJSONObject(i).let { ad ->

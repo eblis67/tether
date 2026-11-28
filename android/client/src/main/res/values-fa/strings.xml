@@ -126,6 +126,12 @@
     <string name="state_searching">در جستجوی گوشی اندروید…</string>
     <string name="state_unpaired">جفت نشده</string>
     <string name="switches">گوشی اندروید</string>
+    <string name="panel">کنترل‌پنل</string>
+    <string name="panel_note">قابلیت‌ها خاموش‌اند تا وقتی روشنشان کنی. هر کلید روی همهٔ گوشی‌ها اعمال می‌شود.</string>
+    <string name="feature_internet">اشتراک اینترنت</string>
+    <string name="feature_ussd">کدهای اپراتور (USSD)</string>
+    <string name="feature_find">پیدا کردن گوشی</string>
+    <string name="feature_ringer">حالت زنگ</string>
     <string name="tab_badge">%1$s، %2$d مورد جدید</string>
     <string name="tab_contacts">مخاطبین</string>
     <string name="tab_keypad">صفحه‌کلید</string>

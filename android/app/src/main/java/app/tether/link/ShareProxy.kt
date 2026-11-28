@@ -43,6 +43,9 @@ class ShareProxy(private val ctx: Context) {
 
     /** Sharing on: proxy requests are forwarded and the PAC file points at the proxy. */
     @Volatile var sharing = false
+    /** The control panel's internet switch (protocol §5.4): while false, [refresh] keeps no listener
+     *  at all — the service does not run, not even to answer the PAC file. */
+    @Volatile var serviceEnabled = true
     private val listeners = ConcurrentHashMap<String, ServerSocket>()   // ip → listener
     private val ifaceOf = ConcurrentHashMap<String, String>()
     private val pool = Executors.newCachedThreadPool { r -> Thread(r, "share-proxy").apply { isDaemon = true } }
@@ -74,7 +77,8 @@ class ShareProxy(private val ctx: Context) {
 
     /** Opens / closes listeners to match the tethering interfaces (called periodically and on net changes). */
     @Synchronized fun refresh() {
-        val want = tetherAddresses().toMap(LinkedHashMap()).entries.associate { (iface, ip) -> ip to iface }.toMutableMap()
+        val want = if (serviceEnabled) tetherAddresses().toMap(LinkedHashMap()).entries.associate { (iface, ip) -> ip to iface }.toMutableMap()
+            else mutableMapOf()
         if (loopbackForTests) want["127.0.0.1"] = "lo"
         for ((ip, s) in listeners) if (ip !in want) {
             Log.i(TAG, "share: stopped on ${ifaceOf[ip] ?: ip}")

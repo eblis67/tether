@@ -16,6 +16,8 @@ import app.tether.audio.VoiceCodec
 import app.tether.core.AudioFrame
 import app.tether.core.CallInfo
 import app.tether.core.Ext
+import app.tether.core.Feature
+import app.tether.core.FeatureSettings
 import app.tether.core.Message
 import app.tether.core.T
 import app.tether.core.ext.ExtensionLink
@@ -62,6 +64,35 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     val helper = HelperBridge(app)
     /** "Share VPN" proxy on the tethering interfaces (see ShareProxy). */
     val share = ShareProxy(app).apply { sharing = app.prefs.getBoolean("share_vpn", false) }
+    /**
+     * Control panel state (protocol §5.4): this phone is the source of truth. Persisted across restarts,
+     * every feature OFF until the owner switches it on here or from a client. Loaded after [share] because
+     * applying it gates the proxy.
+     */
+    var features: FeatureSettings = FeatureSettings.of(
+        runCatching { JSONObject(app.prefs.getString("features", null) ?: "") }.getOrNull())
+        private set
+
+    /** Persist the panel state and make everything follow it: gates, the status' tools, clients, the UI. */
+    private fun applyFeatures(announce: Boolean = true) {
+        app.prefs.edit().putString("features", features.json().toString()).apply()
+        // Internet sharing off: the proxy service does not run at all, and its switch reads off.
+        share.serviceEnabled = features.isOn(Feature.INTERNET)
+        share.sharing = features.isOn(Feature.INTERNET) && app.prefs.getBoolean("share_vpn", false)
+        share.refresh()
+        if (!features.isOn(Feature.FIND) && finder.active) finder.stop()
+        if (announce) broadcast(Message(T.FEATURES_STATE, features.json()))
+        bg { pushStatus() }
+        refresh()
+    }
+
+    /** A switch flipped on this phone itself (its control panel): clients follow at once. */
+    fun setFeature(id: String, on: Boolean) {
+        if (features.isOn(id) == on) return
+        features = features.with(id, on)
+        Log.i(TAG, "panel: $id -> $on (rev ${features.rev})")
+        applyFeatures()
+    }
     /** Carrier codes, "find my phone" and the ringer (iPhone Link tab › Phone). */
     val ussd = Ussd(app)
     private val ussdBusy = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -161,6 +192,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     /** Once per process: a recreated LinkService must not add a second set of listeners and timers. */
     fun startBackground() {
         if (!started.compareAndSet(false, true)) return
+        applyFeatures(announce = false)   // the panel state gates the proxy before its refresh loop starts
         extensions.start()
         helper.listen()
         helper.onChange = { refresh(); bg { pushStatus() } }
@@ -270,6 +302,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         LinkLog.add("link up (${c.name}, ${c.transport.label}) from ${LinkLog.short(c.transport.address)}")
         refresh()
         c.send(Message(T.CALL_LIST, JSONObject().put("calls", JSONArray(CallRegistry.list().map { callJson(it, c) }))))
+        // The control panel state (§5.4) goes out with the handshake, so a reconnected client shows the
+        // switches as they are — and hears about a switch it flipped while away being already applied.
+        c.send(Message(T.FEATURES_STATE, features.json()))
         // Texts that arrived while this client was away were held, not dropped: hand them over now,
         // ahead of the sync the client is about to ask for (its batch copy then just dedupes by id).
         // They arrive as sms.new, so on the iPhone they also post the local notification
@@ -369,6 +404,17 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             T.SMS_DELETE -> bg { deleteSms(c, m) }
             T.CALLS_DELETE -> bg { deleteCalls(c, m) }
             T.LISTS_SET -> bg { setLists(c, m) }
+            // A control-panel switch flipped on a client (§5.4): adopt what wins, then every client —
+            // the sender included — hears the settled state; a set that lost is answered with ours, so
+            // a client that flipped a switch while away re-sends or settles instead of diverging.
+            T.FEATURES_SET -> bg {
+                val merged = features.adopt(FeatureSettings.of(m.b), FeatureSettings.changedId(m.b))
+                if (merged != features) {
+                    features = merged
+                    Log.i(TAG, "panel: adopted rev ${features.rev} from ${c.name}")
+                    applyFeatures()
+                } else c.send(Message(T.FEATURES_STATE, features.json()))
+            }
             T.CONTACT_ADD -> bg { addContact(c, m) }
             T.CONTACT_UPDATE -> bg { updateContact(c, m) }
             // Favourites: star / unstar on the Android phone; the contacts version changes, so every client re-syncs them.
@@ -402,6 +448,15 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 // A test client only reads: it never flips the Android phone's radios, airplane mode or sharing.
                 val what = TestGuards.netSwitch(m.t, c.transport.dry, m.b.optString("what"))
                 val on = m.b.optBoolean("on")
+                // Control panel (§5.4): internet sharing off refuses the sharing switches — hotspot,
+                // Bluetooth tethering and Share VPN. The phone's own radios (data, airplane, SIM, mode)
+                // are not sharing and stay switchable.
+                if (m.t == T.NET_SET && !features.isOn(Feature.INTERNET) && what in setOf("share", "hotspot", "bt")) {
+                    val body = JSONObject().put("err", "Internet sharing is off in the control panel")
+                        .put("share", share.sharing).put("proxy", share.json())
+                    c.send(Message(T.NET_STATE, body, re = m.id))
+                    return@slowBg
+                }
                 if (what == "share") {
                     app.prefs.edit().putBoolean("share_vpn", on).apply()
                     share.sharing = on
@@ -428,9 +483,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             }
             T.USSD_SEND -> {
                 val code = m.b.optString("code"); val sub = if (m.b.has("sub")) m.b.optInt("sub") else null
-                if (dry(c) || !UssdCode.valid(code) || !ussdBusy.compareAndSet(false, true)) {
-                    // Test clients and invalid codes never reach the network.
-                    val err = if (!UssdCode.valid(code)) "Not a carrier code (like *123#)" else if (dry(c)) "dry run: not sent" else "Another code is still waiting for its answer"
+                if (dry(c) || !features.isOn(Feature.USSD) || !UssdCode.valid(code) || !ussdBusy.compareAndSet(false, true)) {
+                    // Test clients, a switched-off feature and invalid codes never reach the network.
+                    val err = if (!features.isOn(Feature.USSD)) "Carrier codes are off in the control panel" else if (!UssdCode.valid(code)) "Not a carrier code (like *123#)" else if (dry(c)) "dry run: not sent" else "Another code is still waiting for its answer"
                     c.send(Message(T.USSD_RESULT, JSONObject().put("ok", false).put("err", err), re = m.id))
                 } else Thread({
                     val r = try { ussd.send(code, sub) } finally { ussdBusy.set(false) }
@@ -440,13 +495,13 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             }
             T.PHONE_FIND -> bg {
                 val on = m.b.optBoolean("on")
-                val err = if (dry(c)) "dry run" else if (on) finder.start() else { finder.stop(); null }
+                val err = if (!features.isOn(Feature.FIND)) "Find my phone is off in the control panel" else if (dry(c)) "dry run" else if (on) finder.start() else { finder.stop(); null }
                 Log.i(TAG, "phone.find $on -> ${err ?: "ok"}")
                 c.send(Message(T.PHONE_FINDING, JSONObject().put("on", finder.active).apply { err?.let { put("err", it) } }, re = m.id))
             }
             T.RINGER_SET -> bg {
                 val mode = m.b.optString("mode")
-                val err = if (dry(c)) "dry run" else ringer.set(mode)
+                val err = if (!features.isOn(Feature.RINGER)) "Ringer control is off in the control panel" else if (dry(c)) "dry run" else ringer.set(mode)
                 Log.i(TAG, "ringer.set $mode -> ${err ?: "ok"}")
                 c.send(Message(T.RINGER_RESULT, JSONObject().put("ok", err == null).put("mode", ringer.mode()).apply { err?.let { put("err", it) } }, re = m.id))
                 pushStatus()
@@ -509,6 +564,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             c.send(Message(T.SYNC_IDS, b))
         }
         c.send(Message(T.LISTS, app.lists.json()))
+        c.send(Message(T.FEATURES_STATE, features.json()))
         app.sms.unreadIds()?.let { c.send(unreadMessage(it)) }
         Log.i(TAG, "sync: ${sms.size} sms, ${calls.size} calls, contacts ${if (version != contactsVersion) "sent" else "unchanged"} " +
             "in ${SystemClock.elapsedRealtime() - t0} ms")
@@ -716,9 +772,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
 
     // ------------------------------------------------------------------ status, calls
 
-    /** `tools` says what the Phone section of the iPhone's Link tab may offer (absent from older builds: hidden there). */
+    /** `tools` says what the Phone section of the iPhone's Link tab may offer (absent from older builds: hidden
+     *  there). Since the control panel (§5.4) it reports the panel state: a switched-off tool reads false. */
     fun statusJson(): JSONObject = app.sims.status(audio.helperStatus())
-        .put("tools", JSONObject().put("ussd", true).put("find", true).put("ringer", true))
+        .put("tools", JSONObject().put("ussd", features.isOn(Feature.USSD)).put("find", features.isOn(Feature.FIND)).put("ringer", features.isOn(Feature.RINGER)))
         .put("ringer", ringer.mode()).put("dnd", ringer.dndAccess())
         .put(Ext.CAPS, extensions.capsJson())
 

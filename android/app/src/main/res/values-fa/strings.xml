@@ -15,6 +15,12 @@
     <string name="notif_bt_off">بلوتوث خاموش است</string>
 
     <string name="section_link">اتصال آیفون</string>
+    <string name="section_panel">کنترل‌پنل</string>
+    <string name="panel_note">قابلیت‌ها خاموش‌اند تا وقتی روشنشان کنی. هر کلید روی این گوشی و همهٔ گوشی‌های متصل اعمال می‌شود.</string>
+    <string name="feature_internet">اشتراک اینترنت</string>
+    <string name="feature_ussd">کدهای اپراتور (USSD)</string>
+    <string name="feature_find">پیدا کردن گوشی</string>
+    <string name="feature_ringer">حالت زنگ</string>
     <string name="section_setup">راه‌اندازی</string>
     <string name="section_audio">صدای تماس</string>
     <string name="state_connected">وصل</string>

@@ -48,6 +48,49 @@ class ClientStateTest {
     private fun calls(vararg c: CallEntry, more: Boolean = false) =
         rx(T.CALLS_BATCH, JSONObject().put("items", JSONArray(c.map { it.json() })).put("more", more))
 
+    // ------------------------------------------------------------------ control panel (§5.4)
+
+    @Test fun panelStartsAllOffAndAFlipIsSentWhole() {
+        for (id in app.tether.core.Feature.ALL) assertFalse(s.features.isOn(id))
+        s.setFeature(app.tether.core.Feature.INTERNET, true)
+        assertTrue(s.features.isOn(app.tether.core.Feature.INTERNET))
+        val sent = link.last(T.FEATURES_SET)
+        assertEquals(app.tether.core.Feature.INTERNET, sent.b.getString("id"))
+        assertTrue(sent.b.getJSONObject("features").getBoolean("internet"))
+        assertEquals(1, sent.b.getLong("rev").toInt())
+        // Flipping to the same value sends nothing again.
+        val n = link.sent.size
+        s.setFeature(app.tether.core.Feature.INTERNET, true)
+        assertEquals(n, link.sent.size)
+    }
+
+    @Test fun panelStateFromThePhoneIsAdoptedAndPersisted() {
+        rx(T.FEATURES_STATE, JSONObject().put("features", JSONObject().put("ussd", true)).put("rev", 4))
+        assertTrue(s.features.isOn(app.tether.core.Feature.USSD))
+        assertEquals(4, s.features.rev.toInt())
+        // An older state does not roll it back, and ours is re-sent so the phone converges.
+        link.sent.clear()
+        rx(T.FEATURES_STATE, JSONObject().put("features", JSONObject()).put("rev", 2))
+        assertTrue(s.features.isOn(app.tether.core.Feature.USSD))
+        assertEquals(T.FEATURES_SET, link.sent.single().t)
+        // The snapshot carries the panel state across a restart.
+        val s2 = ClientState(FakeLink(), TestEffects())
+        s2.load(JSONObject(s.toJson().toString()))
+        assertTrue(s2.features.isOn(app.tether.core.Feature.USSD))
+        assertEquals(4, s2.features.rev.toInt())
+    }
+
+    @Test fun panelFlipWhileOfflineLandsWhenThePhonesStateArrives() {
+        link.isConnected = false
+        s.setFeature(app.tether.core.Feature.FIND, true)   // rev 1, not sent
+        assertTrue(link.sent.isEmpty())
+        link.isConnected = true
+        // The phone's (older) state arrives with the handshake: ours is newer, so it is sent now.
+        rx(T.FEATURES_STATE, JSONObject().put("features", JSONObject()).put("rev", 0))
+        val sent = link.last(T.FEATURES_SET)
+        assertTrue(sent.b.getJSONObject("features").getBoolean("find"))
+    }
+
     // ------------------------------------------------------------------ sync and sms
 
     @Test fun syncAsksFromTheLastCompletedSyncNotFromALiveText() {

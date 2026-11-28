@@ -153,6 +153,25 @@ class MainActivity : Activity() {
         row.addView(button(getString(R.string.pair_iphone)) { showQr() })
         link.addView(row)
 
+        // Control panel (protocol §5.4): every extra feature is off until switched on here or from a
+        // client; a switch flipped anywhere applies on every phone.
+        val panel = card(getString(R.string.section_panel))
+        panel.addView(label(getString(R.string.panel_note), R.color.muted, 13f))
+        for (id in app.tether.core.Feature.ALL.filter { it in app.tether.core.Feature.AVAILABLE }) {
+            panel.addView(android.widget.Switch(this).apply {
+                text = getString(when (id) {
+                    app.tether.core.Feature.INTERNET -> R.string.feature_internet
+                    app.tether.core.Feature.USSD -> R.string.feature_ussd
+                    app.tether.core.Feature.FIND -> R.string.feature_find
+                    else -> R.string.feature_ringer
+                })
+                textSize = 16f; setTextColor(color(R.color.text))
+                setPadding(0, dp(6), 0, dp(6))
+                isChecked = app.hub.features.isOn(id)
+                setOnCheckedChangeListener { _, on -> Thread { app.hub.setFeature(id, on) }.start() }
+            })
+        }
+
         // Setup
         val setup = card(getString(R.string.section_setup))
         setup.addView(label(getString(R.string.setup_intro), R.color.muted, 13f))

@@ -47,6 +47,16 @@ struct LinkView: View {
 
                 SigningSection()
 
+                if model.isPaired {
+                    Section {
+                        NavigationLink {
+                            ControlPanelView()
+                        } label: {
+                            Label("Control panel", systemImage: "switch.2")
+                        }
+                    }
+                }
+
                 if let s = model.status {
                     Section("Phone") {
                         LabeledContent("Battery", value: "\(s.battery)%" + (s.charging ? " ⚡︎" : ""))
@@ -80,10 +90,11 @@ struct LinkView: View {
                             .disabled(model.netPending != nil || !model.linkState.isConnected)
                         }
                         // Only what this Android phone can do (older Android builds of Tether do not say: shown).
-                        if model.net?.can?.hotspot != false {
+                        // Internet sharing is a control-panel feature (§5.4): off, its switches are not shown.
+                        if model.features.isOn(Feature.internet), model.net?.can?.hotspot != false {
                             NetToggle(title: "Wi-Fi hotspot", icon: "personalhotspot", what: "hotspot", value: model.net?.hotspot)
                         }
-                        if model.net?.can?.bt != false {
+                        if model.features.isOn(Feature.internet), model.net?.can?.bt != false {
                             NetToggle(title: "Bluetooth tethering", icon: "dot.radiowaves.left.and.right", what: "bt", value: model.net?.bt)
                         }
                         NetToggle(title: "Airplane mode", icon: "airplane", what: "airplane", value: model.net?.airplane)
@@ -110,7 +121,9 @@ struct LinkView: View {
                     } footer: {
                         Text("Turn on the hotspot and join it in Settings › Wi-Fi to use the Android phone's internet here. Bluetooth tethering is slower: after switching it on, tap the Android phone in Settings › Bluetooth. Airplane mode keeps Bluetooth on so this link stays up; if the link is not back within 90 seconds it switches itself off. The hotspot and Bluetooth tethering come back on after it.")
                     }
-                    VPNSection().id("vpn")
+                    if model.features.isOn(Feature.internet) {
+                        VPNSection().id("vpn")
+                    }
                     if let t = s.tools, t.ussd == true || t.find == true || t.ringer == true {
                         PhoneToolsSection(status: s, tools: t).id("phonetools")
                     }
@@ -390,6 +403,50 @@ struct DeveloperSection: View {
     }
 }
 #endif
+
+/// The control panel (protocol §5.4): one switch per extra feature, every one off by default. A switch
+/// flipped here applies on the Android phone and on every other client; while the phones are not linked
+/// it is kept and applied when they link again. A feature that is off is not shown elsewhere in the app
+/// and does not run on the Android phone.
+struct ControlPanelView: View {
+    @Environment(\.appModel) private var model
+
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    private func title(_ id: String) -> LocalizedStringKey {
+        switch id {
+        case Feature.internet: return "Internet sharing"
+        case Feature.ussd: return "Carrier codes"
+        case Feature.find: return "Find my phone"
+        default: return "Ringer mode"
+        }
+    }
+
+    private func icon(_ id: String) -> String {
+        switch id {
+        case Feature.internet: return "personalhotspot"
+        case Feature.ussd: return "number"
+        case Feature.find: return "location"
+        default: return "bell"
+        }
+    }
+
+    @ViewBuilder private var bodyContent: some View {
+        List {
+            Section {
+                ForEach(Feature.all.filter { Feature.available.contains($0) }, id: \.self) { id in
+                    Toggle(isOn: Binding(get: { model.features.isOn(id) }, set: { model.setFeature(id, $0) })) {
+                        Label(title(id), systemImage: icon(id))
+                    }
+                    .tint(.green)
+                }
+            } footer: {
+                Text("Features are off until you switch them on. A switch applies on both phones; while the phones are not linked, it applies when they link again.")
+            }
+        }
+        .navigationTitle("Control panel")
+    }
+}
 
 /// The Android phone's VPN (any VPN app) and "Share VPN": its proxy lets this device use that VPN.
 struct VPNSection: View {

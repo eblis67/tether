@@ -90,6 +90,34 @@ final class AppModel {
     var selftest: SelftestResult?
     /// Conversations read while the link was down: thread → newest id read, sent on reconnect.
     @PerceptionIgnored private var pendingRead: [Int64: Int64] = [:]
+    /// Control panel state (protocol §5.4): this iPhone's copy; the Android phone is the source of truth.
+    /// Kept in UserDefaults, apart from the synced snapshot: it is this app's settings, not synced data.
+    var features: FeatureSettings = AppModel.loadFeatures()
+
+    private static func loadFeatures() -> FeatureSettings {
+        guard !demoMode, !runningTests,
+              let d = UserDefaults.standard.data(forKey: "features"),
+              let b = try? JSONDecoder().decode(FeaturesBody.self, from: d) else { return .default }
+        return FeatureSettings(b)
+    }
+
+    private func saveFeatures() {
+        guard !AppModel.demoMode, !AppModel.runningTests else { return }
+        if let d = try? JSONEncoder().encode(features.body) { UserDefaults.standard.set(d, forKey: "features") }
+    }
+
+    /// A switch flipped on this iPhone: shown at once, sent whole; while the link is down it is re-sent
+    /// when the Android phone's older state arrives, so the flip still lands (see `featuresState` below).
+    func setFeature(_ id: String, _ on: Bool) {
+        guard features.isOn(id) != on else { return }
+        features = features.with(id, on)
+        saveFeatures()
+        if linkState.isConnected {
+            var b = features.body; b.id = id
+            link.send(MsgType.featuresSet, b)
+        }
+    }
+
     /// Mobile data / hotspot / Bluetooth tethering on the Android phone; nil until first asked.
     var net: NetState?
     /// The switch that was just flipped and has not been confirmed yet ("data", "hotspot", "bt").
@@ -371,6 +399,7 @@ final class AppModel {
         pendingIds = SyncIds(sms: [], calls: []); incomingContacts = []; contactsPageStart = true
         smsIndex = [:]; pendingSms = [:]; incrementalSync = false
         net = nil; netPending = nil; ussdResult = nil; ussdPending = false; finding = false; phoneToolError = nil
+        features = .default
         lastError = nil; selftest = nil; syncing = false; openThread = nil
         extensions.linkDown(); extensionPort.isUp = false; extensionLine = nil
         rebuildIndex()
@@ -382,6 +411,8 @@ final class AppModel {
         lastError = nil
         data = Snapshot()
         store.wipe()
+        features = .default
+        saveFeatures()
         rebuildIndex()
         link.pair(with: code)
     }
@@ -390,6 +421,9 @@ final class AppModel {
         link.unpair()
         data = Snapshot()
         store.wipe()
+        // A new pairing starts from the panel defaults: every feature off (§5.4).
+        features = .default
+        saveFeatures()
         rebuildIndex()
     }
 
@@ -695,6 +729,13 @@ final class AppModel {
                 data.lists = l
                 for t in l.muted { Notifications.shared.clearSms(thread: t) }
                 persist()
+            case MsgType.featuresState:
+                // The Android phone's panel state (§5.4): adopt what is newer; if ours is newer (a switch
+                // flipped while the link was down), send it so the phone adopts it instead.
+                let incoming = FeatureSettings(try Control.body(FeaturesBody.self, from: payload))
+                let merged = features.adopt(incoming)
+                if merged != features { features = merged; saveFeatures() }
+                else if incoming.rev < features.rev { link.send(MsgType.featuresSet, features.body) }
             case MsgType.syncIds:
                 // Whatever the phone no longer has was deleted there or on the other client.
                 let page = try Control.body(SyncIds.self, from: payload)

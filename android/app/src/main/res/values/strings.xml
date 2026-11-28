@@ -15,6 +15,12 @@
     <string name="notif_bt_off">Bluetooth is off</string>
 
     <string name="section_link">iPhone link</string>
+    <string name="section_panel">Control panel</string>
+    <string name="panel_note">Features are off until you switch them on. A switch applies on this phone and on every linked phone.</string>
+    <string name="feature_internet">Internet sharing</string>
+    <string name="feature_ussd">Carrier codes (USSD)</string>
+    <string name="feature_find">Find my phone</string>
+    <string name="feature_ringer">Ringer mode</string>
     <string name="section_setup">Setup</string>
     <string name="section_audio">Call audio</string>
     <string name="state_connected">Connected</string>
