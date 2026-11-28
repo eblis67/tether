@@ -26,4 +26,28 @@ final class CallGuardTests: XCTestCase {
         g.hungUp("c1"); g.reset()
         XCTAssertEqual(g.check(cid: "c1", ended: false), .pass)
     }
+
+    func testNeverGivesUpWhileTheCallIsStillLive() {
+        // A hang-up lost to a dead link must keep being re-asked however long ago it was:
+        // the real call (and its audio) is still running on the Android phone.
+        var g = HangUpGuard()
+        let t = Date()
+        g.hungUp("c1", at: t)
+        XCTAssertEqual(g.check(cid: "c1", ended: false, now: t.addingTimeInterval(45)), .dropAndResend)
+        XCTAssertEqual(g.check(cid: "c1", ended: false, now: t.addingTimeInterval(600)), .dropAndResend)
+        XCTAssertTrue(g.contains("c1"))
+        g.forget("c1")   // a call list without it: over there too, stop guarding
+        XCTAssertEqual(g.check(cid: "c1", ended: false, now: t.addingTimeInterval(601)), .pass)
+    }
+
+    func testHungUpNumberMatchesTheSameCallUnderANewId() {
+        var g = HangUpGuard()
+        let t = Date()
+        g.hungUp("old-id", number: "+98 912 345 6789", at: t)
+        XCTAssertTrue(g.matchesHungUpNumber("09123456789"))
+        XCTAssertTrue(g.matchesHungUpNumber("+989123456789"))
+        XCTAssertFalse(g.matchesHungUpNumber("09120000000"))
+        g.forget("old-id")
+        XCTAssertFalse(g.matchesHungUpNumber("09123456789"))
+    }
 }

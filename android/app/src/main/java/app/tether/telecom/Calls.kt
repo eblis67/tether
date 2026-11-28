@@ -23,7 +23,6 @@ import app.tether.TetherApp
 import app.tether.core.CallInfo
 import app.tether.core.OldAndroid
 import app.tether.ui.CallActivity
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -46,9 +45,23 @@ object CallRegistry {
 
     fun addListener(l: (CallInfo) -> Unit) { listeners.add(l) }
 
-    fun cidOf(c: Call): String = ids.getOrPut(c) { UUID.randomUUID().toString().substring(0, 8).also { calls[it] = c } }
+    /** The id of a call, derived from the call itself — its line, the moment Telecom created it and
+     *  its SIM account — never from the Call object. When the in-call service re-delivers the same
+     *  call as a new object after a rebind (the app was frozen, then restarted), the id comes out the
+     *  same, so a hang-up the client sends for it still finds the call. A random id per object lost
+     *  exactly those hang-ups, silently, and the call stayed live on this phone. */
+    fun cidOf(c: Call): String = ids.getOrPut(c) {
+        val d = c.details
+        val raw = "${d.handle?.schemeSpecificPart.orEmpty()}|${d.creationTimeMillis}|${d.accountHandle?.id.orEmpty()}"
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+        digest.take(4).joinToString("") { "%02x".format(it.toInt() and 0xFF) }.also { calls[it] = c }
+    }
 
-    fun list(): List<CallInfo> = calls.values.map(::info)
+    /** Live calls only: a disconnected call whose removal callback never ran (the system froze the
+     *  app at that moment) must not be resurrected into every snapshot the clients reconcile from. */
+    fun list(): List<CallInfo> = calls.values
+        .filter { it.stateCompat() != Call.STATE_DISCONNECTED && it.stateCompat() != Call.STATE_DISCONNECTING }
+        .map(::info)
 
     /** Exactly this call (no "the only call" fallback), and only on Tether's own test line: what a test client may touch. */
     fun isTestCall(ctx: android.content.Context, cid: String): Boolean =
@@ -71,7 +84,23 @@ object CallRegistry {
     }
 
     internal fun added(c: Call) {
-        cidOf(c)
+        // The in-call service can re-deliver a call as a new object after a rebind. The old object for
+        // the same line, already disconnected, is a zombie (its removal was lost, e.g. the app was
+        // frozen then): retire it, so snapshots and the one-call fallback in chooseCall stay truthful.
+        val uri = c.details.handle?.toString()
+        calls.values.filter { old -> old !== c && old.stateCompat() == Call.STATE_DISCONNECTED &&
+            old.details.handle?.toString() == uri && old.details.accountHandle == c.details.accountHandle }
+            .forEach { removed(it) }
+        val cid = cidOf(c)
+        val prev = calls[cid]
+        if (prev != null && prev !== c) {
+            // The same call re-delivered as a new object (service rebind): hand the id over silently.
+            // The old object is unregistered without an "ended" — the call is not over — and its ids
+            // entry is gone, so a late removal for it cannot evict this object or end the call.
+            prev.unregisterCallback(callback)
+            ids.remove(prev)
+            firstOutgoing.remove(prev)
+        }
         c.registerCallback(callback)
         publish(c)
     }
@@ -80,7 +109,7 @@ object CallRegistry {
         c.unregisterCallback(callback)
         // Calls never registered (blocked callers, other apps' VoIP calls) end without telling anyone.
         val cid = ids.remove(c) ?: run { firstOutgoing.remove(c); return }
-        calls.remove(cid)
+        if (calls[cid] === c) calls.remove(cid)
         endedIds.add(cid)
         listeners.forEach { it(info(c, cid).copy(state = "ended")) }
         firstOutgoing.remove(c)
@@ -125,7 +154,13 @@ object CallRegistry {
 
     fun answer(cid: String) = calls[cid]?.answer(VideoProfile.STATE_AUDIO_ONLY) != null
     /** The call for an id from a client; if the id is unknown (e.g. the Android phone app restarted) but only one call exists, that one. */
-    private fun callFor(cid: String): Call? = chooseCall(cid, calls, endedIds)?.also { if (calls[cid] == null) Log.w(TAG, "call $cid unknown, using the only call") }
+    private fun callFor(cid: String): Call? {
+        // Retire zombies first: a disconnected call whose removal was lost (the app was frozen at
+        // that moment) must not block the one-call fallback below — the client asking does not know
+        // its id, and with the zombie counted there are "two" calls, so nothing would be ended.
+        calls.values.filter { it.stateCompat() == Call.STATE_DISCONNECTED }.forEach { removed(it) }
+        return chooseCall(cid, calls, endedIds)?.also { if (calls[cid] == null) Log.w(TAG, "call $cid unknown, using the only call") }
+    }
 
     /** Reject a ringing call; a call that is no longer ringing is ended instead (the client's view was late). */
     fun reject(cid: String): Boolean {

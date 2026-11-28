@@ -141,6 +141,11 @@ final class CallController: NSObject {
     private var endedHere = Set<UUID>()
     /// Android phone call ids hung up here: late updates for them must not bring the call back (TetherCore, tested).
     private var hungUp = HangUpGuard()
+    /// Repeating re-asks for a hang-up (every 5 s) while the guard still holds the call: the guard's
+    /// own re-ask needs a fresh sighting of the call, but a settled call on a quiet link produces no
+    /// sightings. This loop is the guarantee that a hang-up keeps being asked for until the Android
+    /// phone confirms the call is over.
+    private var endTimers: [String: Task<Void, Never>] = [:]
 
     /// Screen off at the ear, like a native call: proximity monitoring while a call is up and its audio is on the
     /// earpiece (not on speaker, headphones or AirPods). CallKit does this for its own screen only.
@@ -278,6 +283,17 @@ final class CallController: NSObject {
         case .dropAndResend:
             // Still not ended on the Android phone 2 s after we hung up: ask again.
             model.link.send(c.state == "ringing" ? MsgType.callReject : MsgType.callEnd, CallRef(cid: c.cid))
+            armEndTimer(c.cid, ringing: c.state == "ringing")
+            return
+        }
+        if !c.isEnded, !hungUp.contains(c.cid), hungUp.matchesHungUpNumber(c.num),
+           c.state == "active" || c.state == "ringing" || c.state == "holding" {
+            // The same call under a new id (the Android phone app restarted mid-call and the call
+            // came back renamed): the user's hang-up belongs to it. Guard it under this id, ask for
+            // its end, and never present it as a new call.
+            hungUp.hungUp(c.cid, number: c.num)
+            model.link.send(c.state == "ringing" ? MsgType.callReject : MsgType.callEnd, CallRef(cid: c.cid))
+            armEndTimer(c.cid, ringing: c.state == "ringing")
             return
         }
         let prev = lastState[c.cid]
@@ -478,6 +494,8 @@ final class CallController: NSObject {
     /// After a reconnect: end CallKit calls the Android phone no longer has.
     func reconcile(with list: [CallInfo]) {
         let live = Set(list.filter { !$0.isEnded }.map(\.cid))
+        hungUp.forgetExcept(live)   // a hung-up call the Android phone no longer lists is over: stop re-asking
+        for cid in endTimers.keys where !live.contains(cid) { endTimers.removeValue(forKey: cid)?.cancel() }
         for cid in remote.keys where !live.contains(cid) { remote[cid] = nil }
         for (cid, uuid) in uuids where !live.contains(cid) {
             reportEnded(uuid, .remoteEnded)
@@ -491,7 +509,8 @@ final class CallController: NSObject {
         for (_, uuid) in uuids { reportEnded(uuid, .failed) }
         uuids.removeAll(); cids.removeAll(); lastState.removeAll(); info.removeAll(); remote.removeAll()
         if let p = pendingOutgoing { reportEnded(p, .failed); pendingOutgoing = nil }
-        hungUp.reset(); endedHere.removeAll(); answeredHere.removeAll(); startPerformed.removeAll(); mirrored.removeAll()
+        hungUp.reset(); endTimers.values.forEach { $0.cancel() }; endTimers.removeAll()
+        endedHere.removeAll(); answeredHere.removeAll(); startPerformed.removeAll(); mirrored.removeAll()
         reportedConnecting.removeAll(); reportedConnected.removeAll(); cancelledDialAt = nil; speakerWanted = false
         holdRequested.removeAll(); dialWatchdog?.cancel(); pendingNumber = ""; cancelledNumber = ""
         model.callScreen = nil
@@ -711,7 +730,8 @@ extension CallController {
         if let cid = cids[uuid] {
             let ringing = lastState[cid] == "ringing"
             model.link.send(ringing ? MsgType.callReject : MsgType.callEnd, CallRef(cid: cid))
-            hungUp.hungUp(cid)
+            hungUp.hungUp(cid, number: info[uuid]?.num)
+            armEndTimer(cid, ringing: ringing)
             uuids[cid] = nil
             cids[uuid] = nil
             lastState[cid] = nil
@@ -723,6 +743,19 @@ extension CallController {
             dialWatchdog?.cancel()
         }
         cleanup(uuid)
+    }
+
+    /// Re-ask for a hang-up every 5 s until the guard forgets the call (the Android phone reported
+    /// it ended, a call list no longer contains it, or the link was lost and the guard was reset).
+    private func armEndTimer(_ cid: String, ringing: Bool) {
+        if endTimers[cid] != nil { return }
+        endTimers[cid] = Task { @MainActor [weak self] in
+            while true {
+                try? await Task.sleep(for: .seconds(5))
+                guard let self, !Task.isCancelled, self.hungUp.contains(cid) else { return }
+                self.model.link.send(ringing ? MsgType.callReject : MsgType.callEnd, CallRef(cid: cid))
+            }
+        }
     }
 
     func performMute(_ uuid: UUID, _ on: Bool) {

@@ -353,8 +353,12 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             T.CALL_ANSWER -> { audio.claim(c); CallRegistry.answer(m.b.optString("cid")) }
             // "Move the call here": call audio switches to this client.
             T.CALL_TAKE -> audio.claim(c)
-            T.CALL_REJECT -> CallRegistry.reject(m.b.optString("cid"))
-            T.CALL_END -> CallRegistry.end(m.b.optString("cid"))
+            // An end / reject is always answered with the current call list: if it worked, the call is
+            // gone from the list and the client stops asking; if it silently failed (unknown id), the
+            // client sees the call still live and its hang-up guard asks again. Without the answer, a
+            // failed end was invisible to both sides and the call stayed live.
+            T.CALL_REJECT -> { if (!CallRegistry.reject(m.b.optString("cid"))) Log.w(TAG, "reject from ${c.name}: no such call ${m.b.optString("cid")}"); bg { broadcastCalls() } }
+            T.CALL_END -> { if (!CallRegistry.end(m.b.optString("cid"))) Log.w(TAG, "end from ${c.name}: no such call ${m.b.optString("cid")}"); bg { broadcastCalls() } }
             T.CALL_HOLD -> CallRegistry.hold(m.b.optString("cid"), m.b.optBoolean("on"))
             T.CALL_MUTE -> if (c === audio.target) audio.uplinkMuted = m.b.optBoolean("on")
             T.CALL_DTMF -> m.b.optString("d").firstOrNull()?.let { CallRegistry.dtmf(m.b.optString("cid"), it) }
