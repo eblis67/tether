@@ -228,6 +228,20 @@ final class AppModel {
         return sim.name.isEmpty ? String(localized: "SIM \(sim.slot + 1)") : sim.name
     }
 
+    /// "Mark all as read": every conversation at once. Live messages behave — their read marks
+    /// arrive from the Android phone — but a backlog built up while the mirror was behind never
+    /// corrected itself (the historical rows' flags live on the Android phone and nothing rewrites
+    /// history). This clears it here and tells the Android phone too, one thread at a time, exactly
+    /// like opening each conversation would.
+    func markAllRead() {
+        let threads = conversations.filter { $0.unread > 0 }.map(\.thread)
+        guard !threads.isEmpty else { return }
+        for thread in threads {
+            markRead(thread: thread)
+            Notifications.shared.clearSms(thread: thread)
+        }
+    }
+
     func markRead(thread: Int64) {
         let newest = data.sms.filter { $0.thread == thread }.map(\.id).max() ?? 0
         if (data.readUpTo[thread] ?? 0) < newest {
@@ -396,6 +410,11 @@ final class AppModel {
                                            caps: extensions.caps.isEmpty ? nil : extensions.caps))
         // Conversations read while out of reach.
         for (thread, upTo) in pendingRead { link.send(MsgType.smsRead, SmsRead(thread: thread, upTo: upTo)) }
+        // Every read mark is re-announced with each sync: a mark sent while the Android phone could
+        // not write it (its store grant missing after a fresh install) was otherwise never repeated —
+        // the readUpTo gate believes the phone was already told — so the Android kept those messages
+        // unread for good. The Android applies marks idempotently and retries refused ones itself.
+        for (thread, upTo) in data.readUpTo where upTo > 0 { link.send(MsgType.smsRead, SmsRead(thread: thread, upTo: upTo)) }
         pendingRead.removeAll()
         // Once: everything read on this device before read state was shared with the Android phone.
         if !UserDefaults.standard.bool(forKey: "readStateBackfilled") {

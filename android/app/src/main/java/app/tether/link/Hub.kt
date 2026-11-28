@@ -76,6 +76,13 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     private val smsRequests = ConcurrentHashMap<Int, SmsRequest>()
     /** Texts that arrived while no client was connected: held for the next connect, never dropped. */
     private val pendingSms = PendingSms()
+    /** Client read marks are retried promptly after a refused provider write, and periodically as a backstop. */
+    private val readSync = SmsReadSync(
+        unreadCount = { thread, upTo -> app.sms.unreadCount(thread, upTo) },
+        markRead = { thread, upTo -> app.sms.markRead(thread, upTo) },
+        grantWrite = { Adb.allowSmsWrite(app) },
+        schedule = { delayMs, retry -> work.schedule({ retry() }, delayMs, TimeUnit.MILLISECONDS) },
+    )
     private val smsRequestIds = java.util.concurrent.atomic.AtomicInteger(System.nanoTime().toInt() ushr 1)
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     val audio = AudioSession()
@@ -105,6 +112,13 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         if (targets().isEmpty()) return
         broadcast(unreadMessage(ids))
         lastUnread = key
+    }
+
+    /** Periodic backstop for read marks whose prompt retry was refused. */
+    private fun retryReadMarks() {
+        val result = readSync.retry()
+        if (result.landed > 0) LinkLog.add("read marks applied (${result.landed} conversation(s))")
+        else if (result.pending > 0) Log.i(TAG, "read marks still pending: ${result.pending} (grant: ${result.grant})")
     }
 
     private fun slowBg(block: () -> Unit) = slow.execute { try { block() } catch (t: Throwable) { Log.e(TAG, "hub task failed", t) } }
@@ -184,7 +198,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         // Signal / network type changes reach the iPhone within ~2 s (several changes at once send one status).
         app.sims.watch { if (radioPushPending.compareAndSet(false, true)) work.schedule({ radioPushPending.set(false); runCatching { pushStatus() } }, 2, TimeUnit.SECONDS) }
         work.scheduleWithFixedDelay({ runCatching { pushStatus(); watchdog() }.onFailure { Log.e(TAG, "watchdog", it) } }, 60, 60, TimeUnit.SECONDS)
-        work.scheduleWithFixedDelay({ runCatching { pushUnread() } }, 60, 60, TimeUnit.SECONDS)
+        work.scheduleWithFixedDelay({ runCatching { pushUnread() }; runCatching { retryReadMarks() } }, 60, 60, TimeUnit.SECONDS)
         work.scheduleWithFixedDelay({ runCatching { stallCheck() } }, 5, 5, TimeUnit.SECONDS)
         work.scheduleWithFixedDelay({ runCatching { lePulse() } }, LinkPolicy.PULSE_EVERY_S, LinkPolicy.PULSE_EVERY_S, TimeUnit.SECONDS)
         pulseBurst()   // a restart drops the iPhone's session like an app close does
@@ -345,14 +359,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             T.SMS_READ -> bg {
                 val thread = m.b.optLong("thread", -1); val upTo = m.b.optLong("upTo", -1)
                 if (thread >= 0 && upTo > 0) {
-                    val pending = app.sms.unreadCount(thread, upTo)
-                    var n = if (dry(c) || pending == 0) 0 else app.sms.markRead(thread, upTo)
-                    // Without the WRITE_SMS app-op Android ignores the write silently (0 rows) or refuses it:
-                    // grant it through adb and retry once (fresh install, or the default SMS app changed).
-                    if (!dry(c) && pending > 0 && n <= 0) {
-                        Log.i(TAG, "sms.read: write ignored, granting WRITE_SMS: ${runCatching { Adb.allowSmsWrite(app) }.getOrNull()?.trim()}")
-                        n = app.sms.markRead(thread, upTo)
-                    }
+                    // Keep failed marks queued; a short coalesced retry grants WRITE_SMS once for a
+                    // burst, rather than leaving the Android conversation unread until the next minute.
+                    val n = if (dry(c)) 0 else readSync.mark(thread, upTo)
                     Log.i(TAG, "sms.read thread=$thread upTo=$upTo -> $n row(s)")
                     targets().filter { it !== c }.forEach { it.send(Message(T.SMS_READ, JSONObject().put("thread", thread).put("upTo", upTo))) }
                 }
