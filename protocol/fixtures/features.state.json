@@ -1,0 +1,1 @@
+{"dir":"phone-to-client","t":"features.state","variants":{"full":{"features":{"find":false,"internet":true,"ringer":false,"ussd":false},"rev":3},"old":{"features":{},"rev":0}}}

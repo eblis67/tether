@@ -214,6 +214,8 @@ numbers are as stored on the Android phone.
 | `calls.delete` | C→P | `{ids?:[id], all?}` → `calls.deleted` `{ok, ids, all?, err?}` to all clients |
 | `lists.set` | C→P | `{what: "block", num, on}` \| `{what: "mute", thread, on}` → `lists` to all clients |
 | `lists` | P→C | `{blocked:[num], muted:[thread], system, err?}` (also after every sync; `system`: Android's own block list is used) |
+| `features.set` | C→P | `{features:{<id>: bool}, rev, id?}` → `features.state` to all clients (see §5.4; `id`: the one switch this set just flipped) |
+| `features.state` | P→C | `{features:{<id>: bool}, rev}` (also after every handshake and every sync) |
 | `sync.ids` | P→C | `{sms:[[first,last]…], calls:[[first,last]…], more?}` after every sync: ids that still exist (inclusive ranges); split into pages with `more: true` when very long, applied once the last page is in |
 | `net.get` / `net.set` | C→P | `{}` / `{what, on, sub?}` → `net.state` (see §5.3) |
 | `ussd.send` / `ussd.result` | C→P / P→C | `{code, sub?}` (code matches `^[*#][0-9*#]{1,30}#$`, else refused) → `{ok, text?, err?}` (`re` = the request; sent on SIM `sub` through `TelephonyManager.sendUssdRequest`, 30 s timeout; one at a time; a test client is never sent to the network) |
@@ -297,6 +299,32 @@ client) is on, the Android phone switches it off by itself; the hotspot / Blueto
 
 The proxy at `ip:port` speaks HTTP (absolute-form requests), HTTPS via `CONNECT`, SOCKS5 (no auth, CONNECT) and
 serves `GET /proxy.pac`.
+
+### 5.4 Control panel (feature switches)
+
+The apps have a control panel: one switch per extra feature, and a switch flipped on any phone applies on all
+of them. The Android phone is the source of truth, like the block / mute lists (§5.2). Core telephony (bridged
+calls, SMS, contacts) is the base product and is never a switch.
+
+Feature ids: `internet` (internet sharing: hotspot, Bluetooth tethering and the Share VPN proxy of §5.3),
+`ussd` (carrier codes), `find` (find my phone), `ringer` (ringer mode from a client), `files` (Wi-Fi file
+transfer), `liveActivity` (connection-status Live Activity), `demo` (demo mode). The last three arrive with
+later builds; a phone keeps ids it does not know, so they survive a round trip through an older build.
+
+**Every feature is off by default.** A feature that is off is not shown in the apps and does not run: with
+`internet` off the sharing proxy is not started at all and `net.set` for `hotspot` / `bt` / `share` is refused
+(the answer is a `net.state` with an `err` saying so); with `ussd` / `find` / `ringer` off, `ussd.send` /
+`phone.find` / `ringer.set` are refused the same way, and `status.tools` reports them false so clients hide
+the controls. Mobile data, airplane mode, the data SIM and the network mode are the phone's own radios, not
+sharing, and are not gated.
+
+A client flips a switch by sending its whole map: `features.set {features, rev, id}` where `rev` is its
+revision plus one and `id` names the switch it just flipped. The Android phone adopts a newer revision whole;
+at the same revision it still takes the one flipped switch (two phones flipping different switches at once
+lose neither), answers every connected client with `features.state`, and sends `features.state` again after
+every handshake and every sync. A client that hears a state older than its own re-sends its map, so a switch
+flipped while the link was down still lands. Builds before the panel send and expect none of this: every
+feature stays off for them until a panel build switches it on.
 
 ## 6. Shell helper socket (Android-internal)
 

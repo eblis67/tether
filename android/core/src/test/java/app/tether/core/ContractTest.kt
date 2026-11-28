@@ -27,6 +27,7 @@ class ContractTest {
         "sms.delete" to listOf(F("ids", K.ARR), F("thread", K.INT)),
         "calls.delete" to listOf(F("ids", K.ARR), F("all", K.BOOL)),
         "lists.set" to listOf(F("what", K.STR, true), F("on", K.BOOL, true), F("num", K.STR), F("thread", K.INT)),
+        "features.set" to listOf(F("features", K.OBJ, true), F("rev", K.INT, true), F("id", K.STR)),
         "contact.add" to listOf(F("name", K.STR, true), F("phones", K.ARR, true), F("emails", K.ARR)),
         "contact.update" to listOf(F("id", K.INT, true), F("name", K.STR, true), F("phones", K.ARR, true), F("emails", K.ARR)),
         "contact.star" to listOf(F("id", K.INT, true), F("on", K.BOOL, true)),

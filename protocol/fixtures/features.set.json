@@ -1,0 +1,1 @@
+{"dir":"client-to-phone","t":"features.set","variants":{"full":{"features":{"find":false,"internet":true,"ringer":false,"ussd":false},"id":"internet","rev":3},"plain":{"features":{"find":false,"internet":false,"ringer":false,"ussd":false},"rev":1}}}

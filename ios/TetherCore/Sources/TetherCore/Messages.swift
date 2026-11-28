@@ -48,6 +48,7 @@ public enum MsgType {
     public static let netGet = "net.get", netSet = "net.set", netState = "net.state"
     public static let smsDelete = "sms.delete", smsDeleted = "sms.deleted", callsDelete = "calls.delete", callsDeleted = "calls.deleted"
     public static let listsSet = "lists.set", lists = "lists", syncIds = "sync.ids"
+    public static let featuresSet = "features.set", featuresState = "features.state"
     public static let ussdSend = "ussd.send", ussdResult = "ussd.result"
     public static let phoneFind = "phone.find", phoneFinding = "phone.finding", ringerSet = "ringer.set", ringerResult = "ringer.result"
     public static let unpair = "unpair", error = "error"
@@ -494,6 +495,14 @@ public struct CallsDeleted: Codable, Equatable, Sendable {
 public struct ListsSet: Codable, Equatable, Sendable {
     public var what: String; public var num: String?; public var thread: Int64?; public var on: Bool
     public init(what: String, num: String? = nil, thread: Int64? = nil, on: Bool) { self.what = what; self.num = num; self.thread = thread; self.on = on }
+}
+/// Control panel state (protocol §5.4): the whole feature-switch map plus its revision.
+/// `id` is set only on a `features.set` that just flipped that one switch.
+public struct FeaturesBody: Codable, Equatable, Sendable {
+    public var features: [String: Bool]; public var rev: Int64; public var id: String?
+    public init(features: [String: Bool], rev: Int64, id: String? = nil) {
+        self.features = features; self.rev = rev; self.id = id
+    }
 }
 /// Blocked numbers and muted conversations as the Android phone keeps them (the source of truth).
 /// `system`: the numbers are in Android's own block list, so the phone itself refuses those calls and texts.

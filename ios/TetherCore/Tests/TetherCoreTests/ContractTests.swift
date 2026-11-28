@@ -30,6 +30,7 @@ final class ContractTests: XCTestCase {
         "sms.delete": c(SmsDelete.self), "sms.deleted": c(SmsDeleted.self),
         "calls.delete": c(CallsDelete.self), "calls.deleted": c(CallsDeleted.self),
         "lists.set": c(ListsSet.self), "lists": c(BlockLists.self), "sync.ids": c(SyncIds.self),
+        "features.set": c(FeaturesBody.self), "features.state": c(FeaturesBody.self),
         "ussd.send": c(UssdSend.self), "ussd.result": c(UssdResult.self),
         "phone.find": c(PhoneFind.self), "phone.finding": c(PhoneFinding.self),
         "ringer.set": c(RingerSet.self), "ringer.result": c(RingerResult.self),
