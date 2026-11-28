@@ -11,7 +11,7 @@ object CallAudioReport {
     private fun JSONObject.str(k: String): String? = optString(k).takeIf { has(k) && !isNull(k) && it.isNotEmpty() && it != "null" }
 
     /** One line from the helper's start INFO. [setting]: the user's mic-mute setting, [memory]: what this phone remembered. */
-    fun pathLine(info: JSONObject, setting: Boolean, memory: LocalMutes.Memory?): String {
+    fun pathLine(info: JSONObject, setting: Boolean, memory: LocalMutes.Memory?, canMute: Boolean = true): String {
         val inject = info.str("inject")
         val u = info.optJSONObject("uplink")
         val errors = info.optJSONArray("errors")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
@@ -23,20 +23,43 @@ object CallAudioReport {
                 if (info.has("routedToCall") && !info.isNull("routedToCall") && !info.optBoolean("routedToCall"))
                     append(": NOT the call's uplink, the other side may not hear the iPhone")
                 append(')')
+                if (info.optBoolean("interceptInjectDead"))
+                    append(" (not via intercept: this phone's audio configuration has no afe-proxy-playback path, the interception API's uplink would go nowhere)")
             } else append(", uplink injection NOT open: the other side cannot hear the iPhone")
             if (inject != null && injectErrors.isNotEmpty()) append(" after ").append(injectErrors.joinToString("; "))
             if (inject == null && injectErrors.isNotEmpty()) append(" (").append(injectErrors.joinToString("; ")).append(')')
+            if (inject == null && injectErrors.isEmpty()) info.str("injectWhy")?.let { append(" (").append(it).append(')') }
+            info.str("injectSwitched")?.let { append("; injection switched during the call: ").append(it) }
             val wait = info.optLong("openWaitMs", -1)
             if (wait >= 1000) append("; opened ").append("%.1f".format(wait / 1000.0)).append(" s after the start (waited for the call's audio)")
-            append("; ").append(micLine(u, setting, memory, info.optJSONObject("mic")))
+            append("; ").append(micLine(u, setting, memory, info.optJSONObject("mic"), canMute))
             info.str("earpiece")?.let { append("; earpiece ").append(it) }
+            info.optJSONObject("voiceVolume")?.let { v -> volumeText(v)?.let { append(" (").append(it).append(')') } }
             val other = errors - injectErrors.toSet()
             if (other.isNotEmpty()) append("; errors: ").append(other.joinToString("; "))
         }
     }
 
+    /** "voice-call volume 1 of 1–8, muted": what the earpiece is set to as the call's audio opens (issue #13). */
+    fun volumeText(v: JSONObject): String? {
+        if (!v.has("index")) return null
+        return "voice-call volume ${v.optInt("index")} of ${v.optInt("min")}–${v.optInt("max")}" + if (v.optBoolean("muted")) ", muted" else ""
+    }
+
+    /**
+     * For the call figures the iPhone keeps too ("Android phone call audio: …"): which inject method the call used and
+     * why, or why none opened (issue #14: an iPhone report alone said only "method -").
+     */
+    fun injectSummary(stats: JSONObject): String {
+        if (!stats.has("inject")) return ""   // an older helper
+        val inject = stats.str("inject")
+        return "; inject " + (inject ?: "NONE") + (stats.str("injectWhy")?.let { " ($it)" } ?: "") +
+            (stats.str("injectSwitched")?.let { "; switched $it" } ?: "")
+    }
+
     /** Whether and how the phone's own microphone is kept out of the call (a redirect mode, [mic]) or muted, and why. */
-    fun micLine(u: JSONObject?, setting: Boolean, memory: LocalMutes.Memory?, mic: JSONObject? = null): String = when {
+    fun micLine(u: JSONObject?, setting: Boolean, memory: LocalMutes.Memory?, mic: JSONObject? = null,
+                canMute: Boolean = true): String = when {
         mic?.str("mode") != null -> when (mic.optString("state")) {
             "on" -> "phone mic OFF: the call is in ${mic.optString("mode")}"
             "waiting" -> "phone mic open until ${mic.optString("mode")} is set (${mic.optString("note")})"
@@ -53,6 +76,7 @@ object CallAudioReport {
                 else -> ", uplink checked before on this phone"
             }
         !setting -> "phone mic not muted (setting off)"
+        !canMute -> "phone mic not muted (setting on, but on this phone Android's mic mute also silences the injected voice)"
         memory == LocalMutes.Memory.BREAKS_UPLINK -> "phone mic not muted (setting on, but on this phone the mute silenced the uplink)"
         u.optBoolean("unmuted") -> "phone mic mute undone by the uplink check"
         else -> "phone mic not muted"

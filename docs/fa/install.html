@@ -1,0 +1,1650 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0B0F10">
+  <title>راهنمای ساده و تعاملی تتر (Tether)</title>
+  <style>
+*,:after,:before{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }*,:after,:before{box-sizing:border-box;border:0 solid}:after,:before{--tw-content:""}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;-o-tab-size:4;tab-size:4;font-family:Tahoma,system-ui,sans-serif;font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0}fieldset,legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::-moz-placeholder,textarea::-moz-placeholder{opacity:1;color:#9ca3af}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.\!container{width:100%!important}.container{width:100%}@media (min-width:640px){.\!container{max-width:640px!important}.container{max-width:640px}}@media (min-width:768px){.\!container{max-width:768px!important}.container{max-width:768px}}@media (min-width:1024px){.\!container{max-width:1024px!important}.container{max-width:1024px}}@media (min-width:1280px){.\!container{max-width:1280px!important}.container{max-width:1280px}}@media (min-width:1536px){.\!container{max-width:1536px!important}.container{max-width:1536px}}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0}.pointer-events-none{pointer-events:none}.fixed{position:fixed}.absolute{position:absolute}.relative{position:relative}.sticky{position:sticky}.inset-0{inset:0}.bottom-5{bottom:1.25rem}.bottom-6{bottom:1.5rem}.left-6{left:1.5rem}.right-3{right:.75rem}.right-3\.5{right:.875rem}.right-5{right:1.25rem}.top-0{top:0}.top-1\/2{top:50%}.top-24{top:6rem}.z-30{z-index:30}.z-40{z-index:40}.z-50{z-index:50}.mx-auto{margin-left:auto;margin-right:auto}.mb-0\.5{margin-bottom:.125rem}.mt-0\.5{margin-top:.125rem}.mt-1{margin-top:.25rem}.mt-14{margin-top:3.5rem}.mt-2{margin-top:.5rem}.mt-3{margin-top:.75rem}.mt-6{margin-top:1.5rem}.mt-8{margin-top:2rem}.block{display:block}.inline-block{display:inline-block}.flex{display:flex}.inline-flex{display:inline-flex}.grid{display:grid}.hidden{display:none}.h-1\.5{height:.375rem}.h-10{height:2.5rem}.h-16{height:4rem}.h-3{height:.75rem}.h-3\.5{height:.875rem}.h-4{height:1rem}.h-5{height:1.25rem}.h-6{height:1.5rem}.h-9{height:2.25rem}.h-full{height:100%}.max-h-\[72vh\]{max-height:72vh}.max-h-\[82vh\]{max-height:82vh}.min-h-screen{min-height:100vh}.w-10{width:2.5rem}.w-20{width:5rem}.w-3{width:.75rem}.w-3\.5{width:.875rem}.w-4{width:1rem}.w-5{width:1.25rem}.w-6{width:1.5rem}.w-9{width:2.25rem}.w-\[22rem\]{width:22rem}.w-full{width:100%}.min-w-0{min-width:0}.max-w-5xl{max-width:64rem}.max-w-\[calc\(100vw-2\.5rem\)\]{max-width:calc(100vw - 2.5rem)}.max-w-full{max-width:100%}.max-w-md{max-width:28rem}.max-w-xl{max-width:36rem}.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}.-translate-y-1\/2{--tw-translate-y:-50%}.-translate-y-1\/2,.translate-y-0{transform:translate(var(--tw-translate-x),var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.translate-y-0{--tw-translate-y:0px}.translate-y-2{--tw-translate-y:0.5rem}.rotate-180,.translate-y-2{transform:translate(var(--tw-translate-x),var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.rotate-180{--tw-rotate:180deg}.transform{transform:translate(var(--tw-translate-x),var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.cursor-pointer{cursor:pointer}.select-all{-webkit-user-select:all;-moz-user-select:all;user-select:all}.list-decimal{list-style-type:decimal}.list-disc{list-style-type:disc}.list-none{list-style-type:none}.grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr))}.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-center{align-items:center}.justify-end{justify-content:flex-end}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.gap-1{gap:.25rem}.gap-1\.5{gap:.375rem}.gap-10{gap:2.5rem}.gap-2{gap:.5rem}.gap-2\.5{gap:.625rem}.gap-3{gap:.75rem}.gap-3\.5{gap:.875rem}.gap-4{gap:1rem}.space-y-1>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.25rem*var(--tw-space-y-reverse))}.space-y-1\.5>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.375rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.375rem*var(--tw-space-y-reverse))}.space-y-2>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.5rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.5rem*var(--tw-space-y-reverse))}.space-y-2\.5>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.625rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.625rem*var(--tw-space-y-reverse))}.space-y-3>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.75rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.75rem*var(--tw-space-y-reverse))}.space-y-4>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem*var(--tw-space-y-reverse))}.space-y-5>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1.25rem*var(--tw-space-y-reverse))}.space-y-6>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1.5rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1.5rem*var(--tw-space-y-reverse))}.space-y-8>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(2rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(2rem*var(--tw-space-y-reverse))}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.overflow-y-auto{overflow-y:auto}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.break-all{word-break:break-all}.rounded{border-radius:.25rem}.rounded-2xl{border-radius:1rem}.rounded-3xl{border-radius:1.5rem}.rounded-full{border-radius:9999px}.rounded-lg{border-radius:.5rem}.rounded-md{border-radius:.375rem}.rounded-xl{border-radius:.75rem}.border{border-width:1px}.border-2{border-width:2px}.border-b{border-bottom-width:1px}.border-l{border-left-width:1px}.border-t{border-top-width:1px}.border-brand-700{--tw-border-opacity:1;border-color:rgb(47 211 190/var(--tw-border-opacity,1))}.border-brand-700\/35{border-color:rgba(47,211,190,.35)}.border-line\/10{border-color:rgba(236,242,241,.1)}.border-line\/15{border-color:rgba(236,242,241,.15)}.border-line\/20{border-color:rgba(236,242,241,.2)}.border-stone-300{--tw-border-opacity:1;border-color:rgb(142 154 152/var(--tw-border-opacity,1))}.bg-bad{--tw-bg-opacity:1;background-color:rgb(255 95 87/var(--tw-bg-opacity,1))}.bg-black\/60{background-color:rgba(0,0,0,.6)}.bg-brand-50\/10{background-color:rgba(47,211,190,.1)}.bg-brand-50\/15{background-color:rgba(47,211,190,.15)}.bg-brand-700{--tw-bg-opacity:1;background-color:rgb(47 211 190/var(--tw-bg-opacity,1))}.bg-ok\/15{background-color:rgba(76,215,135,.15)}.bg-paper{--tw-bg-opacity:1;background-color:rgb(11 15 16/var(--tw-bg-opacity,1))}.bg-paper\/60{background-color:rgba(11,15,16,.6)}.bg-paper\/90{background-color:rgba(11,15,16,.9)}.bg-stone-100{--tw-bg-opacity:1;background-color:rgb(14 19 20/var(--tw-bg-opacity,1))}.bg-stone-200{--tw-bg-opacity:1;background-color:rgb(22 28 29/var(--tw-bg-opacity,1))}.bg-stone-50\/70{background-color:rgba(14,19,20,.7)}.bg-warn\/10{background-color:rgba(240,176,63,.1)}.bg-warn\/15{background-color:rgba(240,176,63,.15)}.bg-white{--tw-bg-opacity:1;background-color:rgb(22 28 29/var(--tw-bg-opacity,1))}.p-1\.5{padding:.375rem}.p-2{padding:.5rem}.p-3{padding:.75rem}.p-3\.5{padding:.875rem}.p-4{padding:1rem}.p-5{padding:1.25rem}.p-6{padding:1.5rem}.px-1\.5{padding-left:.375rem;padding-right:.375rem}.px-2{padding-left:.5rem;padding-right:.5rem}.px-2\.5{padding-left:.625rem;padding-right:.625rem}.px-3{padding-left:.75rem;padding-right:.75rem}.px-3\.5{padding-left:.875rem;padding-right:.875rem}.px-4{padding-left:1rem;padding-right:1rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}.px-6{padding-left:1.5rem;padding-right:1.5rem}.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.py-1{padding-top:.25rem;padding-bottom:.25rem}.py-1\.5{padding-top:.375rem;padding-bottom:.375rem}.py-2{padding-top:.5rem;padding-bottom:.5rem}.py-2\.5{padding-top:.625rem;padding-bottom:.625rem}.py-3{padding-top:.75rem;padding-bottom:.75rem}.py-3\.5{padding-top:.875rem;padding-bottom:.875rem}.py-4{padding-top:1rem;padding-bottom:1rem}.py-5{padding-top:1.25rem;padding-bottom:1.25rem}.py-8{padding-top:2rem;padding-bottom:2rem}.pb-0\.5{padding-bottom:.125rem}.pb-1{padding-bottom:.25rem}.pb-2{padding-bottom:.5rem}.pb-2\.5{padding-bottom:.625rem}.pb-24{padding-bottom:6rem}.pb-3\.5{padding-bottom:.875rem}.pb-4{padding-bottom:1rem}.pb-5{padding-bottom:1.25rem}.pl-3{padding-left:.75rem}.pl-4{padding-left:1rem}.pr-10{padding-right:2.5rem}.pr-12{padding-right:3rem}.pr-4{padding-right:1rem}.pr-5{padding-right:1.25rem}.pr-9{padding-right:2.25rem}.pt-1{padding-top:.25rem}.pt-2{padding-top:.5rem}.pt-3{padding-top:.75rem}.pt-4{padding-top:1rem}.pt-6{padding-top:1.5rem}.text-center{text-align:center}.text-right{text-align:right}.text-2xl{font-size:1.5rem;line-height:2rem}.text-\[11px\]{font-size:11px}.text-base{font-size:1rem;line-height:1.5rem}.text-sm{font-size:.875rem;line-height:1.25rem}.text-xs{font-size:.75rem;line-height:1rem}.font-bold{font-weight:700}.font-medium{font-weight:500}.font-semibold{font-weight:600}.tabular-nums{--tw-numeric-spacing:tabular-nums;font-variant-numeric:var(--tw-ordinal) var(--tw-slashed-zero) var(--tw-numeric-figure) var(--tw-numeric-spacing) var(--tw-numeric-fraction)}.leading-relaxed{line-height:1.625}.leading-snug{line-height:1.375}.text-brand-700{--tw-text-opacity:1;color:rgb(47 211 190/var(--tw-text-opacity,1))}.text-ink{--tw-text-opacity:1;color:rgb(236 242 241/var(--tw-text-opacity,1))}.text-muted{--tw-text-opacity:1;color:rgb(142 154 152/var(--tw-text-opacity,1))}.text-ok{--tw-text-opacity:1;color:rgb(76 215 135/var(--tw-text-opacity,1))}.text-onaccent{--tw-text-opacity:1;color:rgb(11 15 16/var(--tw-text-opacity,1))}.text-stone-700{--tw-text-opacity:1;color:rgb(236 242 241/var(--tw-text-opacity,1))}.text-warn{--tw-text-opacity:1;color:rgb(240 176 63/var(--tw-text-opacity,1))}.line-through{text-decoration-line:line-through}.antialiased{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}.accent-brand-700{accent-color:#2fd3be}.opacity-0{opacity:0}.opacity-100{opacity:1}.shadow-2xl{--tw-shadow:0 25px 50px -12px rgba(0,0,0,.25);--tw-shadow-colored:0 25px 50px -12px var(--tw-shadow-color)}.shadow-2xl,.shadow-\[0_1px_2px_rgba\(0\2c 0\2c 0\2c 0\.04\)\]{box-shadow:var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow)}.shadow-\[0_1px_2px_rgba\(0\2c 0\2c 0\2c 0\.04\)\]{--tw-shadow:0 1px 2px rgba(0,0,0,.04);--tw-shadow-colored:0 1px 2px var(--tw-shadow-color)}.shadow-lg{--tw-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);--tw-shadow-colored:0 10px 15px -3px var(--tw-shadow-color),0 4px 6px -4px var(--tw-shadow-color)}.shadow-lg,.shadow-md{box-shadow:var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow)}.shadow-md{--tw-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.1);--tw-shadow-colored:0 4px 6px -1px var(--tw-shadow-color),0 2px 4px -2px var(--tw-shadow-color)}.shadow-sm{--tw-shadow:0 1px 2px 0 rgba(0,0,0,.05);--tw-shadow-colored:0 1px 2px 0 var(--tw-shadow-color)}.shadow-sm,.shadow-xl{box-shadow:var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow)}.shadow-xl{--tw-shadow:0 20px 25px -5px rgba(0,0,0,.1),0 8px 10px -6px rgba(0,0,0,.1);--tw-shadow-colored:0 20px 25px -5px var(--tw-shadow-color),0 8px 10px -6px var(--tw-shadow-color)}.filter{filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.backdrop-blur-md{--tw-backdrop-blur:blur(12px);-webkit-backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia)}.transition{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,-webkit-backdrop-filter;transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter;transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter,-webkit-backdrop-filter;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.transition-all{transition-property:all;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.transition-colors{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.transition-transform{transition-property:transform;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.duration-200{transition-duration:.2s}.duration-300{transition-duration:.3s}.hover\:border-stone-300:hover{--tw-border-opacity:1;border-color:rgb(142 154 152/var(--tw-border-opacity,1))}.hover\:bg-brand-50\/15:hover{background-color:rgba(47,211,190,.15)}.hover\:bg-stone-100:hover{--tw-bg-opacity:1;background-color:rgb(14 19 20/var(--tw-bg-opacity,1))}.hover\:bg-stone-200:hover{--tw-bg-opacity:1;background-color:rgb(22 28 29/var(--tw-bg-opacity,1))}.hover\:bg-stone-50:hover{--tw-bg-opacity:1;background-color:rgb(14 19 20/var(--tw-bg-opacity,1))}.hover\:bg-white:hover{--tw-bg-opacity:1;background-color:rgb(22 28 29/var(--tw-bg-opacity,1))}.hover\:bg-white\/60:hover{background-color:rgba(22,28,29,.6)}.hover\:text-ink:hover{--tw-text-opacity:1;color:rgb(236 242 241/var(--tw-text-opacity,1))}.hover\:underline:hover{text-decoration-line:underline}.hover\:opacity-90:hover{opacity:.9}.focus\:border-brand-700:focus{--tw-border-opacity:1;border-color:rgb(47 211 190/var(--tw-border-opacity,1))}.focus\:outline-none:focus{outline:2px solid transparent;outline-offset:2px}.disabled\:cursor-not-allowed:disabled{cursor:not-allowed}.disabled\:opacity-35:disabled{opacity:.35}.group[open] .group-open\:rotate-180{--tw-rotate:180deg;transform:translate(var(--tw-translate-x),var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}@media (min-width:640px){.sm\:inline{display:inline}.sm\:flex{display:flex}.sm\:w-\[26rem\]{width:26rem}.sm\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.sm\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.sm\:flex-row{flex-direction:row}.sm\:items-center{align-items:center}.sm\:p-8{padding:2rem}.sm\:px-5{padding-left:1.25rem;padding-right:1.25rem}.sm\:px-6{padding-left:1.5rem;padding-right:1.5rem}.sm\:px-8{padding-left:2rem;padding-right:2rem}.sm\:py-10{padding-top:2.5rem;padding-bottom:2.5rem}.sm\:pr-14{padding-right:3.5rem}.sm\:text-3xl{font-size:1.875rem;line-height:2.25rem}.sm\:text-\[13px\]{font-size:13px}.sm\:text-\[15px\]{font-size:15px}.sm\:text-base{font-size:1rem;line-height:1.5rem}.sm\:text-sm{font-size:.875rem;line-height:1.25rem}}@media (min-width:1024px){.lg\:col-span-4{grid-column:span 4/span 4}.lg\:col-span-8{grid-column:span 8/span 8}.lg\:block{display:block}.lg\:hidden{display:none}.lg\:grid-cols-12{grid-template-columns:repeat(12,minmax(0,1fr))}}@media (min-width:1280px){.xl\:col-span-3{grid-column:span 3/span 3}.xl\:col-span-9{grid-column:span 9/span 9}}
+  </style>
+  <style>
+    html {
+      font-family: Tahoma, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      background-color: #0B0F10;
+      color: #ECF2F1;
+      color-scheme: dark;
+      scroll-behavior: smooth;
+    }
+    body {
+      line-height: 1.9;
+      -webkit-font-smoothing: antialiased;
+    }
+    .ltr-code {
+      direction: ltr;
+      unicode-bidi: embed;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .step-scroll::-webkit-scrollbar {
+      height: 4px;
+    }
+    .step-scroll::-webkit-scrollbar-thumb {
+      background: #8E9A98;
+      border-radius: 9999px;
+    }
+    .task-check-input:checked + .task-check-box {
+      background-color: #2FD3BE;
+      border-color: #2FD3BE;
+    }
+    .task-check-input:checked + .task-check-box svg {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .task-check-box svg {
+      opacity: 0;
+      transform: scale(0.75);
+      transition: opacity 0.16s ease, transform 0.16s ease;
+    }
+    .fade-in {
+      animation: fadeIn 0.22s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    ::placeholder { color: #8E9A98; opacity: 1; }
+  </style>
+</head>
+<body class="bg-paper text-ink min-h-screen flex flex-col">
+  <noscript><p style="padding:1rem">این راهنما به جاوااسکریپت نیاز دارد. متن کامل: <a href="README.html">راهنمای فارسی</a></p></noscript>
+
+  <!-- Minimal, Airy Header -->
+  <header class="sticky top-0 z-30 bg-paper/90 backdrop-blur-md border-b border-line/10">
+    <div class="max-w-5xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-9 h-9 rounded-xl bg-brand-700 text-onaccent flex items-center justify-center shrink-0 shadow-sm">
+          <i data-lucide="bluetooth" class="w-4 h-4"></i>
+        </div>
+        <div class="min-w-0">
+          <h1 class="text-sm sm:text-base font-bold text-ink truncate">راهنمای ساده تتر (Tether)</h1>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2.5 shrink-0">
+        <div class="hidden sm:flex items-center gap-2.5 pl-3 border-l border-line/15">
+          <div class="w-20 h-1.5 bg-stone-200 rounded-full overflow-hidden">
+            <div id="header-progress-bar" class="h-full bg-brand-700 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <span id="header-progress-text" class="text-xs font-semibold text-brand-700 tabular-nums">۰٪</span>
+        </div>
+
+        <button type="button" data-action="open-glossary" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink bg-white border border-line/15 hover:bg-stone-50 rounded-xl transition-colors">
+          <i data-lucide="book-open" class="w-3.5 h-3.5 text-brand-700"></i>
+          <span>واژه‌نامه</span>
+        </button>
+
+        <button type="button" data-action="open-reset" title="شروع مجدد" class="inline-flex items-center justify-center p-2 text-muted hover:text-ink hover:bg-white rounded-xl transition-colors" aria-label="شروع مجدد">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Step Strip -->
+    <div class="lg:hidden border-t border-line/10 bg-paper px-4 py-2.5">
+      <div id="mobile-step-pills" class="flex items-center gap-2 overflow-x-auto step-scroll pb-0.5"></div>
+    </div>
+  </header>
+
+  <!-- Main Workspace with Generous Breathing Room -->
+  <main class="flex-1 max-w-5xl w-full mx-auto px-5 sm:px-8 py-8 sm:py-10">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+
+      <!-- Calm Desktop Sidebar -->
+      <aside class="hidden lg:block lg:col-span-4 xl:col-span-3 sticky top-24 space-y-5">
+        <nav aria-label="مراحل آموزش" class="space-y-1">
+          <div class="px-3 pb-2 flex items-center justify-between text-xs text-muted">
+            <span class="font-semibold">مراحل</span>
+            <span id="sidebar-completed-count" class="font-semibold text-brand-700">۰ از ۶</span>
+          </div>
+          <ol id="desktop-step-list" class="space-y-1"></ol>
+        </nav>
+
+        <!-- Compact Active Pair Card -->
+        <div class="pt-4 border-t border-line/10 space-y-2.5 px-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-semibold text-muted">ترکیب گوشی‌های شما</span>
+            <button type="button" data-action="go-step" data-step="0" class="text-[11px] font-semibold text-brand-700 hover:underline">تغییر</button>
+          </div>
+          <div id="profile-summary-pills" class="space-y-1.5 text-xs"></div>
+        </div>
+
+        <div class="pt-4 border-t border-line/10 px-2 space-y-2 text-xs text-muted">
+          <a href="https://github.com/amirwmr/tether/releases/latest" target="_blank" rel="noopener noreferrer" class="text-brand-700 hover:underline inline-flex items-center gap-1.5 font-medium">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span>صفحه دانلود رسمی</span>
+          </a>
+          <br>
+          <a href="README.html" target="_blank" rel="noopener noreferrer" class="text-muted hover:text-ink hover:underline inline-flex items-center gap-1.5">
+            <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+            <span>متن اصلی راهنما</span>
+          </a>
+        </div>
+      </aside>
+
+      <!-- Active Step Content -->
+      <section class="lg:col-span-8 xl:col-span-9 min-w-0">
+        <div id="step-container" class="fade-in"></div>
+
+        <!-- Clean Step Navigation -->
+        <div class="mt-8 pt-6 border-t border-line/10 flex items-center justify-between gap-4">
+          <button type="button" id="btn-prev-step" data-action="prev-step" class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-ink bg-white border border-line/15 hover:bg-stone-50 rounded-xl transition-colors disabled:opacity-35 disabled:cursor-not-allowed">
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            <span>مرحله قبل</span>
+          </button>
+
+          <span id="footer-step-indicator" class="text-xs font-medium text-muted hidden sm:inline"></span>
+
+          <button type="button" id="btn-next-step" data-action="next-step" class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-onaccent bg-brand-700 hover:opacity-90 rounded-xl transition-colors shadow-sm disabled:opacity-35 disabled:cursor-not-allowed">
+            <span id="btn-next-label">مرحله بعد</span>
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Minimal Footer -->
+  <footer class="border-t border-line/10 mt-14">
+    <div class="max-w-5xl mx-auto px-5 sm:px-8 pt-6 pb-24 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted">
+      <p>بر اساس <a href="README.html" target="_blank" rel="noopener noreferrer" class="text-brand-700 hover:underline font-medium">راهنمای فارسی Tether</a> و مخزن <a href="https://github.com/amirwmr/tether/blob/main/docs/fa/README.md" target="_blank" rel="noopener noreferrer" class="text-brand-700 hover:underline font-medium">amirwmr/tether</a></p>
+      <p>پیشرفت شما فقط در همین مرورگر ذخیره می‌شود. این صفحه هیچ سرویس بیرونی بارگذاری نمی‌کند. <a href="../INSTALL.html" class="text-brand-700 hover:underline font-medium">English install guide</a></p>
+    </div>
+  </footer>
+
+  <!-- Glossary Modal -->
+  <div id="glossary-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/60 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="glossary-title">
+    <div class="bg-white border border-line/15 rounded-3xl max-w-xl w-full max-h-[82vh] flex flex-col shadow-xl overflow-hidden">
+      <div class="px-6 py-5 border-b border-line/10 flex items-center justify-between">
+        <div>
+          <h2 id="glossary-title" class="text-base font-bold text-ink">واژه‌نامه ساده</h2>
+          <p class="text-xs text-muted mt-0.5">معنی اصطلاحات انگلیسی به زبان روزمره</p>
+        </div>
+        <button type="button" data-action="close-glossary" class="p-2 text-muted hover:text-ink hover:bg-stone-100 rounded-xl" aria-label="بستن">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div id="glossary-body" class="p-6 overflow-y-auto space-y-3 text-sm"></div>
+    </div>
+  </div>
+
+  <!-- Reset Confirmation Modal -->
+  <div id="reset-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/60" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+    <div class="bg-white border border-line/15 rounded-3xl max-w-md w-full p-6 shadow-xl">
+      <h2 id="reset-title" class="text-base font-bold text-ink">شروع مجدد آموزش؟</h2>
+      <p class="text-sm text-muted mt-2 leading-relaxed">تمام تیک‌ها و انتخاب‌های شما پاک می‌شوند و از مرحله اول شروع می‌کنید.</p>
+      <div class="mt-6 flex items-center justify-end gap-2.5">
+        <button type="button" data-action="close-reset" class="px-4 py-2 text-sm font-medium text-ink bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors">انصراف</button>
+        <button type="button" data-action="confirm-reset" class="px-4 py-2 text-sm font-semibold text-onaccent bg-bad hover:opacity-90 rounded-xl transition-colors">پاک کردن</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Errors Drawer (بخش شناور مخصوص خطاها) -->
+  <div id="floating-dock" class="fixed bottom-5 right-5 z-40 flex flex-col items-start gap-2.5 max-w-[calc(100vw-2.5rem)]">
+    <div id="floating-panel" class="hidden w-[22rem] sm:w-[26rem] max-w-full max-h-[72vh] bg-white border border-line/15 rounded-3xl shadow-2xl flex flex-col overflow-hidden fade-in">
+      <div class="px-5 py-4 border-b border-line/10 flex items-center justify-between gap-2 shrink-0">
+        <div class="flex items-center gap-2">
+          <i data-lucide="life-buoy" class="w-4 h-4 text-brand-700"></i>
+          <span class="font-bold text-ink text-sm">رفع سریع خطاها</span>
+        </div>
+        <button type="button" data-action="toggle-floating" class="p-1.5 text-muted hover:text-ink hover:bg-stone-100 rounded-xl" aria-label="بستن">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="px-4 pt-3 pb-2.5 border-b border-line/10 space-y-2.5 shrink-0 bg-paper/60">
+        <div class="relative">
+          <i data-lucide="search" class="w-3.5 h-3.5 text-muted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+          <input type="text" id="float-error-search" placeholder="جستجوی خطا: 503، 45063، UDID، صدا، Connecting..." class="w-full pr-9 pl-3 py-2 text-xs bg-white border border-line/15 rounded-xl focus:outline-none focus:border-brand-700">
+        </div>
+        <div id="float-error-cats" class="flex flex-wrap gap-1"></div>
+      </div>
+
+      <div id="float-error-list" class="p-4 overflow-y-auto space-y-2 text-xs flex-1"></div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <button type="button" data-action="toggle-floating" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-white border border-line/20 text-ink text-xs font-semibold shadow-lg hover:opacity-90 transition-colors">
+        <i data-lucide="life-buoy" class="w-4 h-4 text-brand-700"></i>
+        <span>خطاها و رفع اشکال</span>
+        <span id="float-error-count" class="px-2 py-0.5 rounded-full bg-paper text-[11px] tabular-nums">۱۱</span>
+      </button>
+      <button type="button" data-action="scroll-top" title="بازگشت به بالا" aria-label="بازگشت به بالا" class="w-10 h-10 rounded-full bg-white border border-line/15 text-muted hover:text-ink shadow-md flex items-center justify-center transition-colors">
+        <i data-lucide="arrow-up" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Subtle Toast -->
+  <div id="toast" class="fixed bottom-6 left-6 z-50 pointer-events-none opacity-0 translate-y-2 transition-all duration-200">
+    <div class="bg-white border border-line/20 text-ink text-xs sm:text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
+      <i data-lucide="check-circle-2" class="w-4 h-4 text-brand-700"></i>
+      <span id="toast-message">کپی شد</span>
+    </div>
+  </div>
+
+<script>
+    /* Lucide icons v0.460.0 (ISC licence, https://lucide.dev), inlined: only the icons this page uses. */
+    window.tetherIcons = (function () {
+      var P = {"arrow-left": "<path d=\"m12 19-7-7 7-7\" /> <path d=\"M19 12H5\" />", "arrow-right": "<path d=\"M5 12h14\" /> <path d=\"m12 5 7 7-7 7\" />", "arrow-up": "<path d=\"m5 12 7-7 7 7\" /> <path d=\"M12 19V5\" />", "bluetooth": "<path d=\"m7 7 10 10-5 5V2l5 5L7 17\" />", "book-open": "<path d=\"M12 7v14\" /> <path d=\"M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z\" />", "check-check": "<path d=\"M18 6 7 17l-5-5\" /> <path d=\"m22 10-7.5 7.5L13 16\" />", "chevron-down": "<path d=\"m6 9 6 6 6-6\" />", "copy": "<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\" /> <path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\" />", "download": "<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> <polyline points=\"7 10 12 15 17 10\" /> <line x1=\"12\" x2=\"12\" y1=\"15\" y2=\"3\" />", "file-text": "<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\" /> <path d=\"M14 2v4a2 2 0 0 0 2 2h4\" /> <path d=\"M10 9H8\" /> <path d=\"M16 13H8\" /> <path d=\"M16 17H8\" />", "globe": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\" /> <path d=\"M2 12h20\" />", "info": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 16v-4\" /> <path d=\"M12 8h.01\" />", "laptop": "<path d=\"M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16\" />", "life-buoy": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m4.93 4.93 4.24 4.24\" /> <path d=\"m14.83 9.17 4.24-4.24\" /> <path d=\"m14.83 14.83 4.24 4.24\" /> <path d=\"m9.17 14.83-4.24 4.24\" /> <circle cx=\"12\" cy=\"12\" r=\"4\" />", "maximize-2": "<polyline points=\"15 3 21 3 21 9\" /> <polyline points=\"9 21 3 21 3 15\" /> <line x1=\"21\" x2=\"14\" y1=\"3\" y2=\"10\" /> <line x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\" />", "minimize-2": "<polyline points=\"4 14 10 14 10 20\" /> <polyline points=\"20 10 14 10 14 4\" /> <line x1=\"14\" x2=\"21\" y1=\"10\" y2=\"3\" /> <line x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\" />", "phone-call": "<path d=\"M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z\" /> <path d=\"M14.05 2a9 9 0 0 1 8 7.94\" /> <path d=\"M14.05 6A5 5 0 0 1 18 10\" />", "qr-code": "<rect width=\"5\" height=\"5\" x=\"3\" y=\"3\" rx=\"1\" /> <rect width=\"5\" height=\"5\" x=\"16\" y=\"3\" rx=\"1\" /> <rect width=\"5\" height=\"5\" x=\"3\" y=\"16\" rx=\"1\" /> <path d=\"M21 16h-3a2 2 0 0 0-2 2v3\" /> <path d=\"M21 21v.01\" /> <path d=\"M12 7v3a2 2 0 0 1-2 2H7\" /> <path d=\"M3 12h.01\" /> <path d=\"M12 3h.01\" /> <path d=\"M12 16v.01\" /> <path d=\"M16 12h1\" /> <path d=\"M21 12v.01\" /> <path d=\"M12 21v-1\" />", "rotate-ccw": "<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\" /> <path d=\"M3 3v5h5\" />", "search": "<circle cx=\"11\" cy=\"11\" r=\"8\" /> <path d=\"m21 21-4.3-4.3\" />", "shield": "<path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\" />", "sliders-horizontal": "<line x1=\"21\" x2=\"14\" y1=\"4\" y2=\"4\" /> <line x1=\"10\" x2=\"3\" y1=\"4\" y2=\"4\" /> <line x1=\"21\" x2=\"12\" y1=\"12\" y2=\"12\" /> <line x1=\"8\" x2=\"3\" y1=\"12\" y2=\"12\" /> <line x1=\"21\" x2=\"16\" y1=\"20\" y2=\"20\" /> <line x1=\"12\" x2=\"3\" y1=\"20\" y2=\"20\" /> <line x1=\"14\" x2=\"14\" y1=\"2\" y2=\"6\" /> <line x1=\"8\" x2=\"8\" y1=\"10\" y2=\"14\" /> <line x1=\"16\" x2=\"16\" y1=\"18\" y2=\"22\" />", "smartphone": "<rect width=\"14\" height=\"20\" x=\"5\" y=\"2\" rx=\"2\" ry=\"2\" /> <path d=\"M12 18h.01\" />", "tablet-smartphone": "<rect width=\"10\" height=\"14\" x=\"3\" y=\"8\" rx=\"2\" /> <path d=\"M5 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2h-2.4\" /> <path d=\"M8 18h.01\" />", "wifi": "<path d=\"M12 20h.01\" /> <path d=\"M2 8.82a15 15 0 0 1 20 0\" /> <path d=\"M5 12.859a10 10 0 0 1 14 0\" /> <path d=\"M8.5 16.429a5 5 0 0 1 7 0\" />", "x": "<path d=\"M18 6 6 18\" /> <path d=\"m6 6 12 12\" />"};
+      return function () {
+        var els = document.querySelectorAll('i[data-lucide]');
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i], name = el.getAttribute('data-lucide');
+          if (!P[name]) continue;
+          var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor');
+          svg.setAttribute('stroke-width', '2'); svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+          svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('class', el.getAttribute('class') || '');
+          svg.innerHTML = P[name];
+          el.parentNode.replaceChild(svg, el);
+        }
+      };
+    })();
+  </script>
+  <script>
+    (function () {
+      'use strict';
+
+      const STORAGE_KEY = 'tether_fa_clean_guide_v3';
+      const ALTSTORE_SOURCE_URL = 'https://github.com/amirwmr/tether/releases/latest/download/altstore.json';
+      const RELEASES_URL = 'https://github.com/amirwmr/tether/releases/latest';
+      const SHA256_CERT = '16f456947ccc85880d9fe3cd24775b884d2f21d0f39c4f10d3b3d6e64901057f';
+      const ANISETTE_CLIENT_INFO = '<MacBookPro13,3> <Mac OS X;10.12.6;16G29> <com.apple.AuthKit/1 (com.apple.akd/1.0)>';
+
+
+      const STEPS = [
+        { id: 'setup', num: '۱', icon: 'sliders-horizontal', short: 'انتخاب دو گوشی', title: 'مشخص کنید کدام گوشی سیم‌کارت دارد' },
+        { id: 'download', num: '۲', icon: 'download', short: 'دانلود فایل‌ها', title: 'فقط همین موارد را دانلود یا کپی کنید' },
+        { id: 'android', num: '۳', icon: 'smartphone', short: 'تنظیم سیم‌کارت‌دار', title: 'تنظیم گوشی سیم‌کارت‌دار' },
+        { id: 'client', num: '۴', icon: 'tablet-smartphone', short: 'نصب روی بدون سیم‌کارت', title: 'نصب برنامه روی گوشی بدون سیم‌کارت' },
+        { id: 'pair', num: '۵', icon: 'qr-code', short: 'وصل کردن با QR', title: 'جفت کردن دو گوشی با کد QR' },
+        { id: 'call', num: '۶', icon: 'phone-call', short: 'تست و تمیزکاری', title: 'اولین تماس، اینترنت و تمیزکاری نهایی' },
+        { id: 'troubleshoot', num: '۷', icon: 'life-buoy', short: 'رفع اشکال', title: 'عیب‌یاب سریع' }
+      ];
+
+      const GLOSSARY_ITEMS = [
+        { term: 'گوشی سیم‌کارت‌دار', desc: 'همان گوشی اندرویدی (مثلاً سامسونگ) که سیم‌کارت داخل آن است و در کیف یا جیب می‌ماند.' },
+        { term: 'گوشی بدون سیم‌کارت', desc: 'آیفون، آیپد (مثلاً آیفون بدون آنتن) یا اندروید دومی که می‌خواهید تماس‌ها و پیامک‌ها روی آن بیایند.' },
+        { term: 'APK', desc: 'فایل نصبی برنامه‌های اندروید است. به‌جای گوگل‌پلی، مستقیم دانلود و نصب می‌کنید.' },
+        { term: 'IPA (امضا نشده)', desc: 'فایل نصبی برنامه‌های آیفون است. ابزار نصب آن را با Apple ID رایگان خودتان امضا می‌کند.' },
+        { term: 'Refresh (تمدید ۷ روزه)', desc: 'اپل به Apple ID رایگان فقط ۷ روز اعتبار می‌دهد. هر هفته یک بار دکمه Refresh را می‌زنید تا برنامه باز بماند. اگر یادتان برود چیزی پاک نمی‌شود.' },
+        { term: 'Wireless debugging', desc: 'یک گزینه داخل تنظیمات اندروید ۱۱ به بالا که فقط یک بار روشن می‌کنید تا صدای تماس به آیفون برسد.' },
+        { term: 'Audio helper', desc: 'بخشی داخل برنامه تتر روی اندروید که وقتی روی Running باشد، صدای مکالمه را منتقل می‌کند.' },
+        { term: 'Auto Blocker (سامسونگ)', desc: 'قفل امنیتی در گوشی‌های سامسونگ که جلوی نصب فایل APK را می‌گیرد. موقع نصب باید خاموش و بعداً دوباره روشن شود.' }
+      ];
+
+      const TROUBLESHOOT_ITEMS = [
+        {
+          id: 'apk-install',
+          category: 'android',
+          symptom: 'برنامه روی گوشی اندرویدی سیم‌کارت‌دار نصب نمی‌شود',
+          tags: ['اندروید', 'نصب', 'سامسونگ', 'Auto Blocker'],
+          steps: [
+            'به مرورگر یا برنامه مدیریت فایل (Files) اجازه نصب برنامه بدهید.',
+            'اگر گوشی شما سامسونگ است، در «تنظیمات › امنیت و حریم خصوصی» گزینه Auto Blocker را خاموش کنید.',
+            'مطمئن شوید فضای خالی کافی دارید.',
+            'اگر نسخه قدیمی (1.1.0 یا debug-signed) داشتید، اول آن را حذف کنید و بعد نسخه جدید را نصب کنید.'
+          ]
+        },
+        {
+          id: 'restricted-perm',
+          category: 'android',
+          symptom: 'یک مجوز خاکستری است و روشن نمی‌شود (Restricted setting)',
+          tags: ['اندروید', 'مجوز', 'Restricted setting'],
+          steps: [
+            'وارد «تنظیمات › برنامه‌ها › Tether» شوید.',
+            'منوی سه‌نقطه (⋮) گوشه بالا را بزنید و «Allow restricted settings» را انتخاب کنید.',
+            'دوباره به برنامه Tether برگردید و مجوز را روشن کنید.'
+          ]
+        },
+        {
+          id: 'devmode-missing',
+          category: 'ios',
+          symptom: 'گزینه Developer Mode در تنظیمات آیفون دیده نمی‌شود',
+          tags: ['آیفون', 'Developer Mode', 'تنظیمات', 'آیفون ۱۵'],
+          steps: [
+            'طبیعی است! اپل در iOS 16 به بالا، گزینه Developer Mode را تا زمانی که اولین برنامه جانبی (مثل SideStore) را از کامپیوتر روی آیفون نصب نکنید مخفی نگه می‌دارد.',
+            'اول SideStore را با کابل USB و iloader از کامپیوتر نصب کنید.',
+            'در آیفون به Settings › General › VPN & Device Management بروید و Apple ID خود را Trust (یا Allow & Restart) بزنید.',
+            'حالا به انتهای پایین صفحه Settings › Privacy & Security بروید؛ گزینه Developer Mode ظاهر شده است.'
+          ]
+        },
+        {
+          id: 'sidestore-adi-503',
+          category: 'ios',
+          symptom: 'خطای ADI native error (-45063) یا خطای 503 هنگام لاگین در SideStore',
+          tags: ['آیفون', 'SideStore', '45063', '503', 'Anisette', 'لاگین'],
+          steps: [
+            'این خطا از رمز عبور شما نیست؛ به دلیل باگ On-Device Anisette است.',
+            'در SideStore بروید به Settings › User Customizations، گزینه On-Device Anisette را خاموش کنید و برنامه را کامل ببندید و دوباره باز کنید.',
+            'بروید به Settings › Anisette Servers، سرور SideStore (New) یا jkcoxson را انتخاب کنید و پایین صفحه Enable Auto Rotation را خاموش کنید.',
+            'در User Customizations › Anisette Client Configuration › Remote Server Sync روی Fetch و بعد Save as Overrides (پایین صفحه) بزنید. اگر Client Info هنوز 26.6 بود، دستی به <MacBookPro13,3> <Mac OS X;10.12.6;16G29> <com.apple.AuthKit/1 (com.apple.akd/1.0)> تغییر دهید و ذخیره کنید.',
+            'در User Customizations › Reset adi.pb با تیک روشن keep headers ریست کنید (اگر بعد از ریست 10.12.6 پاک شد، اول Reset بزنید و بعد دوباره Fetch و Save as Overrides بزنید)، برنامه را کامل ببندید و دوباره لاگین کنید.'
+          ]
+        },
+        {
+          id: 'sidestore-udid-403',
+          category: 'ios',
+          symptom: 'خطای UDID با VPN روشن، یا خطای 403 با VPN خاموش',
+          tags: ['آیفون', 'SideStore', 'UDID', '403', 'VPN', 'Windscribe', 'LocalDevVPN', 'ایران'],
+          steps: [
+            'وقتی فیلترشکن معمولی روی آیفون روشن باشد، LocalDevVPN قطع می‌شود و خطای UDID می‌آید؛ و بدون فیلترشکن در ایران خطای 403 می‌دهد.',
+            'راه‌حل ۱ (با Windscribe کامپیوتر): در Windscribe کامپیوتر به Preferences › Connection بروید (نه Proxy Settings!)، پایین صفحه Secure Hotspot یا Proxy Gateway (HTTP) را روشن کنید، آیفون را به آن وصل کنید و روی خود آیفون فقط LocalDevVPN را روشن بگذارید.',
+            'راه‌حل ۲ (روی خود آیفون): پروتکل Windscribe را روی IKEv2 بگذارید تا هم‌زمان با LocalDevVPN وصل بماند.',
+            'اگر با روشن بودن LocalDevVPN باز هم خطای UDID داد، در SideStore گزینه Reset Pairing File را بزنید و در iloader از بخش Manage Pairing File گزینه Place in All Apps را بزنید.'
+          ]
+        },
+        {
+          id: 'ios-wont-open',
+          category: 'ios',
+          symptom: 'برنامه آیفون (Cellular) دیگر باز نمی‌شود',
+          tags: ['آیفون', '۷ روزه', 'Refresh'],
+          steps: [
+            'مهلت ۷ روزه Apple ID رایگان تمام شده است (پیامک‌ها، تنظیمات و اتصال شما پاک نشده‌اند).',
+            'وارد SideStore، AltStore یا Sideloadly شوید و دوباره Refresh بزنید.'
+          ]
+        },
+        {
+          id: 'untrusted-dev',
+          category: 'ios',
+          symptom: 'خطای «Untrusted developer» یا «Unable to verify app» روی آیفون',
+          tags: ['آیفون', 'Trust', 'Developer Mode'],
+          steps: [
+            'در آیفون بروید به Settings › General › VPN & Device Management، روی Apple ID خود بزنید و Trust را انتخاب کنید.',
+            'مطمئن شوید Developer Mode روشن است: Settings › Privacy & Security › Developer Mode.'
+          ]
+        },
+        {
+          id: 'not-connecting',
+          category: 'pair',
+          symptom: 'بعد از اسکن کد QR روی Connecting می‌ماند یا دو گوشی وصل نمی‌شوند',
+          tags: ['بلوتوث', 'اتصال', 'جفت کردن', 'Connecting', 'QR'],
+          steps: [
+            'مهم‌ترین علت: اگر قبلاً دو گوشی را از تنظیمات معمولی بلوتوث به هم وصل (Pair) کرده بودید، حتماً در تنظیمات بلوتوث هر دو گوشی آن را Forget / Unpair کنید! تتر از اتصال معمولی بلوتوث استفاده نمی‌کند.',
+            'چک کنید دسترسی Bluetooth در آیفون برای برنامه Cellular و مجوز Nearby devices روی اندروید روشن باشد؛ سپس بلوتوث هر دو گوشی را یک بار خاموش و روشن کنید.',
+            'کد QR فقط ۵ دقیقه معتبر است؛ روی گوشی سیم‌کارت‌دار دوباره Pair iPhone بزنید و کد جدید را از داخل خود برنامه Cellular اسکن کنید.',
+            'اگر باز هم وصل نشد، بخش Link log هر دو برنامه را ببینید یا از پایین همین صفحه گزارش مشکل بفرستید.'
+          ]
+        },
+        {
+          id: 'no-call-audio',
+          category: 'audio',
+          symptom: 'صدای تماس روی آیفون نمی‌آید',
+          tags: ['صدا', 'Audio helper', 'اندروید ۱۱'],
+          steps: [
+            'در گوشی اندرویدی ببینید Audio helper روی «Running» باشد.',
+            'مطمئن شوید گوشی سیم‌کارت‌دار اندروید ۱۱ یا بالاتر است (اندروید ۸ تا ۱۰ صدای تماس روی آیفون ندارند).',
+            'در حین تماس روی گوشی اندرویدی در کارت Call audio گزینه «Run call-audio self-test» را بزنید.'
+          ]
+        },
+        {
+          id: 'other-side-no-voice',
+          category: 'audio',
+          symptom: 'طرف مقابل صدای من را نمی‌شنود',
+          tags: ['میکروفون', 'صدا', 'آیفون'],
+          steps: [
+            'روی آیفون بروید به Settings › Privacy & Security › Microphone و مطمئن شوید Cellular روشن است.',
+            'مطمئن شوید تماس Mute نیست.',
+            'روی گوشی اندرویدی در Call audio گزینه «This phone\'s microphone during bridged calls» را روی On امتحان کنید.'
+          ]
+        },
+        {
+          id: 'helper-after-reboot',
+          category: 'audio',
+          symptom: 'بعد از خاموش و روشن کردن گوشی اندرویدی، صدای تماس کار نمی‌کند',
+          tags: ['ری‌استارت', 'وای‌فای', 'Audio helper'],
+          steps: [
+            'گوشی اندرویدی را یک بار به وای‌فای وصل کنید (Wireless debugging برای شروع دوباره به وای‌فای نیاز دارد).',
+            'اگر اندروید ۸ تا ۱۰ دارید، بعد از هر بار روشن شدن باید یک بار دستور adb tcpip 5555 را از کامپیوتر بزنید.'
+          ]
+        }
+      ];
+
+      const DEFAULT_STATE = {
+        androidVersion: '11+',
+        isSamsung: true,
+        noSimDevice: 'ios',
+        iosMethod: 'sidestore',
+        computerOs: 'windows',
+        showAllIosMethods: false,
+        inIran: true,
+        currentStep: 0,
+        completedTasks: {},
+        expandedTasks: {},
+        expandAll: false,
+        troubleshootQuery: '',
+        troubleshootCategory: 'all',
+        floatErrorQuery: '',
+        floatErrorCategory: 'all'
+      };
+
+      function loadState() {
+        try {
+          const raw = window.localStorage.getItem(STORAGE_KEY);
+          if (!raw) return Object.assign({}, DEFAULT_STATE, { completedTasks: {}, expandedTasks: {} });
+          const parsed = JSON.parse(raw);
+          return Object.assign({}, DEFAULT_STATE, parsed, {
+            completedTasks: (parsed && typeof parsed.completedTasks === 'object' && parsed.completedTasks !== null) ? parsed.completedTasks : {},
+            expandedTasks: (parsed && typeof parsed.expandedTasks === 'object' && parsed.expandedTasks !== null) ? parsed.expandedTasks : {}
+          });
+        } catch (e) {
+          return Object.assign({}, DEFAULT_STATE, { completedTasks: {}, expandedTasks: {} });
+        }
+      }
+
+      function saveState() {
+        try {
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (e) {}
+      }
+
+      let state = loadState();
+      let toastTimer = null;
+
+      function toPersianDigits(val) {
+        const digits = '۰۱۲۳۴۵۶۷۸۹';
+        return String(val).replace(/\d/g, function (d) { return digits[Number(d)]; });
+      }
+
+      function simPhoneLabel() {
+        return state.isSamsung ? 'سامسونگ سیم‌کارت‌دار' : 'اندروید سیم‌کارت‌دار';
+      }
+
+      function noSimPhoneLabel() {
+        return state.noSimDevice === 'ios' ? 'آیفون بدون سیم‌کارت' : 'اندروید بدون سیم‌کارت';
+      }
+
+      function showToast(message) {
+        const toastEl = document.getElementById('toast');
+        const msgEl = document.getElementById('toast-message');
+        if (!toastEl || !msgEl) return;
+        msgEl.textContent = message;
+        toastEl.classList.remove('opacity-0', 'translate-y-2');
+        toastEl.classList.add('opacity-100', 'translate-y-0');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () {
+          toastEl.classList.add('opacity-0', 'translate-y-2');
+          toastEl.classList.remove('opacity-100', 'translate-y-0');
+        }, 2400);
+      }
+
+      function copyText(text, label) {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          navigator.clipboard.writeText(text).then(function () {
+            showToast(label || 'کپی شد');
+          }).catch(function () {
+            fallbackCopy(text, label);
+          });
+        } else {
+          fallbackCopy(text, label);
+        }
+      }
+
+      function fallbackCopy(text, label) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          showToast(label || 'کپی شد');
+        } catch (e) {
+          showToast('امکان کپی خودکار نبود؛ متن را دستی کپی کنید');
+        }
+        document.body.removeChild(ta);
+      }
+
+      function getStepTaskIds(stepIndex) {
+        if (stepIndex === 0) return ['s0_ready'];
+        if (stepIndex === 1) {
+          const ids = ['s1_apk_sim'];
+          if (state.noSimDevice === 'ios') {
+            if (state.iosMethod === 'sidestore' || state.iosMethod === 'altstore') ids.push('s1_source_url');
+            else if (state.iosMethod === 'sideloadly' || state.iosMethod === 'trollstore') ids.push('s1_ipa');
+          } else {
+            ids.push('s1_client_apk');
+          }
+          return ids;
+        }
+        if (stepIndex === 2) {
+          const ids = [];
+          if (state.isSamsung) ids.push('s2_samsung_blocker');
+          ids.push('s2_install_apk', 's2_permissions', 's2_default_phone', 's2_battery');
+          if (state.androidVersion === '11+') ids.push('s2_dev_mode', 's2_wireless_debug');
+          else ids.push('s2_tcp_mode');
+          return ids;
+        }
+        if (stepIndex === 3) {
+          if (state.noSimDevice === 'android') return ['s3_and_install', 's3_and_open'];
+          if (state.iosMethod === 'sidestore') return ['s3_ss_localvpn', 's3_ss_iloader', 's3_ss_pc', 's3_ios_devmode', 's3_ss_vpn', 's3_ss_source', 's3_ss_refresh'];
+          if (state.iosMethod === 'altstore') return ['s3_as_pc', 's3_as_install', 's3_ios_devmode', 's3_as_source'];
+          if (state.iosMethod === 'sideloadly') return ['s3_sl_pc', 's3_sl_drag', 's3_ios_devmode', 's3_sl_trust'];
+          if (state.iosMethod === 'trollstore') return ['s3_ts_check', 's3_ts_install'];
+          return ['s3_xc_build'];
+        }
+        if (stepIndex === 4) {
+          return state.noSimDevice === 'ios'
+            ? ['s4_bt_on', 's4_ios_open', 's4_android_qr', 's4_scan', 's4_mic_check']
+            : ['s4_bt_on', 's4_android_qr', 's4_client_scan'];
+        }
+        if (stepIndex === 5) {
+          const ids = ['s5_incoming', 's5_outgoing', 's5_selftest'];
+          if (state.noSimDevice === 'ios') { if (state.inIran) ids.push('s5_cleanup_proxy'); ids.push('s5_cleanup_vpn'); }
+          if (state.isSamsung) ids.push('s5_cleanup_samsung');
+          ids.push('s5_cleanup_files');
+          return ids;
+        }
+        return [];
+      }
+
+      function getFirstUncheckedId(stepIndex) {
+        const ids = getStepTaskIds(stepIndex);
+        for (let i = 0; i < ids.length; i++) {
+          if (!state.completedTasks[ids[i]]) return ids[i];
+        }
+        return null;
+      }
+
+      function isTaskExpanded(taskId, stepIndex) {
+        if (state.expandAll) return true;
+        if (typeof state.expandedTasks[taskId] === 'boolean') return state.expandedTasks[taskId];
+        if (state.completedTasks[taskId]) return false;
+        return getFirstUncheckedId(stepIndex) === taskId;
+      }
+
+      function getStepCompletion(stepIndex) {
+        const ids = getStepTaskIds(stepIndex);
+        if (ids.length === 0) return { done: 0, total: 0, complete: false };
+        let done = 0;
+        for (let i = 0; i < ids.length; i++) {
+          if (state.completedTasks[ids[i]]) done++;
+        }
+        return { done: done, total: ids.length, complete: done === ids.length };
+      }
+
+      function getOverallProgress() {
+        let done = 0;
+        let total = 0;
+        let completedSteps = 0;
+        for (let i = 0; i < 6; i++) {
+          const c = getStepCompletion(i);
+          done += c.done;
+          total += c.total;
+          if (c.complete && c.total > 0) completedSteps++;
+        }
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        return { done: done, total: total, pct: pct, completedSteps: completedSteps };
+      }
+
+      function renderDeviceBadge(target) {
+        if (target === 'sim') {
+          return `<span class="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-ok/15 text-ok"><i data-lucide="smartphone" class="w-3 h-3"></i><span>${simPhoneLabel()}</span></span>`;
+        }
+        if (target === 'nosim') {
+          return `<span class="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-700"><i data-lucide="tablet-smartphone" class="w-3 h-3"></i><span>${noSimPhoneLabel()}</span></span>`;
+        }
+        if (target === 'pc') {
+          return `<span class="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-warn/15 text-warn"><i data-lucide="laptop" class="w-3 h-3"></i><span>کامپیوتر</span></span>`;
+        }
+        if (target === 'both') {
+          return `<span class="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-brand-50/15 text-brand-700"><i data-lucide="bluetooth" class="w-3 h-3"></i><span>هر دو گوشی</span></span>`;
+        }
+        return '';
+      }
+
+      function renderFocusToolbar(stepIndex) {
+        const comp = getStepCompletion(stepIndex);
+        return `
+          <div class="flex items-center justify-between gap-2 pb-1 text-xs text-muted">
+            <span>${toPersianDigits(comp.done)} از ${toPersianDigits(comp.total)} کار انجام شده</span>
+            <button type="button" data-action="toggle-expand-all" class="text-brand-700 hover:underline font-medium inline-flex items-center gap-1">
+              <i data-lucide="${state.expandAll ? 'minimize-2' : 'maximize-2'}" class="w-3.5 h-3.5"></i>
+              <span>${state.expandAll ? 'نمایش متمرکز (فقط مرحله فعلی)' : 'باز کردن همه جزئیات'}</span>
+            </button>
+          </div>
+        `;
+      }
+
+      function renderTaskCard(id, title, bodyHtml, deviceTarget, stepIndex) {
+        const checked = !!state.completedTasks[id];
+        const expanded = isTaskExpanded(id, stepIndex);
+        const isCurrent = !checked && getFirstUncheckedId(stepIndex) === id;
+
+        return `
+          <div class="rounded-2xl border transition-all ${checked ? 'bg-stone-50/70 border-line/10' : (isCurrent ? 'bg-white border-brand-700/35 ' : 'bg-white border-line/10')}">
+            <div class="flex items-center gap-3.5 px-4 sm:px-5 py-4">
+              <label class="cursor-pointer shrink-0 flex items-center" title="انجام شد">
+                <input type="checkbox" class="sr-only task-check-input" data-action="toggle-task" data-task-id="${id}" ${checked ? 'checked' : ''}>
+                <span class="task-check-box w-5 h-5 rounded-md border-2 border-stone-300 bg-white flex items-center justify-center transition-colors">
+                  <svg class="w-3.5 h-3.5 text-onaccent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </span>
+              </label>
+
+              <button type="button" data-action="toggle-expand-task" data-task-id="${id}" class="flex-1 min-w-0 text-right flex items-center justify-between gap-3">
+                <div class="min-w-0 space-y-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-sm sm:text-[15px] font-bold ${checked ? 'line-through text-muted font-medium' : 'text-ink'}">${title}</span>
+                    ${deviceTarget ? renderDeviceBadge(deviceTarget) : ''}
+                  </div>
+                </div>
+                <i data-lucide="chevron-down" class="w-4 h-4 text-muted shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}"></i>
+              </button>
+            </div>
+
+            ${expanded ? `
+              <div class="px-5 sm:px-6 pb-5 pt-1 pr-12 sm:pr-14 text-xs sm:text-sm text-muted leading-relaxed space-y-3 border-t border-line/10">
+                ${bodyHtml}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
+
+      function renderCopyBox(value, label, helperText) {
+        const escaped = value.replace(/"/g, '&quot;');
+        return `
+          <div class="bg-paper border border-line/15 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div class="min-w-0">
+              ${helperText ? `<div class="text-[11px] text-muted mb-0.5">${helperText}</div>` : ''}
+              <code class="ltr-code text-xs text-ink break-all block select-all">${value}</code>
+            </div>
+            <button type="button" data-action="copy-text" data-copy-value="${escaped}" data-copy-label="${label}" class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-brand-700 bg-white border border-brand-600/25 hover:bg-brand-50/15 rounded-lg shrink-0 transition-colors">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              <span>کپی</span>
+            </button>
+          </div>
+        `;
+      }
+
+      function renderStep0() {
+        const iosMethods = [
+          { id: 'sidestore', label: 'SideStore (پیشنهادی)', sub: 'فقط یک بار کامپیوتر لازم است؛ تمدید هفتگی روی خود آیفون.' },
+          { id: 'altstore', label: 'AltStore', sub: 'تمدید خودکار وقتی کامپیوتر روشن و روی همان وای‌فای است.' },
+          { id: 'sideloadly', label: 'Sideloadly', sub: 'نصب مستقیم فایل IPA از کامپیوتر با کابل USB.' },
+          { id: 'trollstore', label: 'TrollStore (بدون تمدید ۷ روزه)', sub: 'فقط روی iOS 16.0 تا 16.6.1 و 17.0.' },
+          { id: 'xcode', label: 'ساخت از سورس (Xcode)', sub: 'مخصوص مک و توسعه‌دهندگان.' }
+        ];
+
+        const activeMethod = iosMethods.find(function (m) { return m.id === state.iosMethod; }) || iosMethods[0];
+
+        return `
+          <div class="bg-white border border-line/10 rounded-3xl p-6 sm:p-8 space-y-8 ">
+            <!-- Hero Header + Editorial Illustration -->
+            <div class="space-y-4">
+              <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 bg-brand-50/15 px-3 py-1 rounded-full">
+                <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i>
+                <span>مرحله ۱ از ۷ — فقط ۳ انتخاب ساده</span>
+              </span>
+              <h2 class="text-2xl sm:text-3xl font-bold text-ink leading-snug">مشخص کنید کدام گوشی سیم‌کارت دارد</h2>
+              <p class="text-sm sm:text-[15px] text-muted leading-relaxed">
+                گوشی <strong>سیم‌کارت‌دار</strong> (اندروید) در کیف یا جیب می‌ماند و تماس‌ها و پیامک‌ها را از طریق بلوتوث امن روی گوشی <strong>بدون سیم‌کارت</strong> (مثلاً آیفون شما) می‌آورد — بدون سرور و بدون حساب کاربری.
+              </p>
+
+              <div class="rounded-2xl bg-paper border border-line/10">
+                <div class="px-4 py-3 flex flex-wrap items-center justify-center gap-3 text-xs text-muted">
+                  <span class="font-semibold text-ok">${simPhoneLabel()} (دارای سیم‌کارت)</span>
+                  <span class="text-brand-700">← بلوتوث رمزنگاری‌شده →</span>
+                  <span class="font-semibold text-ink">${noSimPhoneLabel()}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Question 1 -->
+            <div class="space-y-3 pt-2 border-t border-line/10">
+              <h3 class="text-sm sm:text-base font-bold text-ink">۱. کدام گوشی «سیم‌کارت ندارد» و می‌خواهید تماس و پیامک روی آن بیاید؟</h3>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button type="button" data-action="set-nosim-device" data-value="ios" class="text-right p-4 rounded-2xl border-2 transition-all flex items-start gap-3.5 ${state.noSimDevice === 'ios' ? 'border-brand-700 bg-brand-50/10' : 'border-line/15 bg-white hover:border-stone-300'}">
+                  <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${state.noSimDevice === 'ios' ? 'bg-brand-700 text-onaccent' : 'bg-stone-100 text-muted'}">
+                    <i data-lucide="tablet-smartphone" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <div class="text-sm font-bold text-ink">آیفون یا آیپد</div>
+                    <p class="text-xs text-muted mt-0.5">مثلاً آیفون بدون آنتن (iOS 16 به بالا)</p>
+                  </div>
+                </button>
+
+                <button type="button" data-action="set-nosim-device" data-value="android" class="text-right p-4 rounded-2xl border-2 transition-all flex items-start gap-3.5 ${state.noSimDevice === 'android' ? 'border-brand-700 bg-brand-50/10' : 'border-line/15 bg-white hover:border-stone-300'}">
+                  <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${state.noSimDevice === 'android' ? 'bg-brand-700 text-onaccent' : 'bg-stone-100 text-muted'}">
+                    <i data-lucide="smartphone" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <div class="text-sm font-bold text-ink">یک گوشی اندرویدی دیگر</div>
+                    <p class="text-xs text-muted mt-0.5">اندروید ۱۰ به بالا — بدون نیاز به کامپیوتر</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- Question 2 -->
+            <div class="space-y-4 pt-2 border-t border-line/10">
+              <h3 class="text-sm sm:text-base font-bold text-ink">۲. درباره گوشی «سیم‌کارت‌دار» (اندروید) شما:</h3>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="space-y-2">
+                  <div class="text-xs font-semibold text-muted">آیا سامسونگ است؟</div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button type="button" data-action="set-samsung" data-value="true" class="py-2.5 px-3 rounded-xl text-xs font-bold border transition-colors ${state.isSamsung ? 'bg-brand-700 text-onaccent border-brand-700' : 'bg-paper text-ink border-line/15 hover:bg-stone-100'}">بله، سامسونگ</button>
+                    <button type="button" data-action="set-samsung" data-value="false" class="py-2.5 px-3 rounded-xl text-xs font-bold border transition-colors ${!state.isSamsung ? 'bg-brand-700 text-onaccent border-brand-700' : 'bg-paper text-ink border-line/15 hover:bg-stone-100'}">برند دیگر</button>
+                  </div>
+                </div>
+
+                <div class="space-y-2">
+                  <div class="text-xs font-semibold text-muted">نسخه اندرویدش چند است؟</div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button type="button" data-action="set-android-ver" data-value="11+" class="py-2.5 px-3 rounded-xl text-xs font-bold border transition-colors ${state.androidVersion === '11+' ? 'bg-brand-700 text-onaccent border-brand-700' : 'bg-paper text-ink border-line/15 hover:bg-stone-100'}">۱۱ یا جدیدتر</button>
+                    <button type="button" data-action="set-android-ver" data-value="8-10" class="py-2.5 px-3 rounded-xl text-xs font-bold border transition-colors ${state.androidVersion === '8-10' ? 'bg-brand-700 text-onaccent border-brand-700' : 'bg-paper text-ink border-line/15 hover:bg-stone-100'}">۱۰ یا قدیمی‌تر</button>
+                  </div>
+                </div>
+              </div>
+
+              ${state.androidVersion === '8-10' ? `
+                <div class="p-4 rounded-2xl bg-warn/10 text-xs sm:text-sm text-warn leading-relaxed">
+                  <strong>توجه:</strong> روی اندروید ۸ تا ۱۰ صدای مکالمه به ${noSimPhoneLabel()} منتقل نمی‌شود (پیامک، مخاطبین و کنترل تماس کار می‌کند؛ اندروید ۸ و ۹ هم پشتیبانی می‌شود) و بعد از هر ری‌استارت نیاز به دستور کامپیوتر (<span class="ltr-code">adb tcpip 5555</span>) دارد.
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- Question 3 (iPhone only) -->
+            ${state.noSimDevice === 'ios' ? `
+              <div class="space-y-3 pt-2 border-t border-line/10">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <h3 class="text-sm sm:text-base font-bold text-ink">۳. روش نصب روی آیفون</h3>
+                  <button type="button" data-action="toggle-ios-methods" class="text-xs font-semibold text-brand-700 hover:underline">
+                    ${state.showAllIosMethods ? 'بستن لیست' : 'تغییر روش (AltStore / Sideloadly / TrollStore)'}
+                  </button>
+                </div>
+
+                ${!state.showAllIosMethods ? `
+                  <div class="p-4 rounded-2xl bg-paper flex items-center justify-between gap-3">
+                    <div>
+                      <div class="text-sm font-bold text-ink">${activeMethod.label}</div>
+                      <p class="text-xs text-muted mt-0.5">${activeMethod.sub}</p>
+                    </div>
+                    <i data-lucide="check-circle-2" class="w-5 h-5 text-brand-700 shrink-0"></i>
+                  </div>
+                ` : `
+                  <div class="grid grid-cols-1 gap-2">
+                    ${iosMethods.map(function (m) {
+                      const active = state.iosMethod === m.id;
+                      return `
+                        <button type="button" data-action="set-ios-method" data-value="${m.id}" class="text-right p-3.5 rounded-xl border transition-all ${active ? 'border-brand-700 bg-brand-50/10' : 'border-line/15 bg-white hover:border-stone-300'}">
+                          <div class="text-sm font-bold text-ink">${m.label}</div>
+                          <p class="text-xs text-muted mt-0.5">${m.sub}</p>
+                        </button>
+                      `;
+                    }).join('')}
+                  </div>
+                `}
+
+                <label class="inline-flex items-center gap-2.5 pt-1 cursor-pointer text-xs text-muted hover:text-ink">
+                  <input type="checkbox" data-action="toggle-iran" class="w-4 h-4 accent-brand-700 rounded" ${state.inIran ? 'checked' : ''}>
+                  <span>در ایران هستم (نمایش نکات VPN و رفع خطای 403 / UDID)</span>
+                </label>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
+
+      function renderStep1() {
+        const isIos = state.noSimDevice === 'ios';
+        const needsSource = isIos && (state.iosMethod === 'sidestore' || state.iosMethod === 'altstore');
+        const needsIpa = isIos && (state.iosMethod === 'sideloadly' || state.iosMethod === 'trollstore');
+
+        return `
+          <div class="bg-white border border-line/10 rounded-3xl p-6 sm:p-8 space-y-6 ">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <span class="text-xs font-semibold text-brand-700">مرحله ۲ از ۷</span>
+                <h2 class="text-2xl font-bold text-ink mt-1">فقط همین موارد را دانلود کنید</h2>
+                <p class="text-sm text-muted mt-1">به بقیه فایل‌های سایت هیچ نیازی ندارید.</p>
+              </div>
+              <a href="${RELEASES_URL}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold text-onaccent bg-brand-700 hover:opacity-90 rounded-xl shrink-0 transition-colors">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                <span>صفحه دانلود رسمی</span>
+              </a>
+            </div>
+
+            ${renderFocusToolbar(1)}
+
+            <div class="space-y-3">
+              ${renderTaskCard(
+                's1_apk_sim',
+                'دانلود فایل نصبی اندروید (Tether-A54)',
+                '<p>روی <strong>' + simPhoneLabel() + '</strong> صفحه دانلود را باز کنید و فایلی را بگیرید که اسمش با <span class="ltr-code bg-stone-100 px-1.5 py-0.5 rounded text-xs font-semibold">Tether-A54-</span> شروع می‌شود و به <span class="ltr-code text-xs">.apk</span> ختم می‌شود.</p><p class="text-xs">نگران کلمه A54 نباشید؛ برای تمام گوشی‌های اندرویدی است.</p>',
+                'sim',
+                1
+              )}
+
+              ${needsSource ? renderTaskCard(
+                's1_source_url',
+                'کپی کردن آدرس نصب برای ' + (state.iosMethod === 'sidestore' ? 'SideStore' : 'AltStore'),
+                '<p>برای آیفون نیازی به دانلود فایل نیست؛ فقط این لینک را کپی کنید تا در مرحله ۴ داخل برنامه بچسبانید:</p>' +
+                renderCopyBox(ALTSTORE_SOURCE_URL, 'آدرس نصب آیفون کپی شد', 'آدرس Source'),
+                'nosim',
+                1
+              ) : ''}
+
+              ${needsIpa ? renderTaskCard(
+                's1_ipa',
+                'دانلود فایل نصبی آیفون (unsigned.ipa)',
+                '<p>فایلی را بگیرید که به <span class="ltr-code bg-stone-100 px-1.5 py-0.5 rounded text-xs font-semibold">-unsigned.ipa</span> ختم می‌شود ' + (state.iosMethod === 'sideloadly' ? '(روی <strong>کامپیوتر</strong>).' : '(روی <strong>آیفون</strong>).') + '</p>',
+                state.iosMethod === 'sideloadly' ? 'pc' : 'nosim',
+                1
+              ) : ''}
+
+              ${!isIos ? renderTaskCard(
+                's1_client_apk',
+                'دانلود فایل Tether-Client روی اندروید دوم',
+                '<p>روی <strong>' + noSimPhoneLabel() + '</strong> فایل <span class="ltr-code bg-stone-100 px-1.5 py-0.5 rounded text-xs font-semibold">Tether-Client-….apk</span> را دانلود کنید.</p>',
+                'nosim',
+                1
+              ) : ''}
+            </div>
+
+            <details class="pt-2 text-xs text-muted group">
+              <summary class="cursor-pointer list-none inline-flex items-center gap-1.5 font-medium hover:text-ink">
+                <i data-lucide="info" class="w-3.5 h-3.5 text-brand-700"></i>
+                <span>ارتقا از نسخه ۱.۱.۰ و شناسه SHA-256</span>
+              </summary>
+              <div class="mt-3 space-y-2.5 p-4 rounded-2xl bg-paper">
+                <p>اگر قبلاً نسخه 1.1.0 یا <span class="ltr-code">-debug-signed.apk</span> نصب داشتید، قبل از نصب 1.2.0 اول آن را حذف کنید و دوباره جفت کنید.</p>
+                ${renderCopyBox(SHA256_CERT, 'شناسه SHA-256 کپی شد', 'SHA-256 امضای رسمی APK از 1.2.0')}
+              </div>
+            </details>
+          </div>
+        `;
+      }
+
+      function renderStep2() {
+        const isModernAndroid = state.androidVersion === '11+';
+        return `
+          <div class="bg-white border border-line/10 rounded-3xl p-6 sm:p-8 space-y-6 ">
+            <div>
+              <span class="text-xs font-semibold text-brand-700">مرحله ۳ از ۷</span>
+              <h2 class="text-2xl font-bold text-ink mt-1">تنظیم ${simPhoneLabel()}</h2>
+              <p class="text-sm text-muted mt-1">هر مورد را انجام دهید و تیک بزنید تا خودکار مورد بعدی باز شود.</p>
+            </div>
+
+            ${renderFocusToolbar(2)}
+
+            <div class="space-y-3">
+              ${state.isSamsung ? renderTaskCard(
+                's2_samsung_blocker',
+                'خاموش کردن قفل Auto Blocker سامسونگ',
+                '<p>برای اینکه سامسونگ اجازه نصب فایل APK بدهد، موقتاً به مسیر زیر بروید و خاموشش کنید (در مرحله ۶ دوباره روشنش می‌کنیم):</p><div class="inline-block px-3 py-1.5 rounded-xl bg-warn/15 text-warn font-semibold text-xs">تنظیمات ← امنیت و حریم خصوصی ← Auto Blocker (خاموش)</div>',
+                'sim',
+                2
+              ) : ''}
+
+              ${renderTaskCard(
+                's2_install_apk',
+                'نصب فایل Tether-A54',
+                '<p>فایل دانلودشده را باز کنید و <strong>Install</strong> بزنید. اگر اجازه نصب از مرورگر خواست تایید کنید؛ اگر <strong>Play Protect</strong> هشدار داد بزنید: <strong>More details ← Install anyway</strong>.</p>',
+                'sim',
+                2
+              )}
+
+              ${renderTaskCard(
+                's2_permissions',
+                'دادن مجوزها (Permissions) در کارت Setup',
+                '<p>برنامه Tether را باز کنید و مجوزهای پیامک، مخاطبین، تاریخچه تماس، تلفن، اعلان‌ها و بلوتوث را تایید کنید.</p><div class="p-3 rounded-xl bg-warn/15 text-warn text-xs"><strong>اگر مجوزی خاکستری بود (Restricted setting):</strong> تنظیمات ← برنامه‌ها ← Tether ← منوی ⋮ ← <strong>Allow restricted settings</strong>.</div>',
+                'sim',
+                2
+              )}
+
+              ${renderTaskCard(
+                's2_default_phone',
+                'انتخاب Tether به عنوان برنامه پیش‌فرض تلفن',
+                '<p>گزینه <strong>Default phone app</strong> را روی Tether بگذارید. برنامه پیامک شما نیازی به تغییر ندارد.</p>',
+                'sim',
+                2
+              )}
+
+              ${renderTaskCard(
+                's2_battery',
+                'فعال کردن باتری بدون محدودیت (Unrestricted battery)',
+                '<p>تا اندروید برنامه تتر را در پس‌زمینه نبندد و تماس‌ها قطع نشوند.</p>',
+                'sim',
+                2
+              )}
+
+              ${isModernAndroid ? `
+                ${renderTaskCard(
+                  's2_dev_mode',
+                  'باز کردن گزینه‌های برنامه‌نویس (فقط یک بار)',
+                  '<p>برای انتقال صدای تماس لازم است. در گوشی بروید به:</p><div class="inline-block px-3 py-1.5 rounded-xl bg-paper text-ink font-semibold text-xs">تنظیمات ← درباره گوشی ← اطلاعات نرم‌افزار ← ۷ بار روی Build number بزنید</div>',
+                  'sim',
+                  2
+                )}
+
+                ${renderTaskCard(
+                  's2_wireless_debug',
+                  'وصل کردن صدای تماس (Wireless debugging)',
+                  '<ol class="list-decimal pr-5 space-y-1.5"><li>گوشی را به یک <strong>وای‌فای</strong> وصل کنید.</li><li>در تتر، کنار <strong>Wireless debugging</strong> روی <strong>Pair</strong> بزنید.</li><li>صفحه تنظیمات باز می‌شود و یک <strong>اعلان از تتر</strong> بالا ظاهر می‌شود.</li><li><strong>Wireless debugging</strong> را روشن کنید و بزنید روی <strong>Pair device with pairing code</strong>.</li><li>کد <strong>۶ رقمی</strong> را در پاسخ همان اعلان تتر بنویسید تا خط <strong>Audio helper</strong> به <strong>Running</strong> تغییر کند.</li></ol><p class="text-xs text-brand-700">وای‌فای فقط موقع شروع این بخش (و بعد از ری‌استارت گوشی) لازم است.</p>',
+                  'sim',
+                  2
+                )}
+              ` : renderTaskCard(
+                's2_tcp_mode',
+                'فعال‌سازی حالت TCP (اندروید ۸ تا ۱۰)',
+                '<p>گوشی را با کابل به کامپیوتر وصل کنید و پس از هر ری‌استارت یک بار دستور زیر را بزنید:</p>' + renderCopyBox('adb tcpip 5555', 'دستور ADB کپی شد', 'دستور کامپیوتر'),
+                'pc',
+                2
+              )}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderStep3() {
+        if (state.noSimDevice === 'android') {
+          return `
+            <div class="bg-white border border-line/10 rounded-3xl p-6 sm:p-8 space-y-6 ">
+              <div>
+                <span class="text-xs font-semibold text-brand-700">مرحله ۴ از ۷</span>
+                <h2 class="text-2xl font-bold text-ink mt-1">نصب روی ${noSimPhoneLabel()}</h2>
+                <p class="text-sm text-muted mt-1">فقط همین دو کار کوتاه باقی مانده است.</p>
+              </div>
+              ${renderFocusToolbar(3)}
+              <div class="space-y-3">
+                ${renderTaskCard('s3_and_install', 'نصب فایل Tether-Client', '<p>فایل <span class="ltr-code text-xs">Tether-Client-….apk</span> را باز و نصب کنید.</p>', 'nosim', 3)}
+                ${renderTaskCard('s3_and_open', 'تایید مجوزهای برنامه', '<p>برنامه را باز کنید و مجوزهای بلوتوث، اعلان‌ها، میکروفون و دوربین را بدهید.</p>', 'nosim', 3)}
+              </div>
+            </div>
+          `;
+        }
+
+        const today = new Date();
+        const refreshDate = new Date(today.getTime() + 6 * 24 * 60 * 60 * 1000);
+        let refreshHint = '۶ روز دیگر';
+        try {
+          refreshHint = new Intl.DateTimeFormat('fa-IR', { weekday: 'long', month: 'long', day: 'numeric' }).format(refreshDate);
+        } catch (e) {}
+
+        let methodChecklist = '';
+        if (state.iosMethod === 'sidestore') {
+          const osTabs = [
+            { id: 'windows', label: 'ویندوز' },
+            { id: 'mac', label: 'مک' },
+            { id: 'linux', label: 'لینوکس' }
+          ];
+          let iloaderOsSteps = '';
+          if (state.computerOs === 'windows') {
+            iloaderOsSteps =
+              '<ol class="list-decimal pr-5 space-y-1.5"><li>اول <strong>iTunes</strong> را از سایت خود اپل نصب کنید (نه نسخهٔ Microsoft Store).</li><li>از <a href="https://github.com/nab138/iloader/releases/latest" target="_blank" rel="noopener noreferrer" class="text-brand-700 font-bold hover:underline">صفحه دانلود iloader</a> فایل ویندوز (<strong>MSI</strong> یا <strong>EXE</strong>) را دانلود و نصب کنید.</li></ol>';
+          } else if (state.computerOs === 'mac') {
+            iloaderOsSteps = '<p>از <a href="https://github.com/nab138/iloader/releases/latest" target="_blank" rel="noopener noreferrer" class="text-brand-700 font-bold hover:underline">صفحه دانلود iloader</a> نسخه macOS را دانلود و نصب کنید.</p>';
+          } else {
+            iloaderOsSteps = '<p>پس از اطمینان از نصب <span class="ltr-code text-xs">usbmuxd</span>، فایل لینوکس را از <a href="https://github.com/nab138/iloader/releases/latest" target="_blank" rel="noopener noreferrer" class="text-brand-700 font-bold hover:underline">صفحه دانلود iloader</a> نصب کنید.</p>';
+          }
+
+          methodChecklist = `
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-1">
+              <span class="text-xs font-semibold text-muted">سیستم کامپیوتر شما:</span>
+              <div class="flex gap-1.5">
+                ${osTabs.map(function (o) {
+                  const active = state.computerOs === o.id;
+                  return `<button type="button" data-action="set-computer-os" data-value="${o.id}" class="px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${active ? 'bg-brand-700 text-onaccent' : 'bg-paper text-muted hover:text-ink'}">${o.label}</button>`;
+                }).join('')}
+              </div>
+            </div>
+
+            ${renderTaskCard(
+              's3_ss_localvpn',
+              '۱. نصب LocalDevVPN از اپ‌استور آیفون',
+              '<p>در App Store آیفون <span class="ltr-code text-xs bg-stone-100 px-1.5 py-0.5 rounded font-semibold">LocalDevVPN</span> را نصب کنید، بازش کنید و <strong>Connect</strong> بزنید (پیام Allow را تایید کنید). این VPN فقط داخل خود آیفون است.</p>',
+              'nosim',
+              3
+            )}
+
+            ${renderTaskCard('s3_ss_iloader', '۲. نصب iloader روی کامپیوتر (فقط یک بار)', iloaderOsSteps, 'pc', 3)}
+
+            ${renderTaskCard(
+              's3_ss_pc',
+              '۳. نصب SideStore روی آیفون با کابل USB',
+              '<ol class="list-decimal pr-5 space-y-1.5"><li>آیفون را با USB به کامپیوتر وصل کنید (اگر Trust پرسید تایید کنید).</li><li><strong>iloader</strong> را باز کنید و با یک <strong>Apple ID رایگان</strong> وارد شوید (لازم نیست اکانت اصلی آیفونتان باشد).</li><li>نام آیفون را انتخاب کنید و <strong>Install SideStore (Stable)</strong> را بزنید.</li></ol><p class="text-xs text-brand-700">تا قبل از نصب این برنامه، گزینه Developer Mode در تنظیمات آیفون مخفی است.</p>',
+              'pc',
+              3
+            )}
+
+            ${renderTaskCard(
+              's3_ios_devmode',
+              '۴. تایید Trust و روشن کردن Developer Mode',
+              '<ol class="list-decimal pr-5 space-y-1.5"><li>در آیفون: <span class="ltr-code text-xs">Settings › General › VPN & Device Management</span> ← روی Apple ID بزنید ← <strong>Trust</strong> (در iOS 18+: <strong>Allow & Restart</strong>).</li><li>سپس در انتهای پایینِ <span class="ltr-code text-xs">Settings › Privacy & Security</span> گزینه <strong>Developer Mode</strong> را روشن کنید (گوشی ری‌استارت می‌شود).</li></ol>',
+              'nosim',
+              3
+            )}
+
+            ${renderTaskCard(
+              's3_ss_vpn',
+              '۵. اولین ورود و Refresh داخل SideStore (حتماً با وای‌فای)',
+              '<ol class="list-decimal pr-5 space-y-1.5"><li>آیفون را به <strong>وای‌فای</strong> وصل کنید و <strong>LocalDevVPN</strong> را روی Connect بگذارید.</li><li><strong>SideStore</strong> را باز کنید و با همان Apple ID وارد شوید.</li><li>در تب <strong>My Apps</strong> روی <strong>7 DAYS</strong> کنار SideStore بزنید تا یک بار Refresh شود.</li></ol>' +
+              '<details class="mt-2 rounded-xl bg-warn/10 group">' +
+                '<summary class="px-3.5 py-2.5 text-xs font-bold text-warn cursor-pointer list-none flex items-center justify-between"><span>گیر کردید؟ رفع خطای -45063 یا 503</span><i data-lucide="chevron-down" class="w-4 h-4 transition-transform group-open:rotate-180"></i></summary>' +
+                '<div class="px-3.5 pb-3.5 pt-1 text-xs text-warn space-y-2">' +
+                  '<ol class="list-decimal pr-4 space-y-1"><li>در <span class="ltr-code">Settings › User Customizations</span> گزینه <strong>On-Device Anisette</strong> را خاموش کنید و برنامه را کامل ببندید و باز کنید.</li><li>در <span class="ltr-code">Settings › Anisette Servers</span> سرور <strong>SideStore (New)</strong> یا <strong>jkcoxson</strong> را انتخاب و پایین صفحه <strong>Enable Auto Rotation</strong> را خاموش کنید.</li><li>در <span class="ltr-code">Anisette Client Configuration › Remote Server Sync</span> روی <strong>Fetch</strong> و بعد دکمه <strong>Save as Overrides</strong> (پایین صفحه) بزنید. اگر Client Info هنوز 26.6 بود متن زیر را جایگزین کنید:</li></ol>' +
+                  renderCopyBox(ANISETTE_CLIENT_INFO, 'Client Info کپی شد', 'مقدار سالم Client Info') +
+                  '<p>۴. در <span class="ltr-code">Reset adi.pb</span> با تیک <strong>keep headers</strong> ریست کنید (اگر 10.12.6 پاک شد اول Reset و بعد مرحله ۳ را بزنید)، برنامه را کامل ببندید و لاگین کنید.</p>' +
+                '</div>' +
+              '</details>',
+              'nosim',
+              3
+            )}
+
+            ${renderTaskCard(
+              's3_ss_source',
+              '۶. افزودن آدرس تتر و نصب برنامه',
+              '<p>در SideStore بروید به <span class="ltr-code text-xs">Sources › +</span>، لینک زیر را بچسبانید، سپس <strong>Tether</strong> را باز کنید و <strong>Get</strong> بزنید:</p>' +
+              renderCopyBox(ALTSTORE_SOURCE_URL, 'آدرس Source کپی شد', 'آدرس Source تتر'),
+              'nosim',
+              3
+            )}
+
+            ${renderTaskCard(
+              's3_ss_refresh',
+              '۷. یادآوری تمدید هفتگی (بدون کامپیوتر)',
+              '<p>هر هفته قبل از ۷ روز (مثلاً تا <strong>' + refreshHint + '</strong>) با وای‌فای و LocalDevVPN روشن، در SideStore دکمه <strong>Refresh All</strong> را بزنید.</p>',
+              'nosim',
+              3
+            )}
+          `;
+        } else if (state.iosMethod === 'altstore') {
+          methodChecklist = `
+            ${renderTaskCard('s3_as_pc', 'نصب AltServer روی کامپیوتر', '<p>از <a href="https://altstore.io" target="_blank" rel="noopener noreferrer" class="text-brand-700 font-bold hover:underline">altstore.io</a> نصب کنید (در ویندوز، iTunes و iCloud از سایت اپل لازم است).</p>', 'pc', 3)}
+            ${renderTaskCard('s3_as_install', 'نصب AltStore روی آیفون با USB', '<p>در AltServer گزینه <strong>Install AltStore</strong> را بزنید و با Apple ID وارد شوید.</p>', 'pc', 3)}
+            ${renderTaskCard('s3_ios_devmode', 'تایید Trust و روشن کردن Developer Mode', '<p>در Settings › General › VPN & Device Management تایید Trust بزنید و در پایین Privacy & Security گزینه Developer Mode را روشن کنید.</p>', 'nosim', 3)}
+            ${renderTaskCard('s3_as_source', 'افزودن منبع و نصب Tether', '<p>در AltStore بروید به <span class="ltr-code text-xs">Browse › Sources › +</span> و آدرس زیر را بچسبانید:</p>' + renderCopyBox(ALTSTORE_SOURCE_URL, 'آدرس Source کپی شد', 'آدرس Source'), 'nosim', 3)}
+          `;
+        } else if (state.iosMethod === 'sideloadly') {
+          methodChecklist = `
+            ${renderTaskCard('s3_sl_pc', 'نصب Sideloadly روی کامپیوتر', '<p>Sideloadly را نصب کنید (در ویندوز، iTunes و iCloud از سایت اپل لازم است).</p>', 'pc', 3)}
+            ${renderTaskCard('s3_sl_drag', 'نصب فایل IPA با کابل USB', '<p>فایل IPA را داخل Sideloadly بکشید، Apple ID بنویسید و <strong>Start</strong> بزنید.</p>', 'pc', 3)}
+            ${renderTaskCard('s3_ios_devmode', 'روشن کردن Developer Mode روی آیفون', '<p>به پایینِ <span class="ltr-code text-xs">Settings › Privacy & Security</span> بروید و Developer Mode را روشن کنید.</p>', 'nosim', 3)}
+            ${renderTaskCard('s3_sl_trust', 'تایید Trust و تمدید قبل از ۷ روز', '<p>در Settings › General › VPN & Device Management روی Apple ID خود Trust بزنید (قبل از <strong>' + refreshHint + '</strong> تکرار کنید).</p>', 'nosim', 3)}
+          `;
+        } else if (state.iosMethod === 'trollstore') {
+          methodChecklist = `
+            ${renderTaskCard('s3_ts_check', 'بررسی نسخه iOS', '<p>TrollStore فقط روی iOS 16.0 تا 16.6.1 و 17.0 نصب می‌شود.</p>', 'nosim', 3)}
+            ${renderTaskCard('s3_ts_install', 'نصب IPA در TrollStore', '<p>فایل IPA را در TrollStore باز و نصب کنید (بدون محدودیت ۷ روزه).</p>', 'nosim', 3)}
+          `;
+        } else {
+          methodChecklist = renderTaskCard('s3_xc_build', 'ساخت با مک و Xcode', '<p>طبق <span class="ltr-code text-xs">BUILD.md</span> در <a href="https://github.com/amirwmr/tether" target="_blank" rel="noopener noreferrer" class="text-brand-700 font-bold hover:underline">گیت‌هاب</a> بسازید.</p>', 'pc', 3);
+        }
+
+        return `
+          <div class="bg-white border border-line/10 rounded-3xl p-6 sm:p-8 space-y-6 ">
+            <div class="space-y-4">
+              <div>
+                <span class="text-xs font-semibold text-brand-700">مرحله ۴ از ۷</span>
+                <h2 class="text-2xl font-bold text-ink mt-1">نصب روی آیفون بدون سیم‌کارت</h2>
+                <p class="text-sm text-muted mt-1">فقط همین یک بار کامپیوتر لازم است؛ از هر Apple ID رایگانی می‌توانید استفاده کنید.</p>
+                <p class="text-xs text-muted mt-2">SideStore، iloader و LocalDevVPN را گروه‌های دیگری نگه می‌دارند و ظاهرشان تغییر می‌کند؛ مرجع آن‌ها <span class="ltr-code">docs.sidestore.io</span> است. نکات مربوط به VPN و Anisette در همین مرحله پیشنهاد کاربران است و پروژهٔ تتر آن‌ها را آزمایش نکرده است.</p>
+              </div>
+
+
+              ${state.inIran ? `
+                <details class="rounded-2xl bg-warn/10 group">
+                  <summary class="px-4 py-3 text-xs sm:text-sm font-bold text-warn cursor-pointer list-none flex items-center justify-between gap-2">
+                    <span class="inline-flex items-center gap-2"><i data-lucide="globe" class="w-4 h-4 text-warn"></i><span>نکته مهم کاربران ایران (جلوگیری از خطای 403 و UDID)</span></span>
+                    <i data-lucide="chevron-down" class="w-4 h-4 transition-transform group-open:rotate-180"></i>
+                  </summary>
+                  <div class="px-4 pb-4 pt-1 text-xs text-warn space-y-2 leading-relaxed">
+                    <p>روشن کردن VPN معمولی روی آیفون باعث قطع شدن <strong>LocalDevVPN</strong> (خطای UDID) می‌شود و خاموش کردنش در ایران خطای <strong>403</strong> می‌دهد:</p>
+                    <ul class="list-disc pr-5 space-y-1">
+                      <li><strong>راه‌حل با Windscribe کامپیوتر:</strong> در Windscribe کامپیوتر به <span class="ltr-code">Preferences › Connection</span> بروید (نه Proxy Settings!)، پایین صفحه <strong>Secure Hotspot</strong> یا <strong>Proxy Gateway (HTTP)</strong> را روشن کنید و آیفون را به آن وصل کنید؛ روی آیفون فقط LocalDevVPN روشن باشد.</li>
+                      <li><strong>راه‌حل روی خود آیفون:</strong> پروتکل Windscribe آیفون را روی <strong>IKEv2</strong> بگذارید تا هم‌زمان با LocalDevVPN وصل بماند.</li>
+                    </ul>
+                  </div>
+                </details>
+              ` : ''}
+            </div>
+
+            ${renderFocusToolbar(3)}
+
+            <div class="space-y-3">
+              ${methodChecklist}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderStep4() {
+        const isIos = state.noSimDevice === 'ios';
+        return `
+          <div class="bg-white border border-line/10 rounded-3xl p-6 sm:p-8 space-y-6 ">
+            <div class="space-y-4">
+              <div>
+                <span class="text-xs font-semibold text-brand-700">مرحله ۵ از ۷</span>
+                <h2 class="text-2xl font-bold text-ink mt-1">وصل کردن دو گوشی با کد QR</h2>
+                <p class="text-sm text-muted mt-1">دو گوشی را کنار هم بگذارید؛ با یک اسکن ساده وصل می‌شوند.</p>
+              </div>
+
+            </div>
+
+            ${renderFocusToolbar(4)}
+
+            <div class="space-y-3">
+              ${renderTaskCard(
+                's4_bt_on',
+                'روشن کردن بلوتوث + حذف جفت‌شدن قبلی بلوتوث (خیلی مهم!)',
+                '<p>بلوتوث هر دو گوشی روشن باشد. <strong>نکته طلایی:</strong> اگر قبلاً این دو گوشی را از تنظیمات معمولی بلوتوث به هم Pair کرده بودید، در تنظیمات بلوتوث هر دو گوشی آن را <strong>Forget / Unpair</strong> کنید؛ وگرنه روی Connecting گیر می‌کند!</p>',
+                'both',
+                4
+              )}
+
+              ${isIos ? `
+                ${renderTaskCard(
+                  's4_ios_open',
+                  'باز کردن برنامه Cellular روی آیفون',
+                  '<p>برنامه <strong>Cellular</strong> را باز کنید، به بلوتوث، اعلان‌ها، میکروفون و دوربین اجازه دهید و بروید به <span class="ltr-code text-xs bg-stone-100 px-1.5 py-0.5 rounded">Link › Pair with Android phone</span>.</p>',
+                  'nosim',
+                  4
+                )}
+                ${renderTaskCard(
+                  's4_android_qr',
+                  'نمایش کد QR روی ' + simPhoneLabel(),
+                  '<p>در برنامه Tether دکمه <strong>Pair iPhone</strong> را بزنید تا کد QR پنج‌دقیقه‌ای ظاهر شود.</p>',
+                  'sim',
+                  4
+                )}
+                ${renderTaskCard(
+                  's4_scan',
+                  'اسکن کد QR با آیفون',
+                  '<p>کد را با اسکنر داخل خود برنامه Cellular اسکن کنید (یا دوربین آیفون را رویش بگیرید و <strong>Open in Cellular</strong> بزنید).</p>',
+                  'both',
+                  4
+                )}
+                ${renderTaskCard(
+                  's4_mic_check',
+                  'اطمینان از اتصال و دسترسی میکروفون',
+                  '<p>در تب <strong>Link</strong> نام گوشی اندرویدی، باتری و سیم‌کارت‌ها ظاهر می‌شوند. مطمئن شوید اجازه <strong>میکروفون</strong> را داده‌اید تا طرف مقابل صدایتان را بشنود.</p>',
+                  'nosim',
+                  4
+                )}
+              ` : `
+                ${renderTaskCard('s4_android_qr', 'نمایش کد QR روی ' + simPhoneLabel(), '<p>در Tether روی <strong>Pair iPhone</strong> بزنید تا کد QR نمایش داده شود.</p>', 'sim', 4)}
+                ${renderTaskCard('s4_client_scan', 'اسکن کد QR با Tether Client', '<p>برنامه <strong>Tether Client</strong> را روی گوشی دوم باز کنید و کد QR را اسکن کنید.</p>', 'nosim', 4)}
+              `}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderStep5() {
+        return `
+          <div class="bg-white border border-line/10 rounded-3xl p-6 sm:p-8 space-y-6 ">
+            <div>
+              <span class="text-xs font-semibold text-brand-700">مرحله ۶ از ۷</span>
+              <h2 class="text-2xl font-bold text-ink mt-1">تست اولین تماس و تمیزکاری نهایی</h2>
+              <p class="text-sm text-muted mt-1">تماس را امتحان کنید و تنظیمات موقت را به حالت عادی برگردانید.</p>
+            </div>
+
+            ${renderFocusToolbar(5)}
+
+            <div class="space-y-3">
+              ${renderTaskCard('s5_incoming', 'تست تماس ورودی', '<p>از کسی بخواهید به سیم‌کارت شما زنگ بزند و روی <strong>' + noSimPhoneLabel() + '</strong> جواب دهید.</p>', 'nosim', 5)}
+              ${renderTaskCard('s5_outgoing', 'تست تماس خروجی از Keypad', '<p>در تب <strong>Keypad</strong> شماره بگیرید و سیم‌کارت دلخواه را انتخاب کنید.</p>', 'nosim', 5)}
+              ${renderTaskCard('s5_selftest', 'تست خودکار صدا در حین تماس (اختیاری)', '<p>در حین تماس، روی <strong>' + simPhoneLabel() + '</strong> در کارت <strong>Call audio</strong> گزینه <strong>Run call-audio self-test</strong> را بزنید.</p>', 'sim', 5)}
+
+              <div class="pt-4 pb-1 flex items-center gap-2 text-xs font-bold text-brand-700">
+                <i data-lucide="check-check" class="w-4 h-4"></i>
+                <span>تمیزکاری نهایی (Clean Up)</span>
+              </div>
+
+              ${state.noSimDevice === 'ios' ? `
+                ${state.inIran ? renderTaskCard('s5_cleanup_proxy', 'خاموش کردن Proxy وای‌فای آیفون و Hotspot کامپیوتر', '<p>اگر در مرحله ۴ روی وای‌فای آیفون Proxy گذاشتید، در <span class="ltr-code text-xs">Settings › Wi-Fi › (i) › Configure Proxy</span> آن را روی <strong>Off</strong> بگذارید و Secure Hotspot یا Proxy Gateway کامپیوتر را خاموش کنید.</p>', 'nosim', 5) : ''}
+                ${renderTaskCard('s5_cleanup_vpn', 'قطع کردن LocalDevVPN تا هفته آینده', '<p>الان دیگر نیازی به LocalDevVPN نیست؛ آن را <strong>Disconnect</strong> کنید و فقط هفته آینده موقع <strong>Refresh All</strong> در SideStore دوباره روشنش کنید. (برنامه‌های SideStore و LocalDevVPN را پاک نکنید.)</p>', 'nosim', 5)}
+              ` : ''}
+
+              ${state.isSamsung ? renderTaskCard('s5_cleanup_samsung', 'روشن کردن دوباره Auto Blocker سامسونگ', '<p>برای امنیت بیشتر می‌توانید در <strong>تنظیمات ← امنیت و حریم خصوصی</strong> دوباره <strong>Auto Blocker</strong> را روشن کنید.</p>', 'sim', 5) : ''}
+
+              ${renderTaskCard('s5_cleanup_files', 'پاک کردن فایل‌های نصبی اضافه (اختیاری)', '<p>فایل <span class="ltr-code text-xs">.apk</span> در Downloads اندروید و فایل نصبی <span class="ltr-code text-xs">iloader</span> روی کامپیوتر را می‌توانید پاک کنید.</p>', 'both', 5)}
+            </div>
+
+            <div class="pt-4 border-t border-line/10 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div class="p-3.5 rounded-2xl bg-paper space-y-1">
+                <div class="font-bold text-ink flex items-center gap-1.5"><i data-lucide="wifi" class="w-3.5 h-3.5 text-brand-700"></i><span>هات‌اسپات وای‌فای</span></div>
+                <p class="text-muted">از تب Link هات‌اسپات اندروید را از راه دور روشن کنید (سریع‌تر).</p>
+              </div>
+              <div class="p-3.5 rounded-2xl bg-paper space-y-1">
+                <div class="font-bold text-ink flex items-center gap-1.5"><i data-lucide="bluetooth" class="w-3.5 h-3.5 text-brand-700"></i><span>Bluetooth tethering</span></div>
+                <p class="text-muted">اینترنت بلوتوثی بدون قطع شدن تتر (کمی کندتر از هات‌اسپات).</p>
+              </div>
+              <div class="p-3.5 rounded-2xl bg-paper space-y-1">
+                <div class="font-bold text-ink flex items-center gap-1.5"><i data-lucide="shield" class="w-3.5 h-3.5 text-brand-700"></i><span>Share VPN</span></div>
+                <p class="text-muted">اشتراک VPN گوشی اندرویدی برای آیفون از داخل تب Link.</p>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderStep6() {
+        const categories = [
+          { id: 'all', label: 'همه' },
+          { id: 'android', label: 'اندروید' },
+          { id: 'ios', label: 'آیفون و SideStore' },
+          { id: 'pair', label: 'اتصال و QR' },
+          { id: 'audio', label: 'صدا' }
+        ];
+
+        const q = (state.troubleshootQuery || '').trim().toLowerCase();
+        const filtered = TROUBLESHOOT_ITEMS.filter(function (item) {
+          const catMatch = state.troubleshootCategory === 'all' || item.category === state.troubleshootCategory;
+          if (!catMatch) return false;
+          if (!q) return true;
+          return (item.symptom + ' ' + item.tags.join(' ') + ' ' + item.steps.join(' ')).toLowerCase().indexOf(q) !== -1;
+        });
+
+        return `
+          <div class="bg-white border border-line/10 rounded-3xl p-6 sm:p-8 space-y-6 ">
+            <div>
+              <span class="text-xs font-semibold text-brand-700">مرحله ۷ از ۷</span>
+              <h2 class="text-2xl font-bold text-ink mt-1">عیب‌یاب سریع</h2>
+              <p class="text-sm text-muted mt-1">هر خطایی دیدید اینجا جستجو کنید.</p>
+            </div>
+
+            <div class="space-y-3">
+              <div class="relative">
+                <i data-lucide="search" class="w-4 h-4 text-muted absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                <input type="text" id="troubleshoot-search" value="${(state.troubleshootQuery || '').replace(/"/g, '&quot;')}" placeholder="مثلاً: 503، 45063، UDID، صدا، Connecting..." class="w-full pr-10 pl-4 py-2.5 text-sm bg-paper border border-line/15 rounded-xl focus:outline-none focus:border-brand-700">
+              </div>
+
+              <div class="flex flex-wrap gap-1.5">
+                ${categories.map(function (c) {
+                  const active = state.troubleshootCategory === c.id;
+                  return `<button type="button" data-action="set-ts-cat" data-value="${c.id}" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${active ? 'bg-brand-700 text-onaccent' : 'bg-paper text-muted hover:text-ink'}">${c.label}</button>`;
+                }).join('')}
+              </div>
+            </div>
+
+            <div class="space-y-2.5">
+              ${filtered.length === 0 ? `
+                <div class="p-6 text-center rounded-2xl bg-paper text-sm text-muted">موردی پیدا نشد؛ فیلتر را روی «همه» بگذارید.</div>
+              ` : filtered.map(function (item) {
+                return `
+                  <details class="rounded-2xl bg-paper border border-line/10 group" ${filtered.length <= 2 ? 'open' : ''}>
+                    <summary class="px-4 py-3.5 cursor-pointer list-none flex items-center justify-between gap-3">
+                      <span class="text-sm font-bold text-ink">${item.symptom}</span>
+                      <i data-lucide="chevron-down" class="w-4 h-4 text-muted shrink-0 transition-transform group-open:rotate-180"></i>
+                    </summary>
+                    <div class="px-4 pb-4 pt-1 border-t border-line/10">
+                      <ol class="list-decimal pr-5 space-y-1.5 text-xs sm:text-sm text-muted leading-relaxed">
+                        ${item.steps.map(function (s) { return '<li>' + s + '</li>'; }).join('')}
+                      </ol>
+                    </div>
+                  </details>
+                `;
+              }).join('')}
+            </div>
+
+            <div class="p-4 rounded-2xl bg-brand-50/10 space-y-1.5 text-xs sm:text-sm">
+              <div class="font-bold text-brand-700">ارسال گزارش مشکل (بدون شماره، نام یا متن پیام)</div>
+              <p class="text-muted">اندروید: <strong>Tether ← راهنما ← ارسال گزارش مشکل</strong> • آیفون: <strong>Link ← ارسال گزارش مشکل</strong></p>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderProfileSummary() {
+        const container = document.getElementById('profile-summary-pills');
+        if (!container) return;
+        container.innerHTML = `
+          <div class="flex items-center gap-1.5 text-ok font-semibold">
+            <i data-lucide="smartphone" class="w-3.5 h-3.5 shrink-0"></i>
+            <span class="truncate">${simPhoneLabel()} (${toPersianDigits(state.androidVersion)})</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-ink font-semibold">
+            <i data-lucide="tablet-smartphone" class="w-3.5 h-3.5 shrink-0 text-brand-700"></i>
+            <span class="truncate">${noSimPhoneLabel()}</span>
+          </div>
+        `;
+      }
+
+      function renderNavigation() {
+        const desktopList = document.getElementById('desktop-step-list');
+        const mobilePills = document.getElementById('mobile-step-pills');
+        const overall = getOverallProgress();
+
+        const headerBar = document.getElementById('header-progress-bar');
+        const headerText = document.getElementById('header-progress-text');
+        const sidebarCount = document.getElementById('sidebar-completed-count');
+
+        if (headerBar) headerBar.style.width = overall.pct + '%';
+        if (headerText) headerText.textContent = toPersianDigits(overall.pct) + '٪';
+        if (sidebarCount) sidebarCount.textContent = toPersianDigits(overall.completedSteps) + ' از ۶';
+
+
+
+        if (desktopList) {
+          desktopList.innerHTML = STEPS.map(function (s, idx) {
+            const active = state.currentStep === idx;
+            const comp = getStepCompletion(idx);
+            const isDone = comp.total > 0 && comp.complete;
+            return `
+              <li>
+                <button type="button" data-action="go-step" data-step="${idx}" class="w-full text-right flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${active ? 'bg-white text-brand-700 font-bold shadow-[0_1px_2px_rgba(0,0,0,0.04)]' : 'text-muted hover:bg-white/60 hover:text-ink'}">
+                  <span class="w-6 h-6 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${isDone ? 'bg-brand-700 text-onaccent' : (active ? 'bg-brand-50/15 text-brand-700' : 'bg-stone-100 text-muted')}">
+                    ${isDone ? '✓' : `<i data-lucide="${s.icon}" class="w-3.5 h-3.5"></i>`}
+                  </span>
+                  <span class="text-xs sm:text-[13px] truncate flex-1">${s.short}</span>
+                </button>
+              </li>
+            `;
+          }).join('');
+        }
+
+        if (mobilePills) {
+          mobilePills.innerHTML = STEPS.map(function (s, idx) {
+            const active = state.currentStep === idx;
+            const comp = getStepCompletion(idx);
+            const isDone = comp.total > 0 && comp.complete;
+            return `
+              <button type="button" data-action="go-step" data-step="${idx}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-colors ${active ? 'bg-brand-700 text-onaccent' : (isDone ? 'bg-brand-50/15 text-brand-700' : 'bg-white text-muted border border-line/10')}">
+                <span>${isDone ? '✓' : s.num}</span>
+                <span>${s.short}</span>
+              </button>
+            `;
+          }).join('');
+        }
+
+        const btnPrev = document.getElementById('btn-prev-step');
+        const btnNext = document.getElementById('btn-next-step');
+        const btnNextLabel = document.getElementById('btn-next-label');
+        const footerInd = document.getElementById('footer-step-indicator');
+
+        if (btnPrev) btnPrev.disabled = state.currentStep === 0;
+        if (btnNext) btnNext.disabled = state.currentStep === STEPS.length - 1;
+        if (btnNextLabel) {
+          btnNextLabel.textContent = state.currentStep < STEPS.length - 1
+            ? 'بعدی: ' + STEPS[state.currentStep + 1].short
+            : 'پایان راهنما';
+        }
+        if (footerInd) {
+          footerInd.textContent = 'مرحله ' + toPersianDigits(state.currentStep + 1) + ' از ' + toPersianDigits(STEPS.length);
+        }
+      }
+
+      function renderActiveStep() {
+        const container = document.getElementById('step-container');
+        if (!container) return;
+
+        let html = '';
+        switch (state.currentStep) {
+          case 0: html = renderStep0(); break;
+          case 1: html = renderStep1(); break;
+          case 2: html = renderStep2(); break;
+          case 3: html = renderStep3(); break;
+          case 4: html = renderStep4(); break;
+          case 5: html = renderStep5(); break;
+          case 6: html = renderStep6(); break;
+          default: html = renderStep0();
+        }
+        container.innerHTML = html;
+
+        const searchInput = document.getElementById('troubleshoot-search');
+        if (searchInput) {
+          searchInput.addEventListener('input', function (e) {
+            state.troubleshootQuery = e.target.value;
+            renderActiveStep();
+            const restored = document.getElementById('troubleshoot-search');
+            if (restored) {
+              restored.focus();
+              restored.setSelectionRange(restored.value.length, restored.value.length);
+            }
+          });
+        }
+
+        if (typeof window.tetherIcons === 'function') {
+          window.tetherIcons();
+        }
+      }
+
+      function renderGlossary() {
+        const body = document.getElementById('glossary-body');
+        if (!body) return;
+        body.innerHTML = GLOSSARY_ITEMS.map(function (item) {
+          return `
+            <div class="p-4 rounded-2xl bg-paper">
+              <div class="font-bold text-ink text-sm">${item.term}</div>
+              <p class="text-xs sm:text-sm text-muted mt-1 leading-relaxed">${item.desc}</p>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderFloatingErrors() {
+        const catsEl = document.getElementById('float-error-cats');
+        const listEl = document.getElementById('float-error-list');
+        const countEl = document.getElementById('float-error-count');
+        if (!catsEl || !listEl) return;
+
+        if (countEl) countEl.textContent = toPersianDigits(TROUBLESHOOT_ITEMS.length);
+
+        const categories = [
+          { id: 'all', label: 'همه' },
+          { id: 'ios', label: 'آیفون / SideStore' },
+          { id: 'android', label: 'اندروید' },
+          { id: 'pair', label: 'اتصال / QR' },
+          { id: 'audio', label: 'صدا' }
+        ];
+
+        catsEl.innerHTML = categories.map(function (c) {
+          const active = state.floatErrorCategory === c.id;
+          return `<button type="button" data-action="set-float-cat" data-value="${c.id}" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-colors ${active ? 'bg-brand-700 text-onaccent' : 'bg-white text-muted border border-line/10 hover:text-ink'}">${c.label}</button>`;
+        }).join('');
+
+        const q = (state.floatErrorQuery || '').trim().toLowerCase();
+        const filtered = TROUBLESHOOT_ITEMS.filter(function (item) {
+          const catMatch = state.floatErrorCategory === 'all' || item.category === state.floatErrorCategory;
+          if (!catMatch) return false;
+          if (!q) return true;
+          return (item.symptom + ' ' + item.tags.join(' ') + ' ' + item.steps.join(' ')).toLowerCase().indexOf(q) !== -1;
+        });
+
+        if (filtered.length === 0) {
+          listEl.innerHTML = '<div class="p-5 text-center rounded-2xl bg-paper text-muted">خطایی با این عبارت پیدا نشد.</div>';
+        } else {
+          listEl.innerHTML = filtered.map(function (item) {
+            return `
+              <details class="rounded-2xl bg-paper border border-line/10 group" ${filtered.length <= 2 ? 'open' : ''}>
+                <summary class="px-3.5 py-3 cursor-pointer list-none flex items-center justify-between gap-2">
+                  <span class="font-bold text-ink leading-snug">${item.symptom}</span>
+                  <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted shrink-0 transition-transform group-open:rotate-180"></i>
+                </summary>
+                <div class="px-3.5 pb-3.5 pt-1 border-t border-line/10 space-y-2">
+                  <ol class="list-decimal pr-4 space-y-1 text-muted leading-relaxed">
+                    ${item.steps.map(function (st) { return '<li>' + st + '</li>'; }).join('')}
+                  </ol>
+                  ${item.id === 'sidestore-adi-503' ? renderCopyBox(ANISETTE_CLIENT_INFO, 'Client Info کپی شد', 'کپی مقدار Client Info') : ''}
+                </div>
+              </details>
+            `;
+          }).join('');
+        }
+
+        if (typeof window.tetherIcons === 'function') {
+          window.tetherIcons();
+        }
+      }
+
+      function renderAll() {
+        renderProfileSummary();
+        renderNavigation();
+        renderActiveStep();
+        renderFloatingErrors();
+      }
+
+      function toggleModal(modalId, open) {
+        const el = document.getElementById(modalId);
+        if (!el) return;
+        if (open) {
+          el.classList.remove('hidden');
+          el.classList.add('flex');
+        } else {
+          el.classList.add('hidden');
+          el.classList.remove('flex');
+        }
+      }
+
+      document.addEventListener('click', function (e) {
+        const target = e.target.closest('[data-action]');
+        if (!target) {
+          if (e.target.id === 'glossary-modal') toggleModal('glossary-modal', false);
+          if (e.target.id === 'reset-modal') toggleModal('reset-modal', false);
+          return;
+        }
+
+        const action = target.getAttribute('data-action');
+        if (action === 'go-step') {
+          const fp = document.getElementById('floating-panel');
+          if (fp) fp.classList.add('hidden');
+          const step = Number(target.getAttribute('data-step'));
+          if (!Number.isNaN(step) && step >= 0 && step < STEPS.length) {
+            state.currentStep = step;
+            saveState();
+            renderAll();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        } else if (action === 'prev-step') {
+          if (state.currentStep > 0) {
+            state.currentStep--;
+            saveState();
+            renderAll();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        } else if (action === 'next-step') {
+          if (state.currentStep === 0) state.completedTasks.s0_ready = true;
+          if (state.currentStep < STEPS.length - 1) {
+            state.currentStep++;
+            saveState();
+            renderAll();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        } else if (action === 'set-nosim-device') {
+          state.noSimDevice = target.getAttribute('data-value');
+          saveState();
+          renderAll();
+        } else if (action === 'set-samsung') {
+          state.isSamsung = target.getAttribute('data-value') === 'true';
+          saveState();
+          renderAll();
+        } else if (action === 'set-android-ver') {
+          state.androidVersion = target.getAttribute('data-value');
+          saveState();
+          renderAll();
+        } else if (action === 'set-ios-method') {
+          state.iosMethod = target.getAttribute('data-value');
+          state.showAllIosMethods = false;
+          saveState();
+          renderAll();
+        } else if (action === 'set-computer-os') {
+          state.computerOs = target.getAttribute('data-value');
+          saveState();
+          renderActiveStep();
+        } else if (action === 'toggle-ios-methods') {
+          state.showAllIosMethods = !state.showAllIosMethods;
+          renderActiveStep();
+        } else if (action === 'toggle-expand-all') {
+          state.expandAll = !state.expandAll;
+          state.expandedTasks = {};
+          saveState();
+          renderActiveStep();
+        } else if (action === 'toggle-expand-task') {
+          const tid = target.getAttribute('data-task-id');
+          if (tid) {
+            const currentlyOpen = isTaskExpanded(tid, state.currentStep);
+            state.expandedTasks[tid] = !currentlyOpen;
+            renderActiveStep();
+          }
+        } else if (action === 'set-ts-cat') {
+          state.troubleshootCategory = target.getAttribute('data-value');
+          renderActiveStep();
+        } else if (action === 'copy-text') {
+          e.preventDefault();
+          e.stopPropagation();
+          copyText(target.getAttribute('data-copy-value') || '', target.getAttribute('data-copy-label') || 'کپی شد');
+        } else if (action === 'toggle-floating') {
+          const panel = document.getElementById('floating-panel');
+          if (panel) panel.classList.toggle('hidden');
+        } else if (action === 'scroll-top') {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else if (action === 'set-float-cat') {
+          state.floatErrorCategory = target.getAttribute('data-value') || 'all';
+          renderFloatingErrors();
+        } else if (action === 'open-glossary') {
+          const panel = document.getElementById('floating-panel');
+          if (panel) panel.classList.add('hidden');
+          toggleModal('glossary-modal', true);
+        } else if (action === 'close-glossary') {
+          toggleModal('glossary-modal', false);
+        } else if (action === 'open-reset') {
+          toggleModal('reset-modal', true);
+        } else if (action === 'close-reset') {
+          toggleModal('reset-modal', false);
+        } else if (action === 'confirm-reset') {
+          state = Object.assign({}, DEFAULT_STATE, { completedTasks: {}, expandedTasks: {} });
+          saveState();
+          toggleModal('reset-modal', false);
+          renderAll();
+          showToast('پیشرفت پاک شد و از ابتدا شروع شد');
+        }
+      });
+
+      document.addEventListener('change', function (e) {
+        const target = e.target;
+        if (!target || !target.getAttribute) return;
+        const action = target.getAttribute('data-action');
+        if (action === 'toggle-task') {
+          const taskId = target.getAttribute('data-task-id');
+          if (taskId) {
+            state.completedTasks[taskId] = !!target.checked;
+            if (target.checked) {
+              state.expandedTasks[taskId] = false;
+            }
+            saveState();
+            renderAll();
+          }
+        } else if (action === 'toggle-iran') {
+          state.inIran = !!target.checked;
+          saveState();
+          renderAll();
+        }
+      });
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+          toggleModal('glossary-modal', false);
+          toggleModal('reset-modal', false);
+        }
+      });
+
+      const floatSearchInput = document.getElementById('float-error-search');
+      if (floatSearchInput) {
+        floatSearchInput.addEventListener('input', function (e) {
+          state.floatErrorQuery = e.target.value;
+          renderFloatingErrors();
+        });
+      }
+
+      renderGlossary();
+      renderAll();
+    })();
+  </script>
+</body>
+</html>

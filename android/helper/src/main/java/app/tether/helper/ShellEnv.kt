@@ -64,7 +64,10 @@ object ShellEnv {
         }
     }
 
-    fun log(msg: String) = System.err.println("[tether-helper] $msg")
+    fun log(msg: String) {
+        System.err.println("[tether-helper] $msg")
+        LogRing.add(msg)
+    }
 
     private class ShellContext(base: Context) : ContextWrapper(base) {
         override fun getPackageName() = SHELL_PACKAGE

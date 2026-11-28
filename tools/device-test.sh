@@ -60,7 +60,7 @@ if (( iphone )); then
     dbg fake_incoming ring-iphone +10000000001 >/dev/null
     sleep $((secs + 9))
     [[ $(dbg state | grep -oE '"calls":[0-9]+' | cut -d: -f2) != 0 ]] && dbg fake_end >/dev/null
-    line=$(dbg linklog 8 | tr '|' '\n' | grep 'call audio' | tail -1)
+    line=$(dbg linklog 8 | tr '|' '\n' | grep 'call audio: down [0-9]* frames' | tail -1)
     down=$(print -- "$line" | grep -oE 'down [0-9]+ frames' | grep -oE '[0-9]+'); up=$(print -- "$line" | grep -oE 'up [0-9]+ frames' | grep -oE '[0-9]+')
     dropped=$(print -- "$line" | grep -oE 'uplink dropped [0-9]+' | grep -oE '[0-9]+$')
     heard=$(grep -oE 'playout delay [0-9]+ ms[^,]*|concealed [0-9]+ ms' "$log" | head -2 | tr '\n' ' ')

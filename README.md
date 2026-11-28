@@ -26,6 +26,7 @@ Android phone, over an end-to-end encrypted Bluetooth link. No server, no accoun
   <a href="docs/INSTALL.md">Install guide</a> ·
   <a href="docs/FAQ.md">FAQ</a> ·
   <a href="docs/fa/README.md">فارسی</a> ·
+  <a href="docs/fa/install.html">Interactive Persian guide</a> ·
   <a href="#build-on-tether">Build on Tether</a> ·
   <a href="#documentation">Docs</a> ·
   <a href="docs/ROADMAP.md">Roadmap</a> ·
@@ -78,6 +79,7 @@ other clients and tools on the same link.
   the default calling app for `tel:` links. Numbers are grouped like phones show them, on the keypad as you type.
 - **Messages** (SMS): every conversation, live new texts, send from either SIM, read state shared with the Android
   phone, delete, mute, block, one-time codes with a Copy button, links and phone numbers recognised.
+  Long texts are confirmed sent only after every SMS part reports success.
 - **Contacts**: browse, search, edit, add, favourites; **Recents**: search, delete, clear, missed-call badge.
 - **Notifications** for texts and missed calls, with quick reply.
 - **Link tab**: battery and signal of each SIM, and remote switches for mobile data, the data SIM, Wi-Fi hotspot,
@@ -90,9 +92,11 @@ other clients and tools on the same link.
 
 The **Android client** (`android/client`, "Tether Client") does the same on another Android phone (Android 10 or
 later): pairing by QR code, calls through Android's own call system (Bluetooth headsets and the car included) with
-audio both ways, the keypad, Recents, Contacts and Favourites, Messages, notifications, the Link screen and its
-switches, and "Call with" for `tel:` links in other apps. See [docs/ANDROID-CLIENT.md](docs/ANDROID-CLIENT.md); it is
-tested on the build machine only so far (against a simulated Android phone), not yet on a second phone.
+audio both ways (optionally in the phone's own Phone app, through a calling account per SIM), the keypad and USSD
+codes, Recents grouped by day, Contacts and Favourites, Messages with starred texts, notifications (a low-battery alert
+for the SIM phone too), the Link screen and its switches, and "Call with" for `tel:` links in other apps. See
+[docs/ANDROID-CLIENT.md](docs/ANDROID-CLIENT.md); its automatic tests run against a simulated Android phone, and a
+contributor uses it daily on two Samsung phones.
 
 ## How it fits together
 
@@ -199,10 +203,14 @@ what you see (open an issue with your phone model, Android version and the Link 
 | Device / feature | Status |
 | --- | --- |
 | Samsung Galaxy A54, Android 17 (One UI) + iPhone 17 | **Tested**: everything above, including call audio |
+| Redmi Note 8 (Qualcomm, custom Android 16) + iPhone 17 Pro (user report, #18) | Calls, texts and call audio work (uplink injected via in-call music `telephony_tx`; phone's microphone stays on) |
 | iPad (iOS 16+) | Builds and lays out in the simulator; untested on a device |
 | Other Samsung phones, Android 13+ | Expected to work like the A54, including taking the phone's own microphone and earpiece out of a bridged call (redirect audio mode, checked during each call; see [Troubleshooting](docs/TROUBLESHOOTING.md#the-other-side-cannot-hear-me)) |
 | Other Android 13+ phones | Calls, messages, contacts and switches expected to work. Call audio works only if the build lets the shell user use the call-audio interception API; the phone's own earpiece is muted during a bridged call (voice-call stream, or each vendor's own audio controls; from their sources, untested on devices; the Link tab shows "Android phone silent"); its microphone is taken out of the call with Android's redirect audio mode where the phone allows it (checked during each call and by the self-test), else it stays on |
-| Samsung Galaxy A73 5G, Android 16 (user report, #13) | Calls, texts and switches work; this firmware gives Tether no call audio (the capture reads silence, the injection is not routed to the call), so calls stay on the phone (from 1.2.2 automatically) |
+| Samsung Galaxy A73 5G, Android 16 (user report, #13) | Calls, texts, switches and two-way call audio work (since 1.2.4, via `capture:intercept` and `inject:telephony_tx`). One UI 8 ignores the voice-call mute, so the A73's own earpiece only goes down to its lowest call volume (kept there during the call); against the far end hearing an echo, choose **Muted** (Android's mic mute, kept with `telephony_tx`, checked during the call). Fully silencing the earpiece is still open |
+| Samsung Galaxy A52s 5G (Qualcomm) + iPhone 15 (user report, #25) | Two-way call audio works; the phone's own earpiece and microphone stay on (as on the A73: lowest call volume, **Muted** against the echo) |
+| Redmi Note 10 5G (MediaTek) + iPhone 16 (user report, #14) | Calls and the far end's voice on the iPhone work; with 1.2.5 the iPhone's voice did not reach the call (no inject method opened; 1.1.0 worked). Now every inject method is tried in turn: unconfirmed |
+| Poco X3 Pro (Qualcomm, custom Android 16) + iPhone 14 Pro Max (user report, #14) | Calls and the far end's voice on the iPhone work; the far end does not hear the iPhone (`telephony_tx` opens and is routed to the call but is taken at ~14.8 kHz). Open: needs a problem report from the Android phone |
 | Android 11-12 | Everything, with call audio on a best-effort path (voice-call capture); untested |
 | Android 10 | Everything except call audio; the helper needs the TCP adb path; untested |
 | Android 8-9 | Everything except call audio; link over GATT only; the helper only via TCP adb; tested in the emulator, untested on devices |

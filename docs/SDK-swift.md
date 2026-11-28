@@ -75,9 +75,15 @@ The iPhone app and the Android client follow these rules; a client of your own s
 - **Read `status.helper.audio`.** "full" (Android 13+), "fallback" (11–12, best effort) or "unavailable" (8–10): with
   "unavailable" calls are controlled from the client but their audio stays on the phone, so say so instead of showing
   a silent call.
+- **Read `status.helper.why` and `needsWifi`** (`HelperInfo.stoppedWithoutWifi`, `stopsWithoutWifi`): the phone's
+  helper cannot start without Wi-Fi, and stops when the phone leaves Wi-Fi unless USB debugging is on there. Say so;
+  otherwise calls just go silent (#26, #29).
 - **Expect gaps.** With Bluetooth tethering on the same two phones, audio can stall for several hundred milliseconds.
   `PlayoutBuffer` keeps a stall's backlog and drains it in pauses (it cuts only beyond
   `PlayoutBuffer.maxBacklogSeconds`); if you write your own buffer, do not drop speech after every gap.
+- **Answer wake notifications.** When the wake characteristic notifies, send something at once (a ping): the phone
+  closes a session that stays silent after a wake. With no session, or one that does not answer, start a new one;
+  do the same when the phone's Tether service changes (`didModifyServices`). `TetherLink` does all of this.
 - **Ignore what you do not know.** Unknown message types and fields are skipped, never an error (§5); switch over
   public enums with a `default`.
 

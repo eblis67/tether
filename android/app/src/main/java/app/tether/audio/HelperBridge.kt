@@ -3,6 +3,7 @@ package app.tether.audio
 import android.content.Context
 import android.util.Log
 import app.tether.adb.Adb
+import app.tether.adb.HelperLife
 import org.json.JSONObject
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -23,7 +24,7 @@ class HelperBridge(private val ctx: Context) {
         const val TAG = "Tether"
         const val HELLO = 1; const val START = 2; const val STOP = 3; const val DOWN = 4; const val UP = 5
         const val INFO = 6; const val PROBE = 7; const val QUIT = 8; const val SELFTEST = 9; const val AUTH = 10
-        const val NET = 11; const val CHALLENGE = 12; const val PROOF = 14; const val LOCAL = 15; const val CALL = 16
+        const val NET = 11; const val CHALLENGE = 12; const val PROOF = 14; const val LOCAL = 15; const val CALL = 16; const val DIAG = 17
         private const val PREF_BLOCKED = "audio_blocked_fingerprint"
         /** Largest frame we accept from the helper (a 20 ms PCM frame is 640 bytes; JSON infos are small). */
         const val MAX_FRAME = 1 shl 20
@@ -65,6 +66,8 @@ class HelperBridge(private val ctx: Context) {
     @Volatile var onInfo: ((JSONObject) -> Unit)? = null
     /** A path-watch finding during a call (INFO `path`: `event`, `note`). */
     @Volatile var onPath: ((JSONObject) -> Unit)? = null
+    /** A diagnostics snapshot the helper took by itself (INFO `{autodiag, trigger, testLine}`: a dead path, a call's end). */
+    @Volatile var onDiag: ((JSONObject) -> Unit)? = null
     /**
      * Id of the last START sent; its start INFO echoes it. [lastInfo] is cleared with every START, so until this call's
      * paths are open (the helper waits for the call's audio mode) nothing of the previous call is taken for this one's.
@@ -126,7 +129,10 @@ class HelperBridge(private val ctx: Context) {
                     INFO -> {
                         val o = JSONObject(String(p))
                         val pend = pending
-                        if (pend != null && o.has(pend.first)) {
+                        if (o.has("autodiag")) {
+                            Log.i(TAG, "helper diagnostics snapshot: ${o.optString("trigger")}")
+                            onDiag?.invoke(o)
+                        } else if (pend != null && o.has(pend.first)) {
                             pending = null
                             pend.second.complete(o.getJSONObject(pend.first))
                         } else if (o.has("stats")) {
@@ -230,12 +236,13 @@ class HelperBridge(private val ctx: Context) {
         }
     }
 
-    /** Sends PROBE / SELFTEST (with [body], e.g. `{methods, micMute}`) and waits for the matching INFO. */
+    /** Sends PROBE / SELFTEST / DIAG (with [body], e.g. `{methods, micMute}`) and waits for the matching INFO. */
     fun request(kind: String, timeoutSec: Long = 20, body: JSONObject? = null): JSONObject? {
         synchronized(requestLock) {
             val f = CompletableFuture<JSONObject>()
             pending = kind to f
-            if (!send(if (kind == "probe") PROBE else SELFTEST, body?.toString()?.toByteArray() ?: ByteArray(0))) { pending = null; return null }
+            val type = when (kind) { "probe" -> PROBE; "diag" -> DIAG; else -> SELFTEST }
+            if (!send(type, body?.toString()?.toByteArray() ?: ByteArray(0))) { pending = null; return null }
             return try { f.get(timeoutSec, TimeUnit.SECONDS) } catch (e: Exception) { pending = null; null }
         }
     }
@@ -243,7 +250,8 @@ class HelperBridge(private val ctx: Context) {
     /**
      * Shell command that starts the helper detached from the ADB stream. The subshell + setsid detach it
      * into its own session; the trailing sleep keeps the ADB shell (and its process group) alive until
-     * that has happened, otherwise adbd can kill the child while the stream closes.
+     * that has happened, otherwise adbd can kill the child while the stream closes. It still stays in adbd's cgroup
+     * (the shell user may not move itself out), so it ends when adbd stops: see [HelperLife] (issues #26, #29).
      */
     fun launchCommand(): String {
         val apk = ctx.applicationInfo.sourceDir
@@ -316,6 +324,8 @@ class HelperBridge(private val ctx: Context) {
             Thread.sleep(300)
         }
         if (connected || tryConnect()) return null
+        // No adbd to reach without Wi-Fi (Wireless debugging is off): say so instead of three ADB attempts (#26, #29).
+        if (whyStopped() == "wifi") return "the Android phone is not on Wi-Fi, so Wireless debugging is off and the helper cannot start"
         var last = "helper did not connect"
         token = newToken()   // a fresh token for every launch
         port = newPort()
@@ -350,7 +360,16 @@ class HelperBridge(private val ctx: Context) {
             // A redirect mode took the call off the phone: fully silent. After the uplink check undid the mic mute (or a
             // redirect mode was undone), the phone is no longer fully silent.
             .apply { info?.optString("silent")?.takeIf { it.isNotEmpty() }?.let { put("silent", silentNow(it, u, lastMic)) } }
+            // Without Wi-Fi (issues #26, #29): why it cannot start, or that it would stop (see HelperLife).
+            .apply {
+                whyStopped()?.let { put("why", it) }
+                if (HelperLife.needsWifi(connected, android.os.Build.VERSION.SDK_INT, Adb.usbDebugging(ctx))) put("needsWifi", true)
+            }
     }
+
+    /** Status `helper.why` (see [HelperLife.why]). */
+    private fun whyStopped(): String? = HelperLife.why(connected, android.os.Build.VERSION.SDK_INT, Adb.onWifi(ctx),
+        android.provider.Settings.Global.getInt(ctx.contentResolver, "adb_wifi_enabled", 0) == 1, (ctx as? app.tether.TetherApp)?.prefs?.getBoolean(Adb.PREF_LEGACY, false) ?: false)
 
     /** Status `silent` from the start INFO's [atStart] and the latest uplink / mic reports. */
     private fun silentNow(atStart: String, u: JSONObject?, mic: JSONObject?): String = when {
@@ -371,7 +390,17 @@ class HelperBridge(private val ctx: Context) {
      * This firmware gives Tether no call audio (the downlink capture read only zeros in a real call, issue #13):
      * remembered by build fingerprint, so a system update or a self-test that hears call audio clears it.
      */
-    fun audioBlocked(): Boolean = app.tether.link.AudioOwner.blocked(prefs.getString(PREF_BLOCKED, null), android.os.Build.FINGERPRINT)
-    fun rememberAudioBlocked() = prefs.edit().putString(PREF_BLOCKED, android.os.Build.FINGERPRINT).apply()
+    fun audioBlocked(): Boolean = app.tether.link.AudioOwner.blocked(prefs.getString(PREF_BLOCKED, null), blockedKey())
+    fun rememberAudioBlocked() = prefs.edit().putString(PREF_BLOCKED, blockedKey()).apply()
+
+    /** The firmware and this Tether build: a system update or a new Tether version tries call audio again (a fault
+     *  of Tether's own could look like a phone that gives none, as on the A73 before 1.2.4, issue #13). */
+    private fun blockedKey(): String {
+        val code = runCatching {
+            val pi = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+            if (android.os.Build.VERSION.SDK_INT >= 28) pi.longVersionCode else @Suppress("DEPRECATION") pi.versionCode.toLong()
+        }.getOrDefault(0L)
+        return "${android.os.Build.FINGERPRINT}|$code"
+    }
     fun forgetAudioBlocked() { if (prefs.contains(PREF_BLOCKED)) prefs.edit().remove(PREF_BLOCKED).apply() }
 }

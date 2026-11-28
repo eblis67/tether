@@ -137,4 +137,33 @@ class LinkPolicyTest {
         assertEquals(LinkPolicy.Idle.CLOSE, LinkPolicy.idle(16 * m, 60_000))         // woken a minute ago, still silent
         assertEquals(LinkPolicy.Idle.KEEP, LinkPolicy.idle(5_000, null))             // it answered: silence counts afresh
     }
+
+    @Test fun withoutASessionThePairedIphoneIsWokenEveryThreeMinutes() {
+        // 2026-11-25: a suspended iPhone app was not told the session closed (tethering keeps its Bluetooth connection
+        // up over classic) and stayed without one for 21 minutes; one wake every 3 minutes lets it set one up again.
+        assertTrue(LinkPolicy.wakeUnlinked(Long.MAX_VALUE / 2))
+        assertTrue(LinkPolicy.wakeUnlinked(3 * 60_000L))
+        assertFalse(LinkPolicy.wakeUnlinked(3 * 60_000L - 1))
+    }
+
+    @Test fun theLinkIsNotAskedToSlowDownRightAfterACall() {
+        // Issue #13, Galaxy A73 link log 2026-11-25: high ×6 at a call's start (20:07:08), balanced at its end 11.6 s later
+        // → never answered → link dropped with status 34 exactly 40 s after. The one balanced 40.6 s after the last high
+        // request was answered in 130 ms.
+        val p = PriorityPacer(minGapMs = 35_000)
+        assertTrue("a ring never waits", p.want(high = true, nowMs = 0).send)
+        repeat(5) { assertFalse("the same request is not sent again", p.want(high = true, nowMs = 200L).send) }
+        val end = p.want(high = false, nowMs = 11_600)
+        assertFalse("not 11.6 s after the last request", end.send)
+        assertEquals(23_400, end.retryInMs)
+        assertTrue("then, if still wanted", p.due(nowMs = 35_000).send)
+        assertFalse(p.due(nowMs = 36_000).send)
+        // Balanced first, then a new call: high at once (seen answered 2.5 s after a balanced one).
+        assertTrue(p.want(high = true, nowMs = 37_500).send)
+        assertFalse(p.want(high = false, nowMs = 50_000).send)
+        assertTrue("a new call came first: the delayed balanced is dropped", p.want(high = true, nowMs = 51_000).let { !it.send } && !p.due(nowMs = 72_500).send)
+        // A new LE link asks at once.
+        p.reset()
+        assertTrue(p.want(high = false, nowMs = 73_000).send)
+    }
 }

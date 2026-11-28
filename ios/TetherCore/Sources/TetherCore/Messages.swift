@@ -192,17 +192,28 @@ public struct HelperInfo: Codable, Equatable, Sendable {
     /// What call audio this Android version allows: "full" (13+), "fallback" (11-12, best effort), "unavailable"
     /// (8 to 10: calls are controlled from the iPhone but their audio stays on the Android phone). Nil from older builds.
     public var audio: String?
+    /// Why the helper is not running: "wifi" = the Android phone is not on Wi-Fi, so it has no Wireless debugging to
+    /// start the helper with (builds after 1.2.5). Nil while it runs, for other reasons and from older builds.
+    public var why: String?
+    /// True while the helper runs only thanks to Wireless debugging: it stops when the Android phone leaves Wi-Fi
+    /// (USB debugging is off there; builds after 1.2.5). Nil from older builds.
+    public var needsWifi: Bool?
     public init(state: String, method: String? = nil, capture: String? = nil, up: Bool = false, down: Bool = false,
                 silent: String? = nil, micMute: Bool? = nil, uplink: String? = nil, mic: String? = nil, micPath: String? = nil,
-                audio: String? = nil) {
+                audio: String? = nil, why: String? = nil, needsWifi: Bool? = nil) {
         self.state = state; self.method = method; self.capture = capture; self.up = up; self.down = down; self.silent = silent
         self.micMute = micMute; self.uplink = uplink; self.mic = mic; self.micPath = micPath; self.audio = audio
+        self.why = why; self.needsWifi = needsWifi
     }
 
     /// The Android phone cannot bridge call audio at all (Android 8 to 10).
     public var audioUnavailable: Bool { audio == "unavailable" }
     /// The Android phone's software gave Tether no call audio in a real call (since 1.2.2): calls stay on that phone.
     public var audioBlocked: Bool { audio == "blocked" }
+    /// The helper cannot start because the Android phone has no Wi-Fi (issues #26, #29).
+    public var stoppedWithoutWifi: Bool { state != "running" && why == "wifi" }
+    /// The running helper would stop if the Android phone left Wi-Fi.
+    public var stopsWithoutWifi: Bool { state == "running" && needsWifi == true }
 }
 
 public struct StatusBody: Codable, Equatable, Sendable {
@@ -548,56 +559,22 @@ public struct AudioFrame: Equatable, Sendable {
 }
 
 /// What the iPhone does with a call state for a call it already hung up (the Android phone may still send states that
-/// were on their way): drop them, and ask again whenever the Android phone still reports the call alive after 2 s.
-/// There is no giving up while the call is still reported live: an end lost to a dying link (the retries are
-/// cancelled when the link drops) would otherwise leave the real call running on the Android phone — with the
-/// audio bridge still up — while this phone shows nothing. The entry is forgotten only when the Android phone
-/// reports the call ended, or when a call list no longer contains it (see CallController.reconcile).
+/// were on their way): drop them, ask again if the Android phone still reports the call 2 s later, forget after an end.
 public struct HangUpGuard: Sendable {
     public enum Verdict: Equatable, Sendable { case pass, drop, dropAndResend }
     private var hungUp: [String: Date] = [:]
-    private var numbers: [String: String] = [:]   // cid → match key of its number
     public init() {}
 
-    public mutating func hungUp(_ cid: String, number: String? = nil, at: Date = Date()) {
-        hungUp[cid] = at
-        if let number { numbers[cid] = PhoneNumber.matchKey(number) }
-    }
-    public mutating func reset() { hungUp.removeAll(); numbers.removeAll() }
-    public mutating func forget(_ cid: String) { hungUp[cid] = nil; numbers[cid] = nil }
-    /// Forget every guarded call except the ones still reported live (a call list arrived without
-    /// the others: they are over on the Android phone too, so there is nothing left to re-ask for).
-    public mutating func forgetExcept(_ live: Set<String>) {
-        hungUp = hungUp.filter { live.contains($0.key) }
-        numbers = numbers.filter { live.contains($0.key) }
-    }
+    public mutating func hungUp(_ cid: String, at: Date = Date()) { hungUp[cid] = at }
+    public mutating func reset() { hungUp.removeAll() }
     public func contains(_ cid: String) -> Bool { hungUp[cid] != nil }
-    /// A live call whose number matches a call the user already hung up, under a different id (the
-    /// Android phone app restarted mid-call and the call came back with a new id): the hang-up
-    /// belongs to it too.
-    public func matchesHungUpNumber(_ number: String) -> Bool {
-        let key = PhoneNumber.matchKey(number)
-        return !key.isEmpty && numbers.values.contains(key)
-    }
 
     public mutating func check(cid: String, ended: Bool, now: Date = Date()) -> Verdict {
         guard let t = hungUp[cid] else { return .pass }          // any other call, including every new one
-        if ended { hungUp[cid] = nil; numbers[cid] = nil; return .pass }   // the end we wanted: let it close what is left
+        if ended { hungUp[cid] = nil; return .pass }               // the end we wanted: let it close what is left
         let age = now.timeIntervalSince(t)
-        if age > 2 { hungUp[cid] = now; return .dropAndResend }    // still live on the Android phone: ask again
+        if age > 30 { hungUp[cid] = nil; return .drop }            // give up asking; never resurrect it
+        if age > 2 { hungUp[cid] = now; return .dropAndResend }
         return .drop
-    }
-}
-
-/// The local instant a call connected, from the Android phone's `since` (protocol §5): that is the Android
-/// phone's wall clock (`Call.Details.connectTimeMillis`), and the two phones' clocks are independent — an
-/// unshifted `since` makes the call timer (CallKit's and the call screen's) wrong by exactly the difference,
-/// and a peer clock ahead of ours puts the connected date in the future. Shifted by the peer's clock offset
-/// (its pings against our clock, TetherLink.peerClockOffsetMs) and never later than now.
-public enum CallClock {
-    public static func connectedAt(sinceMs: Int64?, peerOffsetMs: Int64?, now: Date = Date()) -> Date? {
-        guard let sinceMs else { return nil }
-        let nowMs = Int64(now.timeIntervalSince1970 * 1000)
-        return Date(timeIntervalSince1970: Double(min(sinceMs - (peerOffsetMs ?? 0), nowMs)) / 1000)
     }
 }

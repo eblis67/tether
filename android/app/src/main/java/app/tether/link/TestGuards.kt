@@ -36,9 +36,18 @@ object TestGuards {
     /** A message from this client is a dry run: a test transport always; the debug dry run only for admitted clients. */
     fun isDry(transportDry: Boolean, dryRun: Boolean, admitted: Boolean) = transportDry || (dryRun && admitted)
 
-    /** Whether a client gets broadcasts: `only <kind>` (debug) filters real clients, never on-device test clients. */
-    fun receivesBroadcasts(up: Boolean, admitted: Boolean, onlyKind: String?, kind: String, dry: Boolean) =
-        up && admitted && (onlyKind == null || kind == onlyKind || dry)
+    /**
+     * Whether a client gets broadcasts: `only <kind>` (debug) filters real clients, never on-device test clients, and
+     * only for test traffic: a [real] event (a call not on the test line, a text not from a test number) always reaches
+     * every client. On 2026-11-25 a test left `only none` on and a call dialed from the iPhone was placed, answered and
+     * ran silent with the iPhone never told.
+     */
+    fun receivesBroadcasts(up: Boolean, admitted: Boolean, onlyKind: String?, kind: String, dry: Boolean, real: Boolean = false) =
+        up && admitted && (real || onlyKind == null || kind == onlyKind || dry)
+
+    /** `only` switches itself off this long after it was set, so a test that forgets to clear it cannot hide calls for long. */
+    const val ONLY_MS = 30 * 60_000L
+    fun onlyActive(setAt: Long, now: Long) = now - setAt < ONLY_MS
 
     private val netSwitches = setOf("data", "hotspot", "bt", "dataSub", "share", "airplane", "rat")
 

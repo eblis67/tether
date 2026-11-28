@@ -243,6 +243,8 @@ class RecordingSink : CallSink {
     override fun setHeld(local: String, on: Boolean) { events += "held $on" }
     override fun ended(local: String, reason: EndReason) { events += "ended $reason" }
     override fun ringback(on: Boolean) { ringback = on }
+    val answeredCues = ArrayList<String>()
+    override fun answered(local: String) { answeredCues += local }
     val uplinkChanges = ArrayList<Boolean>()
     var uplink = false
     override fun uplink(open: Boolean) { uplink = open; uplinkChanges += open }

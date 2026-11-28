@@ -93,4 +93,15 @@ final class LinkStartTests: XCTestCase {
         XCTAssertEqual(LinkStart.step(poweredOn: true, paired: true, held: .connected, sessionOrSetup: false), .resume)
         for p in [LinkStart.Phase.none, .disconnected, .disconnecting] { XCTAssertFalse(LinkStart.renew(p).cancel, "\(p)") }
     }
+
+    func testAWakeIsAnsweredOrStartsASession() {
+        // 2026-11-25: the Android phone closed a session that stayed silent after its wake, and the suspended app was
+        // never told; it now answers every wake, and sets a session up when it has none.
+        XCTAssertEqual(WakeCheck.onWake(hasSession: true, settingUp: false), .answer)
+        XCTAssertEqual(WakeCheck.onWake(hasSession: false, settingUp: false), .newSession)
+        XCTAssertEqual(WakeCheck.onWake(hasSession: false, settingUp: true), .ignore)
+        let woken = Date(timeIntervalSince1970: 1000)
+        XCTAssertTrue(WakeCheck.stale(lastReceived: woken.addingTimeInterval(-60), wokenAt: woken))
+        XCTAssertFalse(WakeCheck.stale(lastReceived: woken.addingTimeInterval(0.2), wokenAt: woken))
+    }
 }

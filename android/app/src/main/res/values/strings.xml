@@ -64,36 +64,9 @@
     <string name="missing">Needed</string>
     <string name="helper_running">Running (%1$s)</string>
     <string name="helper_stopped">Stopped</string>
-
-    <string name="wizard_title">Setup guide</string>
-    <string name="wizard_intro">This guide shows the settings for your phone\'s maker. Android and each maker can stop Tether in the background; these steps keep the link, calls and sharing alive while this phone sits in a bag. Do them once, top to bottom. Steps Tether can check turn green by themselves when you come back; the others have an I did it button.</string>
-    <string name="wizard_phone">Your phone: %1$s</string>
-    <string name="brand_samsung">Samsung (One UI)</string>
-    <string name="brand_xiaomi">Xiaomi / Redmi / POCO (MIUI / HyperOS)</string>
-    <string name="brand_coloros">OPPO / Realme / OnePlus (ColorOS)</string>
-    <string name="brand_meizu">Meizu (Flyme)</string>
-    <string name="brand_generic">Android (stock)</string>
-    <string name="wizard_all_done">All steps are done. Tether should now stay linked while this phone is in a bag. You can reopen this guide any time from the Setup card.</string>
-    <string name="wizard_close">Close</string>
-    <string name="wizard_finish">Finish</string>
-    <string name="wizard_open_settings">Open settings</string>
-    <string name="wizard_i_did_it">I did it</string>
-    <string name="wizard_reopen">Setup guide</string>
-    <string name="setup_status_left">Setup guide: %1$d step(s) left</string>
-    <string name="setup_status_done">Setup guide: all steps done</string>
-    <string name="help_helper">The audio helper carries call audio and the network switches. Tap Start if it is stopped; once Wireless debugging is paired it starts by itself.</string>
-    <string name="step_autostart">Allow auto-start</string>
-    <string name="help_autostart_xiaomi">MIUI stops apps from starting again after a restart or a cleanup unless auto-start is allowed. Tap Open settings, find Tether in the list and turn its switch on. If the list does not open, go to Settings › Apps › Manage apps › Tether › Auto-start and turn it on there.</string>
-    <string name="help_autostart_coloros">ColorOS stops apps from starting again after a restart unless they are allowed. Tap Open settings, find Tether and allow it. If the list does not open, go to Settings › Apps › App management › Tether and allow auto-launch (on some models: Phone Manager › Privacy › Startup manager).</string>
-    <string name="help_autostart_meizu">Flyme stops apps from starting again after a restart unless they are allowed. Open the Security app › Privacy permissions (or Settings › Apps › Tether) and allow Tether to auto-launch and run in the background. Then tap I did it.</string>
-    <string name="step_brand_battery">Maker\'s battery setting</string>
-    <string name="help_brand_battery_xiaomi">MIUI adds its own battery saver on top of Android\'s. Tap Open settings (Tether\'s app info), tap Battery saver and choose No restrictions. Without this, MIUI can still stop Tether even with unrestricted battery use set above.</string>
-    <string name="help_brand_battery_coloros">ColorOS adds its own battery limits on top of Android\'s. Tap Open settings (Tether\'s app info), open Battery and allow background activity / set it to unrestricted, and turn off any optimise-battery-use setting for Tether.</string>
-    <string name="help_brand_battery_meizu">Flyme adds its own power saving on top of Android\'s. Tap Open settings (Tether\'s app info), open Battery and allow Tether to run in the background (no power-saving restriction).</string>
-    <string name="step_never_sleeping">Never sleeping apps</string>
-    <string name="help_never_sleeping">Samsung puts apps it thinks are unused to sleep, and a sleeping app cannot keep the link. Go to Settings › Battery › Background usage limits › Never sleeping apps, tap + and add Tether. (Open settings takes you to the system battery list as a starting point.) Then tap I did it.</string>
-    <string name="step_lock_recents">Lock Tether in recent apps</string>
-    <string name="help_lock_recents">On this maker\'s phones, swiping Tether away from the recent-apps screen can stop it completely. Open the recent-apps screen, find Tether, tap its icon (or the ⋮ menu on its card) and choose Lock / Keep open. Then tap I did it.</string>
+    <string name="helper_why_wifi">The audio helper cannot start: this phone is not on Wi-Fi, so Android has turned Wireless debugging off. Connect to Wi-Fi to start it. For a phone without Wi-Fi, set up TCP debugging (Setup).</string>
+    <string name="helper_needs_wifi">Call audio stops when this phone leaves Wi-Fi: Android then turns Wireless debugging off and stops the audio helper with it. With USB debugging on, the helper keeps running without Wi-Fi (no cable needed; some banking apps refuse to run while it is on).</string>
+    <string name="action_usb_debugging">Turn on USB debugging</string>
     <string name="selftest_result">Self-test: %1$s</string>
 
     <string name="adb_notif_title">Wireless debugging pairing</string>
@@ -123,9 +96,13 @@
     <string name="unpair_confirm_named">Forget %1$s? It will need to be paired again.</string>
     <string name="audio_needs_android11">Call audio needs Android 11 or later. On this phone, calls are still answered, placed and ended from the iPhone, but their audio stays on this phone.</string>
     <string name="audio_android11_12">Call audio on Android 11 and 12 uses the phone\'s call recorder path and works only if this phone allows it. Run the self-test during a call to check.</string>
-    <string name="audio_blocked">This phone\'s software gave Tether no call audio in a call (the call sounded like silence to it), so calls are not bridged here: they are still answered, placed and ended from the iPhone, but you hear and speak on this phone. A system update, or a self-test during a call that hears the call, turns call audio back on.</string>
+    <string name="audio_blocked">This phone\'s software gave Tether no call audio in a call (the call sounded like silence to it), so calls are not bridged here: they are still answered, placed and ended from the iPhone, but you hear and speak on this phone. A system update, or a self-test during a call that hears the call, turns call audio back on. If calls on the phone itself have no sound either, restart the phone once.</string>
+    <string name="call_screen_bridged">Show this phone\'s call screen while a call is on the iPhone</string>
+    <string name="call_screen_bridged_note">Turn it off to hide the call pop-up when the iPhone or another client has the call. Calls you answer or dial on this phone still show their screen, and the call notification stays.</string>
     <string name="audio_needs_android13">Call audio needs Android 13 or later. On this phone, calls are still answered, placed and ended from the iPhone, but their audio stays on this phone.</string>
     <string name="mic_mute_on">On: Tether checks during each call that your voice still reaches the other side and turns the mute off if it does not.</string>
+    <string name="mic_mute_incall_music">On for calls whose voice goes in through the in-call music path (telephony_tx): there Android\'s microphone mute leaves your voice in the call, and Tether checks that it does. With the other paths this phone\'s microphone stays on (the mute would silence your voice too). Try this if the other side hears an echo of itself.</string>
+    <string name="mic_mute_unsupported">On, but not used on this phone: here Android\'s microphone mute also silences your voice for the other side, so the phone\'s microphone stays on during calls.</string>
     <string name="mic_mute_blocked">On, but not used on this phone: muting the microphone silenced your voice for the other side. Switch it off and on to try again.</string>
     <string name="helper_capture">capture %1$s</string>
     <string name="mic_title">This phone\'s microphone during bridged calls</string>
@@ -151,4 +128,13 @@
     <string name="adb_no_service">The pairing window was not found. Keep Pair device with pairing code open on screen (pull this notification down over it, or use split screen) and enter the code while it is shown.</string>
     <string name="adb_wrong_code">The code was wrong or has expired. Open Pair device with pairing code again and enter the new 6-digit code.</string>
     <string name="adb_paired_no_connect">Paired, but could not connect yet (%1$s). Tether tries again while Wireless debugging is on.</string>
+    <!-- Help › problem report -->
+    <string name="section_help">Help</string>
+    <string name="report_title">Send a problem report</string>
+    <string name="report_hint">One file with what is needed to find a problem with setup, pairing, the link, calls, call audio, texts, contacts or tethering. Phone numbers, names, message text, e-mail, addresses and keys are left out. Attach it to your issue on GitHub.</string>
+    <string name="report_preparing">Preparing the report… This can take up to half a minute.</string>
+    <string name="report_ready">The report is ready (%1$d KB). Phone numbers, names, message text, e-mail, addresses and keys are removed; please look through it before you post it.</string>
+    <string name="report_failed">The report could not be made: %1$s</string>
+    <string name="report_copied_short">Copied, shortened to %1$d KB for the clipboard. Share sends the whole file.</string>
+    <string name="action_close">Close</string>
 </resources>

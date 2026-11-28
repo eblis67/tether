@@ -55,6 +55,8 @@ public final class TetherLink: NSObject {
     private var outBuffer = Data()
     private var handshake: CentralHandshake?
     private var session: SecureSession?
+    /// When bytes last arrived from the Android phone (a wake checks that the session still answers).
+    private var lastReceivedAt = Date.distantPast
     private var keys: SessionKeys?
     /// Request ids, taken from any thread without waiting for the link queue (`send` is called from the main thread,
     /// and a `queue.sync` there waited behind whatever the link queue was doing, e.g. a big sync page).
@@ -64,10 +66,6 @@ public final class TetherLink: NSObject {
     private var audioBacklog = 0
     /// Round trip of the last keep-alive ping over the link, in ms (nil until one came back).
     public private(set) var lastRoundTripMs: Int?
-    /// The Android phone's clock minus ours, in ms, sampled from its pings (nil until one arrived). The
-    /// one-way trip is inside the figure (tens of ms over Bluetooth): close enough to place the peer's
-    /// call times (`Call.since`) on our clock, which is what call timers need (CallClock).
-    public private(set) var peerClockOffsetMs: Int64?
     /// Measures the round trip now (call start), without waiting for the 25 s keep-alive.
     public func measureRoundTrip() { queue.async { if self.session != nil { self.sendNow(MsgType.ping, PingBody(ts: Int64(Date().timeIntervalSince1970 * 1000))) } } }
 
@@ -393,6 +391,7 @@ public final class TetherLink: NSObject {
     }
 
     private func received(_ data: Data) {
+        lastReceivedAt = Date()
         reader.append(data)
         do {
             while let r = try reader.next() { try handle(r) }
@@ -473,10 +472,7 @@ public final class TetherLink: NSObject {
         case Proto.channelControl:
             let h = try Control.header(payload)
             if h.t == MsgType.ping {
-                if let b = try? Control.body(PingBody.self, from: payload) {
-                    peerClockOffsetMs = b.ts - Int64(Date().timeIntervalSince1970 * 1000)
-                    sendNow(MsgType.pong, b, re: h.id)
-                }
+                if let b = try? Control.body(PingBody.self, from: payload) { sendNow(MsgType.pong, b, re: h.id) }
             } else if h.t == MsgType.pong, let b = try? Control.body(PingBody.self, from: payload) {
                 // Our own keep-alive ping came back: the link's control round trip (call statistics).
                 let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -486,6 +482,32 @@ public final class TetherLink: NSObject {
         case Proto.channelAudio:
             if let f = AudioFrame.parse(payload) { delegate?.link(self, didReceiveAudio: f) }
         default:
+            break
+        }
+    }
+
+    /**
+     * The Android phone woke this app (a call, a text, 15 min of silence, or it has no session with us). Answer at
+     * once: the phone closes a session that stays silent after a wake. With no session, or a session that does not
+     * answer within [WakeCheck.answerSeconds], start a new one on the open connection: a suspended app is not told
+     * that the channel closed (2026-11-25: 21 minutes without a session until the app was opened).
+     */
+    private func wokenByPhone() {
+        let now = Date()
+        switch WakeCheck.onWake(hasSession: session != nil, settingUp: settingUp) {
+        case .answer:
+            sendNow(MsgType.ping, PingBody(ts: Int64(now.timeIntervalSince1970 * 1000)))
+            queue.asyncAfter(deadline: .now() + WakeCheck.answerSeconds) { [weak self] in
+                guard let self, self.session != nil else { return }
+                if WakeCheck.stale(lastReceived: self.lastReceivedAt, wokenAt: now) {
+                    self.log("woken by the Android phone, but the session does not answer: starting a new one")
+                    self.failAndRetry("no answer after a wake")
+                }
+            }
+        case .newSession:
+            log("woken by the Android phone without a session: setting one up")
+            if let p = peripheral, p.state == .connected { failAndRetry("woken without a session") } else { reconnectSoon() }
+        case .ignore:
             break
         }
     }
@@ -582,7 +604,11 @@ extension TetherLink: CBPeripheralDelegate {
     public func peripheral(_ p: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
         guard invalidatedServices.contains(where: { $0.uuid == TetherUUID.service }) else { return }
         log("Android phone services changed")
-        if settingUp && channel == nil && transport == "none" { p.discoverServices([TetherUUID.service]) }
+        if settingUp && channel == nil && transport == "none" { p.discoverServices([TetherUUID.service]); return }
+        // Tether restarted on the Android phone (an update, a restart): the session this app holds is gone, and while
+        // suspended it is not told that the channel closed. Start a new one on this connection (2026-11-25: 21 minutes
+        // without a session until the app was opened).
+        if session != nil || channel != nil || transport != "none" { failAndRetry("Android phone services changed") }
     }
 
     public func peripheral(_ p: CBPeripheral, didDiscoverServices error: Error?) {
@@ -626,11 +652,7 @@ extension TetherLink: CBPeripheralDelegate {
         } else if c.uuid == TetherUUID.tx, let v = c.value {
             received(v)
         } else if c.uuid == TetherUUID.wake {
-            // With a session up, being woken up is the point: pending L2CAP bytes are delivered next.
-            // Without one, the wake means urgent traffic (a ring, a call end) is waiting for a link that is
-            // not there: connect at once instead of waiting out the back-off or the Android phone's next
-            // LE pulse (30 s), which is what left rings arriving minutes late.
-            if session == nil, !settingUp, isPaired { connectAfresh("woken without a session: connecting afresh") }
+            wokenByPhone()
         }
     }
 

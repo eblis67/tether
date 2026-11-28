@@ -24,10 +24,10 @@ object Net {
 
     fun state(): JSONObject {
         val o = JSONObject()
-        o.put("data", sh("settings", "get", "global", "mobile_data") == "1")
+        val dataSub = dataSub()
+        o.put("data", dataOn(dataSub))
         // Which SIM carries mobile data (subscription id, as in the status message's sims[].sub).
-        // (The static SubscriptionManager getter answers -1 in this process; the setting is the source of truth.)
-        o.put("dataSub", sh("settings", "get", "global", "multi_sim_data_call").toIntOrNull() ?: -1)
+        o.put("dataSub", dataSub)
         // "Tether state:" lists every tetherable interface with its state machine state.
         val teth = sh("dumpsys", "tethering")
         val block = teth.substringAfter("Tether state:", "").lineSequence().drop(1)   // rest of the header line
@@ -52,6 +52,52 @@ object Net {
         o.put("can", org.json.JSONObject().put("hotspot", can("tetherableWifiRegexs")).put("bt", can("tetherableBluetoothRegexs")))
         o.put("rat", org.json.JSONArray((0..1).mapNotNull { slot -> ratOf(slot)?.let { org.json.JSONObject().put("slot", slot).put("mode", it) } }))
         return o
+    }
+
+    /**
+     * The SIM that carries mobile data (subscription id, -1 when unknown). The static SubscriptionManager getter answers
+     * -1 in this process: the setting first, else the subscription service.
+     */
+    fun dataSub(): Int = sh("settings", "get", "global", "multi_sim_data_call").toIntOrNull()?.takeIf { it >= 0 }
+        ?: runCatching {
+            val binder = Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java).invoke(null, "isub")
+            val isub = Class.forName("com.android.internal.telephony.ISub\$Stub")
+                .getMethod("asInterface", android.os.IBinder::class.java).invoke(null, binder)
+            isub.javaClass.getMethod("getDefaultDataSubId").invoke(isub) as Int
+        }.getOrNull()?.takeIf { it >= 0 } ?: -1
+
+    /** Whether mobile data is on for [sub] (the data SIM): see [DataState.decide] (issue #14). */
+    fun dataOn(sub: Int = dataSub()): Boolean = DataState.decide(
+        telephony = userDataEnabled(sub),
+        perSub = DataState.subKey(sub)?.let { sh("settings", "get", "global", it) },
+        global = sh("settings", "get", "global", "mobile_data"))
+
+    /** Every source [dataOn] reads, for `HelperMain net` (checking a phone whose switch shows the wrong state). */
+    fun dataSources(sub: Int = dataSub()): String = "data SIM $sub: phone service ${userDataEnabled(sub)}, " +
+        "${DataState.subKey(sub)}=${DataState.subKey(sub)?.let { sh("settings", "get", "global", it) }}, " +
+        "mobile_data=${sh("settings", "get", "global", "mobile_data")}"
+
+    /**
+     * What TelephonyManager.isDataEnabled answers for [sub] (the user's mobile data switch), straight from the phone
+     * service: TelephonyManager itself needs a service registry that only zygote-started app processes have. Null when
+     * this Android has none of the known methods or refuses.
+     */
+    private fun userDataEnabled(sub: Int): Boolean? {
+        if (sub < 0) return null
+        val phone = runCatching {
+            val binder = Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java).invoke(null, "phone")
+            Class.forName("com.android.internal.telephony.ITelephony\$Stub")
+                .getMethod("asInterface", android.os.IBinder::class.java).invoke(null, binder)
+        }.getOrNull() ?: return null
+        val int = Int::class.javaPrimitiveType!!
+        // Android 12+ (reason 0 = DATA_ENABLED_REASON_USER, what TelephonyManager.isDataEnabled asks), 9-11, older.
+        val tries = listOf<Pair<String, Array<Any>>>(
+            "isDataEnabledForReason" to arrayOf(sub, 0), "isUserDataEnabled" to arrayOf(sub), "getDataEnabled" to arrayOf(sub))
+        for ((name, args) in tries) {
+            val m = runCatching { phone.javaClass.getMethod(name, *Array(args.size) { int }) }.getOrNull() ?: continue
+            return runCatching { m.invoke(phone, *args) as? Boolean }.getOrNull() ?: continue
+        }
+        return null
     }
 
     /**
@@ -118,7 +164,12 @@ object Net {
 
     fun set(what: String, on: Boolean): String? = try {
         when (what) {
-            "data" -> { sh("svc", "data", if (on) "enable" else "disable"); null }
+            "data" -> {
+                sh("svc", "data", if (on) "enable" else "disable")
+                // Read back until the phone shows it (some take a few seconds), so the reply carries the new state.
+                for (i in 0 until 12) { if (dataOn() == on) break; Thread.sleep(250) }
+                null
+            }
             "hotspot" -> tether(TETHERING_WIFI, on)
             "bt" -> tether(TETHERING_BLUETOOTH, on)
             "airplane" -> airplane(on)
@@ -166,4 +217,24 @@ object Net {
         if (!latch.await(15, TimeUnit.SECONDS)) return "no answer from the tethering service"
         return error
     }
+}
+
+/**
+ * Whether mobile data is on (issue #14: a Poco X3 Pro on a custom ROM turned data on, yet the switch kept showing off).
+ * The global `mobile_data` setting is only the single-SIM value: on dual-SIM phones Android keeps the switch per
+ * subscription (`mobile_data<sub>`), and only some makers (Samsung) mirror it into the global one.
+ */
+internal object DataState {
+    /** The per-subscription setting's name for the data SIM [sub], null when no data SIM is known. */
+    fun subKey(sub: Int): String? = if (sub >= 0) "mobile_data$sub" else null
+
+    /**
+     * [telephony]: the phone service's answer for the data SIM (null: not readable here); [perSub] / [global]: what
+     * `settings get global` printed for `mobile_data<sub>` / `mobile_data` ("null" when the phone has no such setting).
+     * The phone service wins, then the data SIM's own setting, then the global one.
+     */
+    fun decide(telephony: Boolean?, perSub: String?, global: String?): Boolean =
+        telephony ?: flag(perSub) ?: flag(global) ?: false
+
+    private fun flag(v: String?): Boolean? = when (v?.trim()) { "1" -> true; "0" -> false; else -> null }
 }

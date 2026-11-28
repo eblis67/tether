@@ -63,6 +63,9 @@ class CallActivity : Activity() {
     private fun refresh() {
         val call = CallRegistry.active().firstOrNull()
         if (call == null) { finish(); return }
+        // Opened by the call pop-up and the call is now with a client: the owner chose not to see the phone's screen.
+        if (intent?.getBooleanExtra("auto", false) == true &&
+            !runCatching { (application as TetherApp).hub.showsCallScreen() }.getOrDefault(true)) { finish(); return }
         val info = CallRegistry.info(call)
         if (info.name == null && info.num.isNotEmpty() && lookedUp != info.num) {
             lookedUp = info.num

@@ -27,6 +27,31 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v6
+      # One fixed release key for every build (repository secrets): without it each CI runner signs with a
+      # fresh debug key, Android refuses to update the installed app, and every install wipes its data
+      # (pairing, settings). Same restore as release.yml; the gradle build picks the key up from
+      # android/local.properties (signing config "own" in the app and client modules).
+      - name: Release key from the repository secrets
+        id: key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            {
+              echo "tether.signing.storeFile=$RUNNER_TEMP/release.jks"
+              echo "tether.signing.storePassword=$KEYSTORE_PASSWORD"
+              echo "tether.signing.keyAlias=$KEY_ALIAS"
+              echo "tether.signing.keyPassword=$KEY_PASSWORD"
+            } >> android/local.properties
+            echo "suffix=" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::no release key in the repository secrets: the APKs are signed with a throw-away debug key"
+            echo "suffix=-debug-signed" >> "$GITHUB_OUTPUT"
+          fi
       - name: Unit tests, lint, release builds
         working-directory: android
         run: >
@@ -40,19 +65,23 @@ jobs:
         with:
           name: android-test-reports
           path: android/*/build/reports/
-      # A build for testers without a release: debug-signed (CI has no release key), kept 30 days.
+      # A build for testers without a release, kept 30 days. Signed with the fixed release key when the
+      # repository secrets are set (see the restore step above); the file names say so via the suffix.
       - name: Name the APKs
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          SUFFIX: ${{ steps.key.outputs.suffix }}
         run: |
           v=$(tr -d '[:space:]' < VERSION)-${GITHUB_SHA::7}
           mkdir -p dist
-          cp android/app/build/outputs/apk/release/app-release.apk "dist/Tether-A54-$v-debug-signed.apk"
-          cp android/client/build/outputs/apk/release/client-release.apk "dist/Tether-Client-$v-debug-signed.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/Tether-A54-$v$SUFFIX.apk"
+          cp android/client/build/outputs/apk/release/client-release.apk "dist/Tether-Client-$v$SUFFIX.apk"
+          rm -f "$RUNNER_TEMP/release.jks"
       - name: APKs for testers
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7
         with:
-          name: tether-apks-debug-signed
+          name: tether-apks${{ steps.key.outputs.suffix }}
           path: dist/*.apk
           retention-days: 30
           if-no-files-found: error

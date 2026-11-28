@@ -6,8 +6,8 @@ body:
     attributes:
       value: |
         Thanks for reporting. **Privacy:** do not paste phone numbers, contact names, message text, pairing codes,
-        keys, tokens or device serial numbers. Replace them with `+1000000000x` or `<redacted>`. The link logs print
-        counts, not numbers, but check before you paste.
+        keys, tokens or device serial numbers. Replace them with `+1000000000x` or `<redacted>`. The problem reports
+        and link logs leave numbers and names out, but check before you post.
   - type: textarea
     id: what
     attributes:
@@ -58,9 +58,8 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Logs
-      description: "The Android phone's link log (Tether › Call audio › Link log › Share) and the iPhone's Link › Link log (share button) around the time of the problem. Redact numbers and names."
-      render: text
+      label: Problem reports
+      description: "Attach the problem report (Tether › Help › Send a problem report on the Android phone, and Link › Send a problem report on the iPhone) made right after the problem: drag the .txt files here. Older versions: the Android phone's Call audio › Link log and the iPhone's Link › Link log."
   - type: checkboxes
     id: checks
     attributes:

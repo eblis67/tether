@@ -8,10 +8,12 @@
 
 /* Begin PBXBuildFile section */
 		017D715AD23C03826CD36889 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68E92BEFCE1B8F4B1907491F /* RootView.swift */; };
+		01DEA472746C3234BEFC27D7 /* ProblemReportBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C3513B45590F501E37B0418 /* ProblemReportBuilder.swift */; };
 		0495A3D4CF6843C9FDDD63B8 /* Microphone.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4EB3B6C93FA845AAA2D6E18 /* Microphone.swift */; };
 		187B1AB6C8C6133973A2AA03 /* TetherCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5B13539DC145074D842B8CFA /* TetherCore */; };
 		20B14AA41895FB70238242E7 /* snapshot-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = A086C56F3615B86DD44C390C /* snapshot-v1.json */; };
 		256006FB7F2EC3765F36E276 /* TetherCore in Frameworks */ = {isa = PBXBuildFile; productRef = C92CF67A40D9E6FD78EB89D6 /* TetherCore */; };
+		2C83F7858673A83AD6E5D26D /* ProblemReportBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924689C674C68B1836F02BDC /* ProblemReportBuilderTests.swift */; };
 		54D0515C0A7A58779C5E47F5 /* SnapshotStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44EB8871E1AD4DF58F2C4C14 /* SnapshotStoreTests.swift */; };
 		57085CB17AE572C13A7581F0 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 8E8CD87AE84C4513E44FBE37 /* InfoPlist.strings */; };
 		57FF2B3E613740BE96639B0E /* CallControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BD318D5A6CCF4E6B1A32F9 /* CallControllerTests.swift */; };
@@ -67,6 +69,7 @@
 		4B780AAA1432D833E27C1DAB /* LinkViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkViews.swift; sourceTree = "<group>"; };
 		522AC4E6B519039B26F69B68 /* DemoData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoData.swift; sourceTree = "<group>"; };
 		59E78B07440A9F776F7720DC /* TetherApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherApp.swift; sourceTree = "<group>"; };
+		5C3513B45590F501E37B0418 /* ProblemReportBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProblemReportBuilder.swift; sourceTree = "<group>"; };
 		5CBB9A44039858F32A499F1B /* CallController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallController.swift; sourceTree = "<group>"; };
 		620608AA608B70B4FC21E0A9 /* InCallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InCallView.swift; sourceTree = "<group>"; };
 		6854E54209D961EA1D57080D /* RouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouterTests.swift; sourceTree = "<group>"; };
@@ -84,6 +87,7 @@
 		89E9230950F516251A08C469 /* AppModelReceivedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelReceivedTests.swift; sourceTree = "<group>"; };
 		8C59C237747EA4A637D46326 /* Tether.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Tether.xcconfig; sourceTree = "<group>"; };
 		8E8CD87AE84C4513E44FBE37 /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = fa.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		924689C674C68B1836F02BDC /* ProblemReportBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProblemReportBuilderTests.swift; sourceTree = "<group>"; };
 		A086C56F3615B86DD44C390C /* snapshot-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "snapshot-v1.json"; sourceTree = "<group>"; };
 		A7DDE2E11FA91B8017FCCFAF /* CallIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallIntents.swift; sourceTree = "<group>"; };
 		AB1D0F65D7009320B615590F /* ContactLabelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactLabelTests.swift; sourceTree = "<group>"; };
@@ -145,6 +149,7 @@
 				522AC4E6B519039B26F69B68 /* DemoData.swift */,
 				E4EB3B6C93FA845AAA2D6E18 /* Microphone.swift */,
 				7E080E7A804FAA834C5B422C /* Notifications.swift */,
+				5C3513B45590F501E37B0418 /* ProblemReportBuilder.swift */,
 				888EDF1A791F4ABFC8A4EE65 /* Signing.swift */,
 				59E78B07440A9F776F7720DC /* TetherApp.swift */,
 			);
@@ -162,6 +167,7 @@
 				3722EE0161E63C93D7E8603D /* ExtensionRouterTests.swift */,
 				C567AA851BD82FCD74E3DFEA /* LinkJournalTests.swift */,
 				FE2741A875314A0305E68074 /* MicrophoneTests.swift */,
+				924689C674C68B1836F02BDC /* ProblemReportBuilderTests.swift */,
 				6854E54209D961EA1D57080D /* RouterTests.swift */,
 				44EB8871E1AD4DF58F2C4C14 /* SnapshotStoreTests.swift */,
 				B322450F8CAE816DA2C624CA /* TestSupport.swift */,
@@ -382,6 +388,7 @@
 				F96DDCAC7F2163E7969993A5 /* ExtensionRouterTests.swift in Sources */,
 				83B205328808D1436E1B8387 /* LinkJournalTests.swift in Sources */,
 				EBED63E7B47F9E8C559E4FE2 /* MicrophoneTests.swift in Sources */,
+				2C83F7858673A83AD6E5D26D /* ProblemReportBuilderTests.swift in Sources */,
 				BBA8E43F55388B4A3CC4527D /* RouterTests.swift in Sources */,
 				54D0515C0A7A58779C5E47F5 /* SnapshotStoreTests.swift in Sources */,
 				CDC5C5E97CB33E31B3A938AB /* TestSupport.swift in Sources */,
@@ -405,6 +412,7 @@
 				0495A3D4CF6843C9FDDD63B8 /* Microphone.swift in Sources */,
 				59E68ACF2F32F076A914B45E /* Notifications.swift in Sources */,
 				D72AB016847427FC1CDBCA98 /* PhoneViews.swift in Sources */,
+				01DEA472746C3234BEFC27D7 /* ProblemReportBuilder.swift in Sources */,
 				E6A8FCAC1B885D30583D39F2 /* RichText.swift in Sources */,
 				017D715AD23C03826CD36889 /* RootView.swift in Sources */,
 				E94D17DD6D42BF34C5B5A9AC /* Signing.swift in Sources */,
@@ -533,7 +541,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1020299;
+				CURRENT_PROJECT_VERSION = 1020699;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -552,7 +560,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.2.2;
+				MARKETING_VERSION = 1.2.6;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -599,7 +607,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1020299;
+				CURRENT_PROJECT_VERSION = 1020699;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -612,7 +620,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.2.2;
+				MARKETING_VERSION = 1.2.6;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -63,6 +63,20 @@ class TestGuardsTest {
         assertFalse(TestGuards.isDry(transportDry = false, dryRun = false, admitted = true))
     }
 
+    @Test fun onlyNeverHidesARealCallOrText() {
+        // 2026-11-25: a test left `only none` on; a call dialed from the iPhone was placed and answered, and the iPhone
+        // was never told (the far end heard silence). Real events reach every client whatever `only` says.
+        assertTrue(TestGuards.receivesBroadcasts(true, true, "none", "iphone", false, real = true))
+        assertFalse("test traffic is still kept away", TestGuards.receivesBroadcasts(true, true, "none", "iphone", false, real = false))
+        assertFalse("a client that is not up gets nothing", TestGuards.receivesBroadcasts(false, true, null, "iphone", false, real = true))
+        assertFalse("a test holding the link alone still excludes others", TestGuards.receivesBroadcasts(true, false, null, "iphone", false, real = true))
+    }
+
+    @Test fun onlySwitchesItselfOff() {
+        assertTrue(TestGuards.onlyActive(setAt = 1_000, now = 1_000 + TestGuards.ONLY_MS - 1))
+        assertFalse(TestGuards.onlyActive(setAt = 1_000, now = 1_000 + TestGuards.ONLY_MS))
+    }
+
     @Test fun onlyFiltersRealClientsButNeverOnDeviceTestClients() {
         assertTrue(TestGuards.receivesBroadcasts(true, true, null, "iphone", false))
         assertFalse(TestGuards.receivesBroadcasts(true, true, "none", "iphone", false))

@@ -158,5 +158,12 @@
                 <action android:name="app.tether.DEBUG" />
             </intent-filter>
         </receiver>
+
+        <!-- The problem report file, readable only by the app it is shared with (Help › Send a problem report). -->
+        <provider
+            android:name=".report.ReportProvider"
+            android:authorities="${applicationId}.report"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

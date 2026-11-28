@@ -4,7 +4,8 @@ Install both apps first ([BUILD.md](BUILD.md)). Keep both phones near each other
 
 ## 1. Android phone
 
-Open **Tether**. Its main screen has three cards; work through **Setup** from top to bottom.
+Open **Tether**. Its main screen has four cards (iPhone link, Setup, Call audio, Help); work through **Setup** from top
+to bottom. **Help › Send a problem report** makes the file to attach when something does not work.
 
 | Step | What it does | Why |
 | --- | --- | --- |
@@ -12,11 +13,6 @@ Open **Tether**. Its main screen has three cards; work through **Setup** from to
 | Default phone app | Makes Tether the phone's dialer | Android only lets the default phone app see and control calls. Your usual dialer still works for calls you place on the phone itself; Tether shows its own call screen there |
 | Unrestricted battery use | Exempts Tether from battery optimisation | So Android does not stop the link in the background |
 | Wireless debugging | Pairs Tether with the phone's own Wireless debugging (see below) | Needed only for call audio and the network switches |
-
-The app also walks through this as an in-app **setup guide**: it opens on first launch, shows the extra steps
-your phone's maker needs (auto-start, the maker's own battery setting, Samsung's never-sleeping list, locking
-Tether in recent apps), and can be reopened any time from the Setup card. [SETUP-WIZARD.md](SETUP-WIZARD.md)
-says why each maker step exists and which ones the app can check itself.
 
 Your default **SMS** app can stay as it is (for example Google Messages). Tether reads and sends texts through the
 system; marking texts read and deleting them works without being the SMS app.
@@ -28,12 +24,24 @@ shell user has. Tether gets them the way a computer would: it pairs with the pho
 starts a small helper as the shell user. Nothing leaves the phone.
 
 1. Enable Developer options (Settings › About phone › tap Build number seven times).
-2. Connect the phone to any Wi-Fi network (Wireless debugging only runs on Wi-Fi; it is needed when the helper
-   starts, not afterwards).
+2. Connect the phone to any Wi-Fi network (Wireless debugging only runs on Wi-Fi; the helper is started over it).
 3. In Tether, tap **Pair** next to Wireless debugging. Developer options opens and a Tether notification appears.
 4. In Developer options › Wireless debugging, turn it on, tap **Pair device with pairing code**, and type the
    six-digit code into the Tether notification.
 5. The **Audio helper** line in the Call audio card turns to "Running".
+
+### Call audio without Wi-Fi: keep USB debugging on
+
+Android turns Wireless debugging off as soon as the phone leaves Wi-Fi, and when no kind of debugging is left on it
+stops adb, and the audio helper with it: call audio and the network switches then stop until the phone is back on
+Wi-Fi (issues #26, #29). With **USB debugging** on as well (Developer options; no cable needed), adb keeps running and
+the helper keeps working without Wi-Fi. While the helper would stop with Wi-Fi, the Call audio card says so and offers
+**Turn on USB debugging**; the iPhone (Link › Audio helper) and the Android client show the same note. Some banking
+apps refuse to run while USB debugging is on; leave it off if you need one of them, and keep the phone on Wi-Fi
+instead.
+
+Starting the helper always needs Wi-Fi (or TCP debugging, below): after a phone restart, or if the helper stopped,
+the Call audio card, the iPhone and the client say "not on Wi-Fi" until it can start again.
 
 ### TCP debugging (Android 8 to 10, or no Wi-Fi)
 
@@ -49,7 +57,8 @@ The TCP mode is lost when the phone restarts: run `adb tcpip 5555` again after e
 start until you do). `adb usb` switches it off; **Turn off** in Tether stops Tether using it. Read the security note
 in [SECURITY.md](../SECURITY.md) first.
 
-After a phone restart Tether starts the helper again by itself when Wi-Fi is on. On Android 8 to 10 the helper cannot bridge call
+After a phone restart Tether starts the helper again by itself when Wi-Fi is on (with TCP debugging, once you have run
+`adb tcpip` again; that also works without Wi-Fi, over 127.0.0.1). On Android 8 to 10 the helper cannot bridge call
 audio (see [features by Android version](devices/android-versions.md)); on Android 11 and 12 it uses a best-effort path. On some Android builds the shell user is not allowed to
 intercept call audio; then calls are still controlled from the iPhone and their audio stays on the Android phone.
 Use **Run call-audio self-test** during a call to see which audio paths work on your phone.

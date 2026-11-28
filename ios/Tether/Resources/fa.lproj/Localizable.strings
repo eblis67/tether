@@ -234,7 +234,9 @@
 "Not muted by the phone" = "گوشی آن را قطع نمی‌کند";
 "Not checked" = "بررسی نشده";
 "Call audio is not available on this Android phone: it needs Android 11 or later. Calls are still answered, placed and ended here, but you hear and speak on the Android phone." = "صدای تماس روی این گوشی اندروید در دسترس نیست: به اندروید ۱۱ یا جدیدتر نیاز دارد. تماس‌ها همچنان از اینجا پاسخ داده، گرفته و قطع می‌شوند، اما صدا را روی گوشی اندروید می‌شنوید و همان‌جا صحبت می‌کنید.";
-"This Android phone's software gives Tether no call audio (the call sounds like silence to it). Calls are still answered, placed and ended here, but you hear and speak on the Android phone. A system update, or a self-test during a call that hears the call, turns call audio back on." = "نرم‌افزار این گوشی اندروید صدای تماس را به تتر نمی‌دهد (صدای تماس برایش سکوت است). تماس‌ها همچنان از اینجا پاسخ داده، گرفته و قطع می‌شوند، اما صدا را روی خود گوشی اندروید می‌شنوید و همان‌جا صحبت می‌کنید. با به‌روزرسانی سیستم، یا آزمون صدایی که وسط تماس صدای تماس را بشنود، صدای تماس دوباره فعال می‌شود.";
+"This Android phone's software gives Tether no call audio (the call sounds like silence to it). Calls are still answered, placed and ended here, but you hear and speak on the Android phone. A system update, or a self-test during a call that hears the call, turns call audio back on. If calls on the phone itself have no sound either, restart the phone once." = "نرم‌افزار این گوشی اندروید صدای تماس را به تتر نمی‌دهد (صدای تماس برایش سکوت است). تماس‌ها همچنان از اینجا پاسخ داده، گرفته و قطع می‌شوند، اما صدا را روی خود گوشی اندروید می‌شنوید و همان‌جا صحبت می‌کنید. با به‌روزرسانی سیستم، یا آزمون صدایی که وسط تماس صدای تماس را بشنود، صدای تماس دوباره فعال می‌شود. اگر تماس‌های خود گوشی هم صدا ندارند، گوشی را یک بار ری‌استارت کنید.";
+"No call audio right now: the Android phone is not on Wi-Fi, so it cannot start its audio helper (Wireless debugging needs Wi-Fi). Connect it to Wi-Fi, or set up TCP debugging on it (Setup)." = "فعلاً صدای تماس نیست: گوشی اندروید به Wi-Fi وصل نیست و نمی‌تواند دستیار صدا را راه بیندازد (اشکال‌زدایی بی‌سیم به Wi-Fi نیاز دارد). آن را به Wi-Fi وصل کنید یا اشکال‌زدایی TCP را روی آن راه بیندازید (بخش راه‌اندازی).";
+"Call audio stops if the Android phone leaves Wi-Fi. To keep it, turn on USB debugging there: Tether › Call audio › Turn on USB debugging." = "اگر گوشی اندروید از Wi-Fi جدا شود صدای تماس قطع می‌شود. برای جلوگیری، اشکال‌زدایی USB را آنجا روشن کنید: تتر › صدای تماس › روشن کردن اشکال‌زدایی USB.";
 "Tether may not use this iPhone's microphone, so the other side hears nothing. Allow it in Settings › Privacy & Security › Microphone." = "تتر اجازهٔ استفاده از میکروفون این آیفون را ندارد، برای همین طرف مقابل چیزی نمی‌شنود. در تنظیمات › حریم خصوصی و امنیت › میکروفون اجازه دهید.";
 "Off is safest: on some Android phones muting their microphone also mutes your voice for the other side. When it is on, Tether checks during each call and turns the mute off if your voice does not get through." = "خاموش امن‌تر است: در بعضی گوشی‌های اندروید بی‌صدا کردن میکروفون، صدای شما را هم برای طرف مقابل قطع می‌کند. وقتی روشن است، تتر در هر تماس بررسی می‌کند و اگر صدای شما نرسد، بی‌صدا کردن را خاموش می‌کند.";
 
@@ -289,5 +291,8 @@
 "Pairing code" = "کد جفت‌سازی";
 "Paste pairing code" = "جای‌گذاری کد جفت‌سازی";
 "Paste a pairing link or type the code from Tether on your Android phone." = "پیوند جفت‌سازی را جای‌گذاری کنید یا کدی را که تتر روی گوشی اندرویدی نشان می‌دهد وارد کنید.";
-
-"Mark all as read" = "خواندن همه";
+"Send a problem report" = "ارسال گزارش مشکل";
+"Problem report" = "گزارش مشکل";
+"Building the report…" = "در حال ساخت گزارش…";
+"Share" = "اشتراک‌گذاری";
+"Phone numbers, names, message text, e-mail, addresses and keys are removed. Read it before you post it." = "شماره‌ها، نام‌ها، متن پیام‌ها، ایمیل، نشانی‌ها و کلیدها حذف شده‌اند. پیش از ارسال، آن را بخوانید.";

@@ -69,10 +69,10 @@ jobs:
       - name: Release key from the repository secrets
         id: key
         env:
-          KEYSTORE_BASE64: ${{ secrets.TETHER_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.TETHER_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.TETHER_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.TETHER_KEY_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"

@@ -8,7 +8,7 @@ dir: rtl
 
 # راهنمای فارسی Tether (تتر)
 
-[English install guide](../INSTALL.md) · [پرسش‌های رایج](faq.md)
+[English install guide](../INSTALL.md) · [راهنمای تعاملی نصب](install.html) · [پرسش‌های رایج](faq.md)
 
 ## تتر چیست؟ (به زبان ساده)
 
@@ -64,8 +64,11 @@ APKهای نسخهٔ 1.1.0 و فایل‌هایی که نامشان به `-debug
      3. در تتر، کنار Wireless debugging روی **Pair** بزنید. گزینه‌های برنامه‌نویس باز می‌شود و یک اعلان تتر ظاهر می‌شود.
      4. **Wireless debugging** را روشن کنید، روی **Pair device with pairing code** بزنید و کد شش‌رقمی را در
         قسمت پاسخ اعلان تتر بنویسید.
-     5. خط **Audio helper** به «Running» تغییر می‌کند. وای‌فای فقط موقع شروع این helper لازم است (مثلاً بعد از
-        روشن و خاموش کردن گوشی)، نه همیشه.
+     5. خط **Audio helper** به «Running» تغییر می‌کند. وای‌فای برای شروع این helper لازم است (مثلاً بعد از
+        روشن و خاموش کردن گوشی). برای اینکه بعد از قطع وای‌فای هم صدای تماس بماند، **USB debugging** را هم در
+        گزینه‌های برنامه‌نویس روشن کنید (کابل لازم نیست)، یا در کارت Call audio روی **Turn on USB debugging** بزنید؛
+        بدون آن، اندروید با قطع وای‌فای Wireless debugging را خاموش می‌کند و helper هم متوقف می‌شود (#26، #29).
+        بعضی برنامه‌های بانکی وقتی USB debugging روشن است اجرا نمی‌شوند.
    - اندروید ۸ تا ۱۰ گزینهٔ Wireless debugging ندارند: از حالت TCP استفاده کنید ([SETUP.md](../SETUP.md#tcp-debugging-android-8-to-10-or-no-wi-fi)؛
      بعد از هر بار روشن شدن گوشی یک بار `adb tcpip 5555` از کامپیوتر).
 
@@ -142,8 +145,19 @@ https://github.com/amirwmr/tether/releases/latest/download/altstore.json
 میکروفون: اجازه دهید. اگر اجازه داده نشود، صفحهٔ تماس و تب Link این را می‌گویند، چون طرف مقابل چیزی نمی‌شنود.
 
 با گوشی اندرویدی دوم: Tether Client را باز کنید و همان کد QR را اسکن کنید ([ANDROID-CLIENT.md](../ANDROID-CLIENT.md)).
+در Tether Client، گزینهٔ Link › Calls › «استفاده از برنامهٔ تلفن برای تماس‌ها» (پیش‌فرض روشن) سیم‌کارت‌های گوشی
+اندرویدی را حساب تماسِ برنامهٔ تلفنِ همین گوشی می‌کند: تماس‌ها در برنامهٔ تلفن خود گوشی زنگ می‌خورند و از صفحه‌کلید،
+مخاطبین و تاریخچهٔ آن گرفته می‌شوند. یک بار «باز کردن حساب‌های تماس» را بزنید و Tether را روشن کنید؛ تا آن موقع
+تماس‌ها از صفحهٔ تماس خود Tether Client استفاده می‌کنند.
+
+برای پیامک طولانی که به چند بخش تقسیم می‌شود، وضعیت ارسال فقط پس از دریافت نتیجهٔ همهٔ بخش‌ها تأیید می‌شود؛
+اگر یکی از بخش‌ها ناموفق باشد، پیامک ناموفق گزارش می‌شود.
 
 ## ۶. اولین تماس
+
+> وقتی طرف مقابل تماسی را که از آیفون گرفته‌اید جواب دهد، آیفون کمی می‌لرزد. اگر نمی‌خواهید گوشی اندرویدی هم صفحهٔ
+> تماس خودش را نشان دهد، در کارت Call audio گزینهٔ **Show this phone's call screen while a call is on the iPhone** را
+> خاموش کنید (اعلان تماس می‌ماند و تماس‌هایی که روی خود گوشی جواب می‌دهید همچنان صفحه دارند).
 
 1. از کسی بخواهید به یکی از شماره‌های شما زنگ بزند: آیفون با صفحهٔ تماس خودش زنگ می‌خورد. همان‌جا جواب دهید.
 2. از تب Keypad شماره بگیرید و سیم‌کارت را انتخاب کنید.
@@ -167,10 +181,13 @@ https://github.com/amirwmr/tether/releases/latest/download/altstore.json
 | SideStore نمی‌تواند Refresh کند | VPN مخصوص SideStore را روشن کنید، به اینترنت وصل باشید و دوباره امتحان کنید؛ اگر سرورهای اپل در دسترس نیستند از VPN استفاده کنید |
 | آیفون وصل نمی‌شود | هر دو برنامه باز، بلوتوث روشن، گوشی‌ها نزدیک؛ Link log هر دو طرف؛ [TROUBLESHOOTING.md](../TROUBLESHOOTING.md#the-iphone-does-not-link) |
 | صدای تماس روی آیفون نمی‌آید | آیا Audio helper «Running» است؟ اندروید ۱۱ یا بالاتر است؟ self-test را اجرا کنید؛ [No call audio](../TROUBLESHOOTING.md#no-call-audio) |
-| **طرف مقابل صدای من را نمی‌شنود** | روی آیفون: Settings › Privacy & Security › Microphone › Cellular روشن باشد و تماس Mute نباشد. روی اندروید: Call audio › «This phone's microphone during bridged calls» را روی **On** امتحان کنید؛ [جزئیات](../TROUBLESHOOTING.md#the-other-side-cannot-hear-me) |
+| **طرف مقابل صدای من را نمی‌شنود** | روی آیفون: Settings › Privacy & Security › Microphone › Cellular روشن باشد و تماس Mute نباشد. روی اندروید: Call audio › «This phone's microphone during bridged calls» را روی **On** امتحان کنید؛ گزارش مشکل هر دو گوشی را بفرستید؛ [جزئیات](../TROUBLESHOOTING.md#the-other-side-cannot-hear-me) |
+| طرف مقابل پژواک صدای خودش را می‌شنود | روی سامسونگ‌های Qualcomm (A73، A52s) گزینهٔ **Muted** را در Call audio امتحان کنید؛ [جزئیات](../TROUBLESHOOTING.md#the-other-side-hears-an-echo-of-itself) |
+| صدا وسط تماس قطع می‌شود (مثلاً با قفل شدن صفحه) | برنامهٔ اندروید را به‌روز کنید: نسخه‌های قبلی کمی بعد از تماس قبلی درخواستی بلوتوثی می‌فرستادند که بعضی گوشی‌ها جواب نمی‌دادند و ۴۰ ثانیه بعد اتصال قطع می‌شد؛ [جزئیات](../TROUBLESHOOTING.md#the-iphone-does-not-link) |
 | Audio helper بعد از ری‌استارت گوشی کار نمی‌کند | گوشی اندرویدی را یک بار به وای‌فای وصل کنید (Wireless debugging موقع شروع به آن نیاز دارد) |
 
-برای گزارش مشکل، مدل هر دو گوشی، نسخهٔ اندروید و iOS و Link log هر دو طرف را بفرستید
-([چه چیزهایی بفرستید](../TROUBLESHOOTING.md#what-to-include-in-a-report)).
+برای گزارش مشکل، از هر برنامه یک «گزارش مشکل» بفرستید: روی گوشی اندرویدی Tether › «راهنما» › «ارسال گزارش مشکل»، روی
+آیفون و در Tether Client، Link › «ارسال گزارش مشکل». شماره‌ها، نام‌ها و متن پیام‌ها در آن نیست
+([چه چیزهایی در آن است](../TROUBLESHOOTING.md#what-to-include-in-a-report)).
 
 </div>

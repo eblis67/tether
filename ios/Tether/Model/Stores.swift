@@ -150,7 +150,7 @@ final class LinkJournal: @unchecked Sendable {
 
     private let cap: Int
 
-    init(url: URL? = nil, cap: Int = 400) {
+    init(url: URL? = nil, cap: Int = 600) {
         self.cap = cap
         self.url = url ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("link-log.txt")
         lines = ((try? String(contentsOf: self.url, encoding: .utf8)) ?? "").split(separator: "\n").suffix(cap).map(String.init)

@@ -49,6 +49,10 @@ object LinkPolicy {
     }
     const val IDLE_WAKE_MS = 15 * 60_000L
     const val WAKE_ANSWER_MS = 45_000L
+
+    /** With no session, a paired iPhone is woken this often (see Hub.wakeWithoutSession). */
+    fun wakeUnlinked(sinceLastMs: Long) = sinceLastMs >= WAKE_UNLINKED_MS
+    const val WAKE_UNLINKED_MS = 3 * 60_000L
 }
 
 /**
@@ -63,4 +67,39 @@ class PairingTokens(private val windowMs: Long, private val now: () -> Long = Sy
 
     @Synchronized fun tokenFor(centralKey: ByteArray, open: ByteArray?): ByteArray? =
         open ?: last?.takeIf { it.second.contentEquals(centralKey) && now() < it.third }?.first
+}
+
+/**
+ * When the Android phone asks the central for a faster or slower LE connection (BlePeripheral.tune), per link. Issue
+ * #13 (Galaxy A73 with an iPhone, 2026-11-25): a "balanced" request sent 9–15 s after the call's "high" ones got no
+ * answer, and 40 s later (the link layer's procedure timeout) Android dropped the link with status 34 (LL response
+ * timeout), every time: six drops in one evening, one in the middle of the next call ("audio stops"). The balanced
+ * request that came 40 s after the previous one was answered in 130 ms; the "high" ones at a call's start always were.
+ * So: a request is never sent twice in a row ([want] the same priority does nothing), "high" goes out at once (a ring
+ * must not wait), and "balanced" only once [minGapMs] passed since the last request on that link ([want] returns the
+ * time to ask again; the caller re-asks then and nothing is sent if "high" was wanted meanwhile).
+ */
+class PriorityPacer(private val minGapMs: Long = 35_000) {
+    private var lastSent: Boolean? = null   // true: high, false: balanced, null: nothing sent on this link yet
+    private var lastAt = Long.MIN_VALUE / 2
+    private var wanted: Boolean? = null
+
+    /** What to do now for [high] at [nowMs]: send it, nothing, or ask again in [Step.retryInMs]. */
+    data class Step(val send: Boolean, val retryInMs: Long = -1)
+
+    @Synchronized fun want(high: Boolean, nowMs: Long): Step {
+        wanted = high
+        if (lastSent == high) return Step(send = false)
+        if (high || lastSent == null) return sent(high, nowMs)
+        val wait = lastAt + minGapMs - nowMs
+        return if (wait <= 0) sent(false, nowMs) else Step(send = false, retryInMs = wait)
+    }
+
+    /** A delayed balanced request is due: send it only if it is still what the link wants. */
+    @Synchronized fun due(nowMs: Long): Step = if (wanted == false) want(false, nowMs) else Step(send = false)
+
+    /** A new LE link: nothing was asked on it yet (its first request goes out at once). */
+    @Synchronized fun reset() { lastSent = null; lastAt = Long.MIN_VALUE / 2 }
+
+    private fun sent(high: Boolean, nowMs: Long): Step { lastSent = high; lastAt = nowMs; return Step(send = true) }
 }

@@ -33,6 +33,39 @@ class CallAudioReportTest {
         assertTrue(line, line.contains("errors: local mute x"))
     }
 
+    @Test fun theIphonesCopyOfTheCallFiguresSaysWhichInjectionAndWhy() {
+        // Issue #14: the iPhone's report said only "method -" (no injection), nothing about why.
+        val none = JSONObject().put("inject", JSONObject.NULL).put("injectWhy", "none opened: inject:intercept IllegalStateException: x; inject:telephony_tx no telephony output device")
+        assertEquals("; inject NONE (none opened: inject:intercept IllegalStateException: x; inject:telephony_tx no telephony output device)", CallAudioReport.injectSummary(none))
+        val switched = JSONObject().put("inject", "policy_mix").put("injectWhy", "policy_mix (routed 18:Telephony)").put("injectSwitched", "telephony_tx → policy_mix: its play position stood still")
+        assertEquals("; inject policy_mix (policy_mix (routed 18:Telephony)); switched telephony_tx → policy_mix: its play position stood still", CallAudioReport.injectSummary(switched))
+        assertEquals("an older helper says nothing", "", CallAudioReport.injectSummary(JSONObject()))
+    }
+
+    @Test fun thePathLineSaysWhyAndTheEarpieceVolume() {
+        val info = JSONObject().put("capture", "intercept").put("inject", "telephony_tx").put("routed", "18:SM-A736B").put("routedToCall", true)
+            .put("errors", JSONArray()).put("uplink", uplink("off", false)).put("earpiece", "voice stream muted")
+            .put("voiceVolume", JSONObject().put("index", 1).put("min", 1).put("max", 8).put("muted", true))
+            .put("injectSwitched", "intercept → telephony_tx: its play position stood still")
+        val line = CallAudioReport.pathLine(info, setting = false, memory = null)
+        assertTrue(line, line.contains("earpiece voice stream muted (voice-call volume 1 of 1–8, muted)"))
+        assertTrue(line, line.contains("injection switched during the call: intercept → telephony_tx"))
+    }
+
+    @Test fun aSkippedInterceptionRouteIsSaid() {
+        val info = JSONObject().put("capture", "intercept").put("inject", "telephony_tx").put("routed", "18:Redmi Note 8")
+            .put("routedToCall", true).put("interceptInjectDead", true).put("errors", JSONArray()).put("uplink", uplink("off", false))
+        val line = CallAudioReport.pathLine(info, setting = false, memory = null)
+        assertTrue(line, line.contains("uplink injection open via telephony_tx"))
+        assertTrue(line, line.contains("no afe-proxy-playback path"))
+    }
+
+    @Test fun aMuteSettingThePhoneCannotHonourIsSaid() {
+        val info = JSONObject().put("capture", "intercept").put("inject", "intercept").put("errors", JSONArray()).put("uplink", uplink("off", false))
+        val line = CallAudioReport.pathLine(info, setting = true, memory = Memory.OK, canMute = false)
+        assertTrue(line, line.contains("Android's mic mute also silences the injected voice"))
+    }
+
     @Test fun anInjectionNotRoutedToTheCallIsSaid() {
         // Issue #15: telephony_tx granted on the phone's speaker instead of Telephony Tx.
         val info = JSONObject().put("capture", "intercept").put("inject", "intercept").put("routed", "2:Speaker").put("routedToCall", false)

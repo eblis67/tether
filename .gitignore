@@ -12,6 +12,7 @@ android/.gradle/
 android/**/build/
 android/local.properties
 android/.kotlin/
+android/.idea/
 *.apk
 *.dex
 tools/out/
@@ -23,6 +24,7 @@ ios/build-test/
 ios/build-release/
 __pycache__/
 ios/build-sim-ent/
+ios/.idea/
 
 # Local configuration (copy the .example files; see docs/BUILD.md)
 ios/Config/Local.xcconfig

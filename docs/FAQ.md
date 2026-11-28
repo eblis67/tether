@@ -75,12 +75,41 @@ Bridging call audio and switching mobile data, hotspot, tethering or airplane mo
 shell user has. Tether pairs with the phone's own Wireless debugging once and starts a small helper on the phone;
 nothing leaves the phone. Texts, contacts and call control work without it.
 
+### Does call audio work when the Android phone is not on Wi-Fi?
+
+Yes, once the helper is running, if **USB debugging** is on too (Developer options; no cable needed). Android turns
+Wireless debugging off without Wi-Fi, and with USB debugging off it then stops the helper: call audio and the switches
+stop until Wi-Fi is back. The Call audio card offers **Turn on USB debugging** and the iPhone's Link tab says when this
+applies. Starting the helper (after a restart) still needs Wi-Fi, or TCP debugging on a phone without Wi-Fi
+([SETUP.md](SETUP.md#call-audio-without-wi-fi-keep-usb-debugging-on)).
+
+### Mobile data is on, but the iPhone shows it off
+
+Up to 1.2.5 some dual-SIM phones on custom ROMs (a Poco X3 Pro, #14) switched mobile data correctly but showed the
+wrong state. Later versions read the state from the phone service for the data SIM.
+
 ### The other side cannot hear me. What do I do?
 
 Check the iPhone's microphone permission for the app (Settings › Privacy & Security › Microphone; since 1.2 the call
 screen and the Link tab say when it is refused or silent) and that the call is not muted. The Android phone keeps its
 own microphone out of the call automatically and checks that your voice still gets through; if it does not, try
-Call audio › "This phone's microphone during bridged calls" › **On**, and run the self-test during a call. Full list: [TROUBLESHOOTING.md](TROUBLESHOOTING.md#the-other-side-cannot-hear-me).
+Call audio › "This phone's microphone during bridged calls" › **On**, and run the self-test during a call. On Qualcomm
+phones (Xiaomi, Redmi, Poco, OnePlus and others) **Muted** mutes the microphone only while your voice goes in through
+the in-call music route (`telephony_tx`); with the other routes muting it also silenced your voice, so it stays on. If
+the other side hears you only while the Android phone is close to you, the iPhone's voice is not reaching the call and
+what they hear is the Android phone's own microphone: put it in another room, call again, and send the problem
+reports of **both** phones (the iPhone's alone does not say why). The Android phone tries every way into the call by
+itself and its link log says which one it used and why. If calls dialed on the iPhone end at once and incoming calls are
+silent both ways, iOS restarted its call service under Tether: with versions up to 1.2.4, swipe Tether away in the
+app switcher and open it again (1.2.5 and later recover by themselves). Full list: [TROUBLESHOOTING.md](TROUBLESHOOTING.md#the-other-side-cannot-hear-me).
+
+### The other side hears an echo of itself. What can I do?
+
+The Android phone's earpiece still plays the call and its microphone picks it up. Tether keeps the phone's call volume
+at its lowest step during a bridged call. On Samsung phones with a Qualcomm chip (Galaxy A73, A52s) the earpiece cannot
+be muted fully; choose **Muted** under Call audio › "This phone's microphone during bridged calls": with the in-call
+music route these phones use, Android's microphone mute keeps your voice in the call (checked during the call). See
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md#the-other-side-hears-an-echo-of-itself).
 
 ### How far apart can the phones be?
 
@@ -88,8 +117,11 @@ Bluetooth range: a few metres, through a bag or a pocket. In the next room it ma
 
 ### How do I send logs with a bug report?
 
-Right after a test call: on the Android phone, Tether › Call audio › **Link log** › **Share** (and, during a call,
-**Run call-audio self-test**, then a screenshot of its result); on the iPhone, Link › **Link log** › the share button
-(Tether Client: Link › Link log › Copy). Attach them to an issue at
-[github.com/amirwmr/tether/issues](https://github.com/amirwmr/tether/issues/new/choose). The logs hold no message text
-or phone numbers; check them before posting.
+Send a problem report from each app right after the problem (for audio, right after a test call): on the Android
+phone, Tether › **Help** › **Send a problem report** › Share; on the iPhone and in Tether Client, **Link › Send a
+problem report**. Each is one `.txt` file with the logs, the setup and, on the Android phone, call-audio diagnostics.
+Attach the files to an issue at
+[github.com/amirwmr/tether/issues](https://github.com/amirwmr/tether/issues/new/choose). Phone numbers, names,
+message text, e-mail, addresses and keys are removed; check the file before posting
+([what is in it](TROUBLESHOOTING.md#what-to-include-in-a-report)). Older versions: Tether › Call audio › **Link log**
+› **Share** and, on the iPhone, Link › **Link log** › the share button.

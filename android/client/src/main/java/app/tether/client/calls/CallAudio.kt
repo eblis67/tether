@@ -66,6 +66,11 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
     /** From the call tracker after every call update: the microphone goes out only while a call here is connected. */
     fun setUplink(open: Boolean) = gate.set(open)
 
+    /** For a problem report: the uplink gate (wanted, open) and the last call's playout figures. */
+    val uplinkWanted get() = gate.isWanted
+    val uplinkOpen get() = gate.isOpen
+    @Volatile var lastStats: String? = null; private set
+
     /** The microphone permission was just granted (call screen): a recorder that was not started comes up now. */
     fun micPermissionChanged() = synchronized(lock) {
         if (running && recThread?.isAlive != true && hasMicPermission()) { recorderFailed = false; startRecorderLocked(playRate, playout) }
@@ -244,10 +249,11 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
         playThread = null; recThread = null
         val b = playout
         val ms = 1000.0 / playRate
-        log(String.format(Locale.ROOT, "call audio: playout delay %.0f ms (target %.0f, arrival spread asks %.0f), underruns %d, " +
+        lastStats = String.format(Locale.ROOT, "playout delay %.0f ms (target %.0f, arrival spread asks %.0f), underruns %d, " +
             "concealed %.0f ms (%d frames by the decoder), trimmed %.0f ms (speech %.0f ms), added %.0f ms, lost %d of %d frames, " +
             "arrival jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm",
             b.meanBuffered * ms, b.target * ms, b.jitterFloor * ms, b.underruns, b.concealedSamples * ms, b.concealedFrames,
-            b.trimmed * ms, b.speechTrimmed * ms, b.inserted * ms, lost, frames, if (frames > 1) jitterSum / (frames - 1) else 0.0, worstGap, b.driftPpm))
+            b.trimmed * ms, b.speechTrimmed * ms, b.inserted * ms, lost, frames, if (frames > 1) jitterSum / (frames - 1) else 0.0, worstGap, b.driftPpm)
+        log("call audio: $lastStats")
     }
 }

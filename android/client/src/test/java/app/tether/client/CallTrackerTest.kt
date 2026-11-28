@@ -1,5 +1,6 @@
 package app.tether.client
 
+import app.tether.client.calls.AnswerCue
 import app.tether.client.calls.CallTracker
 import app.tether.client.model.Call
 import app.tether.core.T
@@ -40,6 +41,34 @@ class CallTrackerTest {
             input.forEach(tr::handle)
             assertEquals(input.joinToString { "${it.cid}:${it.state}" }, want, sk.events)
         }
+    }
+
+    @Test fun answerCueRule() {
+        assertTrue(AnswerCue.shouldFire(true, "dialing", "active", false))
+        assertTrue(AnswerCue.shouldFire(true, "connecting", "active", false))
+        assertFalse(AnswerCue.shouldFire(true, "dialing", "active", true))
+        assertFalse(AnswerCue.shouldFire(false, "dialing", "active", false))
+        assertFalse(AnswerCue.shouldFire(true, null, "active", false))
+        assertFalse(AnswerCue.shouldFire(true, "holding", "active", false))
+        assertFalse(AnswerCue.shouldFire(true, "active", "active", false))
+        assertFalse(AnswerCue.shouldFire(true, "dialing", "connecting", false))
+    }
+
+    @Test fun theAnswerCueComesOnceForACallPlacedHere() {
+        t.performStart("L1", "+10000000002", null)
+        h(call("o", "dialing", "out", "+10000000002"))
+        assertTrue(sink.answeredCues.isEmpty())
+        h(call("o", "active", "out", "+10000000002"))
+        assertEquals(listOf("L1"), sink.answeredCues)
+        h(call("o", "holding", "out", "+10000000002"), call("o", "active", "out", "+10000000002"))
+        assertEquals(listOf("L1"), sink.answeredCues)
+    }
+
+    @Test fun noAnswerCueForCallsNotPlacedHere() {
+        h(call("a", "dialing", "out"), call("a", "active", "out"))   // dialed on the Android phone
+        h(call("b", "ringing"), call("b", "active"))                  // incoming, answered
+        h(call("c", "active"))                                        // already live at a reconnect
+        assertTrue(sink.answeredCues.isEmpty())
     }
 
     @Test fun ringbackWhileDialingStopsWhenConnected() {

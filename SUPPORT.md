@@ -15,8 +15,9 @@ Before asking, check [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) and the 
 - The Tether version (release or commit) on each phone.
 - The Android phone's model and Android version; the iPhone, iPad or client phone and its version.
 - What you did, what you expected and what happened.
-- The link logs from both sides around the time of the problem
-  ([which logs](docs/TROUBLESHOOTING.md#what-to-include-in-a-report)).
+- A **problem report** from each app, made right after the problem: Tether › **Help** › **Send a problem report** on
+  the Android phone, **Link › Send a problem report** on the iPhone and in Tether Client
+  ([what is in it](docs/TROUBLESHOOTING.md#what-to-include-in-a-report)). Older versions: the link logs from both sides.
 
 **Never paste** phone numbers, contact names, message text, pairing codes, keys or tokens. Replace them with
 `<redacted>` or the test numbers `+10000000001…9`.

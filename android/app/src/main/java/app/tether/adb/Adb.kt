@@ -151,6 +151,26 @@ class Adb private constructor(private val ctx: Context) : AbsAdbConnectionManage
             false
         }
 
+        /** USB debugging is on: then adbd, and the helper it started, keep running when Wi-Fi goes (HelperLife). */
+        fun usbDebugging(ctx: Context) = Settings.Global.getInt(ctx.contentResolver, Settings.Global.ADB_ENABLED, 0) == 1
+
+        /**
+         * Turns USB debugging on so the helper outlives Wi-Fi (issues #26, #29). Only on the user's tap: it is a
+         * developer setting some banking apps refuse to run with. Needs WRITE_SECURE_SETTINGS.
+         */
+        fun enableUsbDebugging(ctx: Context): Boolean = try {
+            Settings.Global.putInt(ctx.contentResolver, Settings.Global.ADB_ENABLED, 1)
+        } catch (e: SecurityException) {
+            false
+        }
+
+        /** The phone is on a Wi-Fi network (Wireless debugging runs only then); also behind a VPN or mobile-data default. */
+        @Suppress("DEPRECATION")
+        fun onWifi(ctx: Context): Boolean {
+            val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+            return cm.allNetworks.any { n -> cm.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true }
+        }
+
         /** After pairing: grant ourselves what we need through adb once. */
         fun bootstrap(ctx: Context): String {
             val adb = get(ctx)

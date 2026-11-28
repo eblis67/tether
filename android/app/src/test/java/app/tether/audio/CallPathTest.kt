@@ -1,7 +1,12 @@
 package app.tether.audio
 
+import app.tether.helper.InjectChoice
+import app.tether.helper.InjectChoice.Route
+import app.tether.helper.InjectChoice.Verdict
 import app.tether.helper.MicPath.Mode
 import app.tether.helper.OpenGate
+import app.tether.helper.PathOpener
+import app.tether.helper.UplinkRoutes
 import app.tether.helper.PathWatch
 import app.tether.helper.PathWatch.Event
 import org.json.JSONArray
@@ -87,6 +92,111 @@ class CallPathTest {
         val idle = PathWatch(testLine = false)
         assertTrue("nothing to play (the iPhone sends nothing): not stuck", List(6) { idle.second(sec(waiting = false, played = 0)) }.all { it == null })
         assertTrue(PathWatch.text(Event.UP_STUCK, "intercept", "intercept", "18:Telephony").contains("the far end cannot hear the iPhone"))
+    }
+
+    // ------------------------------------------------------------------ opening: every method, each judged by its route
+
+    /** A call in IN_CALL whose clock moves only when the opener sleeps. */
+    private class Env(var now: Long = 0, private val until: Long = 60_000) : PathOpener.Env {
+        override fun alive() = now < until
+        override fun mode() = Mode.IN_CALL
+        override fun nowMs() = now
+        override fun activeForMs() = -1L
+        override fun sleep(ms: Long) { now += ms }
+    }
+
+    /** A fake track: its method and the device type Android routed it to (-1: none reported). */
+    private data class Track(val method: String, val routed: Int)
+
+    private val inCall = " not available in mode MODE_IN_CALL"
+
+    /** [behaviour]: per method, the route of the opened track or an error message; refused for the mode until [refusedUntil] ms. */
+    private fun opener(env: Env, gate: OpenGate, behaviour: Map<String, Any>, refusedUntil: Map<String, Long> = emptyMap(),
+                       closed: MutableList<String> = ArrayList(), onlyIfNothingElse: Set<String> = emptySet()) =
+        PathOpener<Track>("inject", gate, env,
+            open = { m ->
+                if (env.now < (refusedUntil[m] ?: -1)) throw IllegalStateException(inCall)
+                when (val b = behaviour[m]) { is Int -> Track(m, b); is String -> throw IllegalStateException(b); else -> error("no $m") }
+            },
+            close = { closed += it.method },
+            judge = { m, t -> InjectChoice.judge(m, InjectChoice.route(t.routed, testLine = false)) to "routed ${t.routed}" },
+            onlyIfNothingElse = onlyIfNothingElse)
+
+    private fun capture(env: Env, gate: OpenGate, refusedUntil: Long) = PathOpener<Track>("capture", gate, env,
+        open = { if (env.now < refusedUntil) throw IllegalStateException(inCall) else Track(it, 18) }, close = {})
+
+    private val all = listOf("intercept", "telephony_tx", "policy_mix")
+
+    @Test fun theInjectionGetsItsOwnGraceNotWhatTheCaptureLeft() {
+        // Issue #14 (Redmi Note 10 5G, MediaTek: "helper paths open after 4791 ms", no injection at all): the capture
+        // waited 1.9 s for the interception API; with one grace for both, the injection's refusal right after had 0.1 s.
+        val env = Env()
+        assertEquals("intercept", capture(env, OpenGate(graceMs = 2000), refusedUntil = 1900).run(listOf("intercept"), ArrayList())?.method)
+        val inject = opener(env, OpenGate(graceMs = 2000), mapOf("intercept" to 18, "telephony_tx" to 18), refusedUntil = mapOf("intercept" to 3500))
+        assertEquals("its own 2 s", "intercept", inject.run(all, ArrayList())?.method)
+        // The 1.2.5 behaviour, for the record: one gate for both leaves the injection on the older method.
+        val shared = OpenGate(graceMs = 2000)
+        val env2 = Env()
+        capture(env2, shared, refusedUntil = 1900).run(listOf("intercept"), ArrayList())
+        assertEquals("telephony_tx", opener(env2, shared, mapOf("intercept" to 18, "telephony_tx" to 18), refusedUntil = mapOf("intercept" to 3500)).run(all, ArrayList())?.method)
+    }
+
+    @Test fun everyMethodIsTriedAndTheOneWithoutARouteIsTheLastResort() {
+        // The MediaTek case as far as the evidence goes: the interception track refused, telephony_tx playing but no
+        // route reported (1.2.0-1.2.5 refused it: "routed to nothing"), policy_mix refused. 1.1.0 took telephony_tx as
+        // it came, and the reporter says 1.1.0 worked.
+        val errors = ArrayList<String>(); val closed = ArrayList<String>()
+        val o = opener(Env(), OpenGate(), mapOf("intercept" to "UnsupportedOperationException: no", "telephony_tx" to -1, "policy_mix" to "registerAudioPolicy returned -1"), closed = closed)
+        val got = o.run(all, errors)
+        assertEquals("telephony_tx", got?.method)
+        assertEquals("closed once while the others were tried", listOf("telephony_tx"), closed)
+        assertTrue(got!!.why, got.why.contains("intercept: IllegalStateException: UnsupportedOperationException: no") && got.why.contains("used anyway"))
+        assertEquals(listOf("inject:intercept IllegalStateException: UnsupportedOperationException: no", "inject:policy_mix IllegalStateException: registerAudioPolicy returned -1"), errors)
+        assertEquals(all, o.tried)
+        // As in 1.1.0, policy_mix is not reached once telephony_tx opened (on a Galaxy A73 it was routed to the call and
+        // carried nothing): the helper passes it as "only if nothing else".
+        val o2 = opener(Env(), OpenGate(), mapOf("intercept" to "x", "telephony_tx" to -1, "policy_mix" to 18), onlyIfNothingElse = setOf("policy_mix"))
+        assertEquals("telephony_tx", o2.run(all, ArrayList())?.method)
+        assertEquals(listOf("intercept", "telephony_tx"), o2.tried)
+        assertEquals("policy_mix when nothing else opened", "policy_mix",
+            opener(Env(), OpenGate(), mapOf("intercept" to "x", "telephony_tx" to "no telephony output device", "policy_mix" to 18), onlyIfNothingElse = setOf("policy_mix")).run(all, ArrayList())?.method)
+    }
+
+    @Test fun aTrackRoutedElsewhereMovesOnARoutedOneIsKept() {
+        val errors = ArrayList<String>()
+        // The interception track on the speaker (2): the iPhone's voice would play on the phone.
+        val got = opener(Env(), OpenGate(), mapOf("intercept" to 2, "telephony_tx" to 18)).run(all, errors)
+        assertEquals("telephony_tx", got?.method)
+        assertEquals(listOf("inject:intercept routed 2, not the call's uplink"), errors)
+        assertTrue(got!!.why, got.why.endsWith("→ telephony_tx (routed 18)"))
+        assertEquals("intercept without a reported route is kept, as always", "intercept", opener(Env(), OpenGate(), mapOf("intercept" to -1)).run(all, ArrayList())?.method)
+        assertNull("nothing routed to the call: none", opener(Env(), OpenGate(), mapOf("intercept" to 2, "telephony_tx" to "routed to 2:Speaker", "policy_mix" to 3)).run(all, ArrayList()))
+        assertEquals(Verdict.KEEP, InjectChoice.judge("telephony_tx", InjectChoice.route(25, testLine = true)))
+        assertEquals(Route.ELSEWHERE, InjectChoice.route(25, testLine = false))
+    }
+
+    @Test fun theSelfTestsChoiceComesFirstButNeverAlone() {
+        // A saved choice that fails in this call used to leave the call without any injection.
+        assertEquals(listOf("telephony_tx", "intercept", "policy_mix"), UplinkRoutes.fixedOrAuto("telephony_tx", all))
+        val got = opener(Env(), OpenGate(), mapOf("telephony_tx" to "no telephony output device", "intercept" to 18)).run(UplinkRoutes.fixedOrAuto("telephony_tx", all), ArrayList())
+        assertEquals("intercept", got?.method)
+    }
+
+    @Test fun aTrackTakenSlowerThanRealTimeIsSaid() {
+        // Poco X3 Pro (issue #14): telephony_tx at 14768 Hz, the far end heard nothing; working phones within 0.1 %.
+        assertTrue(PathWatch.slowInject(14768.4, 16000))
+        assertTrue(PathWatch.slowInject(12903.5, 16000))
+        assertFalse("Galaxy A73, two-way audio", PathWatch.slowInject(15993.1, 16000))
+        assertFalse("1.8 % is within what hold-ups do", PathWatch.slowInject(15707.0, 16000))
+        assertFalse("not measured", PathWatch.slowInject(-1.0, 16000))
+        assertTrue(PathWatch.slowText("telephony_tx", "18:Telephony", 14768.4, 16000).contains("about 14768 Hz instead of 16000 Hz"))
+    }
+
+    @Test fun aSwitchedInjectionIsWatchedAfresh() {
+        val w = PathWatch(testLine = false)
+        assertEquals(listOf(Event.UP_STUCK), List(6) { w.second(sec(played = 0)) }.filterNotNull())
+        w.rearmUplink()
+        assertEquals("the next track stuck too: said again", listOf(Event.UP_STUCK), List(6) { w.second(sec(played = 0)) }.filterNotNull())
     }
 
     // ------------------------------------------------------------------ app: restart at most once

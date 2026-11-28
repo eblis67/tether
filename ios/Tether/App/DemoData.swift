@@ -71,7 +71,16 @@ extension AppModel {
             else if args.contains("-TetherDemoContacts") { Router.shared.tab = .contacts }
             else if args.contains("-TetherDemoKeypad") { Router.shared.tab = .keypad }
             else if args.contains("-TetherDemoRecents") { Router.shared.tab = .recents }
-            else if args.contains("-TetherDemoPair") || args.contains("-TetherDemoPairManual") || args.contains("-TetherDemoPhoneTools") { Router.shared.tab = .link }
+            else if args.contains("-TetherDemoPair") || args.contains("-TetherDemoPairManual") || args.contains("-TetherDemoPhoneTools") || args.contains("-TetherDemoReport") { Router.shared.tab = .link }
+        }
+        // -TetherDemoReport opens Link › Send a problem report; the log lines hold numbers and addresses to show them removed.
+        if args.contains("-TetherDemoReport") {
+            for line in ["session up over l2cap", "call from +15550101 ended (peer 00:11:22:33:44:55)", "proxy 192.168.44.1:8118",
+                         "call audio: link round trip 118 ms, playout delay 46 ms (target 65, arrival spread asks 44), concealed 12 ms, underruns 0, drained 40 ms (speech 0 ms), added 20 ms, lost 0 of 959 frames, arrival jitter 3.1 ms, worst gap 87 ms, drift -12 ppm, io 5.3 ms, out latency 4.2 ms",
+                         "disconnected: The connection has timed out unexpectedly.", "session up over l2cap"] {
+                LinkJournal.shared.add(line)
+            }
+            AppEvents.shared.add("link state: connected over l2cap")
         }
         // -TetherDemoOpen <url> opens a link as if another app had (tel:, tether://dial?number=…); with
         // -TetherDemoOpenCancel the question is cancelled after 3 s, which leaves the number in the Keypad.

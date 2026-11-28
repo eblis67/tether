@@ -59,6 +59,7 @@ Package `app.tether.core`:
 | `Proto` | Constants: version, modes, channels `CH_CONTROL`, `CH_AUDIO`, `CH_FINISH` |
 | `Message`, `T` | The control envelope `{t, id, re, b}` (JSON) and every message type name (§5) |
 | `Sms`, `Contact`, `Phone`, `CallEntry`, `CallInfo` | Body types with `json()` |
+| `ReportScrubber`, `ProblemReport` | Problem reports in the apps' shared format: the scrubber removes phone numbers, e-mail, names you pass, full Bluetooth / MAC addresses (last two bytes kept), IP addresses, IMEI-like runs and keys, and leaves timestamps, versions and figures alone; the builder writes the header and sections and keeps the newest log lines within about 1 MB |
 | `AudioFrame`, `G711` | The audio channel frame `codec ‖ seq ‖ payload`; µ-law |
 
 Package `app.tether.audio`: `VoiceCodec`, `OpusCodec` (16 kHz, 20 ms, 32 kbps VOIP), `PcmuCodec`, `Resample`.

@@ -30,9 +30,6 @@ android {
         targetSdk = 36
         versionCode = tetherVersionCode
         versionName = tetherVersion
-        // Only the architecture of the phones this app runs on: the crypto library otherwise ships
-        // a copy per architecture (x86 for emulators included), ~8 MB of dead weight in every APK.
-        ndk { abiFilters += "arm64-v8a" }
     }
 
     signingConfigs {
@@ -48,12 +45,7 @@ android {
 
     buildTypes {
         release {
-            // Shrunk: without this the APK carried every library whole (15 MB). The keep rules in
-            // proguard-rules.pro protect what is reached by name — above all the shell helper, which
-            // app_process loads from this APK by its class name, and the JCA/JNI crypto providers.
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            isMinifyEnabled = false
             signingConfig = signingConfigs.findByName("own") ?: signingConfigs.getByName("debug")
         }
     }

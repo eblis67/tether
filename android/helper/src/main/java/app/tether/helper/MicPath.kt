@@ -124,8 +124,10 @@ object MicPath {
      * reports, 2026-11-25). Modes that passed a check stay usable.
      */
     fun choose(sdk: Int, setting: Setting, callMode: Int, inject: String?, screeningSupported: Boolean,
-               memory: Map<Redirect, Verdict>): Redirect? {
-        if (setting != Setting.AUTO || inject != "intercept") return null
+               memory: Map<Redirect, Verdict>, samsung: Boolean = false): Redirect? {
+        // Never on Samsung: on the A54 the downlink went silent in the mode, on a Galaxy A73 the phone's call audio stayed
+        // broken until a reboot after it (issue #13). Samsung's Exynos phones use the vendor's mic key instead.
+        if (setting != Setting.AUTO || inject != "intercept" || samsung) return null
         val ladder = Redirect.ladder(callMode, screeningSupported)
         val blind = blindUplink(callMode, memory)
         return ladder.firstOrNull { sdk >= it.minSdk && memory[it]?.usable != false && !(blind && memory[it] == null) }
@@ -144,7 +146,8 @@ object MicPath {
     /**
      * Why [Setting.AUTO] has no redirect mode for this call (INFO `mic.note`), from what [choose] was given.
      */
-    fun noRedirectWhy(sdk: Int, inject: String?, callMode: Int, memory: Map<Redirect, Verdict>): String = when {
+    fun noRedirectWhy(sdk: Int, inject: String?, callMode: Int, memory: Map<Redirect, Verdict>, samsung: Boolean = false): String = when {
+        samsung -> "no redirect mode on Samsung phones (it silenced their call audio)"
         sdk < 33 -> "no redirect mode before Android 13"
         inject != "intercept" -> "no redirect mode without the interception API (inject ${inject ?: "none"})"
         Redirect.ladder(callMode, true).isEmpty() -> "no redirect mode in ${Mode.name(callMode)}"

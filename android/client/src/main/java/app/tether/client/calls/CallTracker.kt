@@ -21,6 +21,8 @@ interface CallSink {
     fun setHeld(local: String, on: Boolean)
     fun ended(local: String, reason: EndReason)
     fun ringback(on: Boolean)
+    /** The other side answered a call placed here (once per call): a short vibration. */
+    fun answered(local: String) {}
     /** The microphone may go to the Android phone ([CallUplink]): a call here is connected. Called on changes only. */
     fun uplink(open: Boolean) {}
     /** No local call is left: call audio stops. */
@@ -51,6 +53,8 @@ class CallTracker(private val link: LinkPort, private val sink: CallSink, privat
     private val connectedAt = HashMap<String, Long>()
     private val answeredHere = HashSet<String>()
     private val holdRequested = HashSet<String>()
+    private val placedHere = HashSet<String>()            // locals of calls dialed on this phone
+    private val answerCueGiven = HashSet<String>()
     private var hungUp = HangUpGuard()
     /** Outgoing call started here, waiting for the Android phone to report its call id. */
     var pendingOutgoing: String? = null; private set
@@ -144,6 +148,7 @@ class CallTracker(private val link: LinkPort, private val sink: CallSink, privat
                     pendingOutgoing = null
                     dialToken++
                     bind(c.cid, p)
+                    placedHere += p
                 }
                 cancelledDialAt > 0 && now() - cancelledDialAt < 30_000 && cancelledNumber.isEmpty() && !c.isIncoming -> {
                     cancelledDialAt = 0
@@ -172,6 +177,10 @@ class CallTracker(private val link: LinkPort, private val sink: CallSink, privat
                 // (An answer or unhold done here already set it; setting it again changes nothing.)
                 holdRequested.remove(local)
                 if (prev != "active") sink.setActive(local)
+                if (AnswerCue.shouldFire(local in placedHere, prev, c.state, local in answerCueGiven)) {
+                    answerCueGiven += local
+                    sink.answered(local)
+                }
             }
             "holding" -> {
                 // Held on the Android phone (e.g. a second call answered there): the local call must know, or its
@@ -201,6 +210,7 @@ class CallTracker(private val link: LinkPort, private val sink: CallSink, privat
 
     private fun cleanup(local: String) {
         answeredHere.remove(local); holdRequested.remove(local); connectedAt.remove(local)
+        placedHere.remove(local); answerCueGiven.remove(local)
         updateUplink()
         if (!hasCalls) { sink.ringback(false); sink.idle() }
     }
@@ -223,7 +233,7 @@ class CallTracker(private val link: LinkPort, private val sink: CallSink, privat
         pendingOutgoing?.let { sink.ended(it, EndReason.FAILED) }
         locals.clear(); cids.clear(); lastState.clear(); info.clear(); remote.clear(); connectedAt.clear()
         pendingOutgoing = null; pendingNumber = ""; cancelledNumber = ""; cancelledDialAt = 0; dialToken++
-        hungUp.reset(); answeredHere.clear(); holdRequested.clear()
+        hungUp.reset(); answeredHere.clear(); holdRequested.clear(); placedHere.clear(); answerCueGiven.clear()
         updateUplink()
         sink.ringback(false)
         sink.idle()

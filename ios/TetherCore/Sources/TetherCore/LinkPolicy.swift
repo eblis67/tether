@@ -60,3 +60,18 @@ enum LinkStart {
         }
     }
 }
+
+/// What the iPhone does when the Android phone's wake notification arrives (TetherLink.wokenByPhone). Pure.
+public enum WakeCheck {
+    public enum Action: Equatable { case answer, newSession, ignore }
+    /// Seconds the session has to answer the ping sent on a wake (iOS gives a woken app about 10 s).
+    public static let answerSeconds: Double = 4
+
+    public static func onWake(hasSession: Bool, settingUp: Bool) -> Action {
+        if settingUp { return .ignore }
+        return hasSession ? .answer : .newSession
+    }
+
+    /// The session did not answer: nothing arrived since the wake.
+    public static func stale(lastReceived: Date, wokenAt: Date) -> Bool { lastReceived < wokenAt }
+}

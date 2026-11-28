@@ -28,6 +28,14 @@ class MicPathTest {
         assertEquals("an unknown value from a newer client", Setting.AUTO, Setting.of("something-new"))
     }
 
+    @Test fun neverOnSamsung() {
+        // Issue #13: on a Galaxy A73 the call's audio stayed broken until a reboot after call_redirect; on the A54 the
+        // downlink went silent in it. Samsung phones never get a redirect mode automatically.
+        assertNull(MicPath.choose(34, Setting.AUTO, Mode.IN_CALL, "intercept", true, emptyMap(), samsung = true))
+        assertEquals("no redirect mode on Samsung phones (it silenced their call audio)",
+            MicPath.noRedirectWhy(34, "intercept", Mode.IN_CALL, emptyMap(), samsung = true))
+    }
+
     @Test fun aPstnCallGetsCallRedirectByDefault() {
         assertEquals(Redirect.CALL_REDIRECT, choose())
         assertEquals(Redirect.COMMUNICATION_REDIRECT, choose(mode = Mode.IN_COMMUNICATION))

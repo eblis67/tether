@@ -7,6 +7,7 @@ struct LinkView: View {
     @Environment(\.appModel) private var model
     @State private var scanning = false
     @State private var confirmUnpair = false
+    @State private var reporting = false
 
     var body: some View { WithPerceptionTracking { bodyContent } }
 
@@ -119,8 +120,15 @@ struct LinkView: View {
                             Text("Call audio is not available on this Android phone: it needs Android 11 or later. Calls are still answered, placed and ended here, but you hear and speak on the Android phone.")
                                 .font(.footnote).foregroundStyle(.orange)
                         } else if s.helper.audioBlocked {
-                            Text("This Android phone's software gives Tether no call audio (the call sounds like silence to it). Calls are still answered, placed and ended here, but you hear and speak on the Android phone. A system update, or a self-test during a call that hears the call, turns call audio back on.")
+                            Text("This Android phone's software gives Tether no call audio (the call sounds like silence to it). Calls are still answered, placed and ended here, but you hear and speak on the Android phone. A system update, or a self-test during a call that hears the call, turns call audio back on. If calls on the phone itself have no sound either, restart the phone once.")
                                 .font(.footnote).foregroundStyle(.orange)
+                        }
+                        if s.helper.stoppedWithoutWifi {
+                            Text("No call audio right now: the Android phone is not on Wi-Fi, so it cannot start its audio helper (Wireless debugging needs Wi-Fi). Connect it to Wi-Fi, or set up TCP debugging on it (Setup).")
+                                .font(.footnote).foregroundStyle(.orange)
+                        } else if s.helper.stopsWithoutWifi {
+                            Text("Call audio stops if the Android phone leaves Wi-Fi. To keep it, turn on USB debugging there: Tether › Call audio › Turn on USB debugging.")
+                                .font(.footnote).foregroundStyle(.secondary)
                         }
                         if let m = s.helper.method { LabeledContent("Inject method", value: m) }
                         if let m = s.helper.capture { LabeledContent("Capture method", value: m) }
@@ -204,6 +212,7 @@ struct LinkView: View {
                     }
                     Button("Sync everything again") { model.requestSync(full: true) }.disabled(!model.linkState.isConnected)
                     NavigationLink("Link log") { LinkLogView() }
+                    NavigationLink("Send a problem report") { ProblemReportView() }
                     if model.isPaired {
                         Button("Pair again") { scanning = true }
                         Button("Unpair", role: .destructive) { confirmUnpair = true }
@@ -219,6 +228,9 @@ struct LinkView: View {
                 if ProcessInfo.processInfo.arguments.contains("-TetherDemoPair") || ProcessInfo.processInfo.arguments.contains("-TetherDemoPairManual") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { scanning = true }
                 }
+                if ProcessInfo.processInfo.arguments.contains("-TetherDemoReport") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { reporting = true }
+                }
                 if ProcessInfo.processInfo.arguments.contains("-TetherDemoPhoneTools") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1) { scroller.scrollTo("phonetools", anchor: .top) }
                 }
@@ -229,6 +241,7 @@ struct LinkView: View {
             #endif
             }
             .navigationTitle("Link")
+            .navigationDestination(isPresented: $reporting) { ProblemReportView() }
             .onAppear { model.refreshNet() }
             .onChangeCompat(of: model.linkState.isConnected) { up in if up { model.refreshNet() } }
             // Full screen: nothing of the Link tab shows around or behind the camera.
@@ -478,6 +491,65 @@ struct LinkLogView: View {
             ToolbarItem(placement: .navigationBarTrailing) { ShareLink(item: text) }
         }
         .refreshable { text = LinkJournal.shared.text }
+    }
+}
+
+/// One text with what a problem report needs (device, setup, link, call audio, the Android phone's last status, the
+/// link log), scrubbed of numbers, names, addresses and keys, shared as a .txt file or copied.
+struct ProblemReportView: View {
+    @Environment(\.appModel) private var model
+    @State private var report: String?
+    @State private var file: URL?
+
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
+        Group {
+            if let report {
+                ScrollView {
+                    Text(report)
+                        .font(.caption2.monospaced()).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding()
+                        .environment(\.layoutDirection, .leftToRight)
+                }
+            } else {
+                ProgressView("Building the report…")
+            }
+        }
+        .navigationTitle("Problem report")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                if let report {
+                    Button {
+                        UIPasteboard.general.string = report
+                        model.flash(String(localized: "Copied"))
+                    } label: { Label("Copy", systemImage: "doc.on.doc") }
+                    if let file {
+                        ShareLink(item: file, preview: SharePreview(file.lastPathComponent)) { Label("Share", systemImage: "square.and.arrow.up") }
+                    }
+                }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if report != nil {
+                Text("Phone numbers, names, message text, e-mail, addresses and keys are removed. Read it before you post it.")
+                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .padding(.horizontal).padding(.vertical, 8).frame(maxWidth: .infinity)
+                    .background(Color(.systemGroupedBackground))
+            }
+        }
+        .task { await build() }
+        .refreshable { await build() }
+    }
+
+    private func build() async {
+        let (text, created) = await ProblemReportBuilder.text(model: model)
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd-HHmm"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Tether problem report \(f.string(from: created)).txt")
+        try? text.write(to: url, atomically: true, encoding: .utf8)
+        report = text
+        file = url
     }
 }
 

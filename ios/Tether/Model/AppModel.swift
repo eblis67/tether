@@ -102,7 +102,7 @@ final class AppModel {
     var syncing = false
     var openThread: Int64?
     /// Scene is in the foreground (an open thread in a backgrounded app must still notify).
-    var appActive = true { didSet { if appActive && !oldValue { link.appBecameActive() } } }
+    var appActive = true { didSet { if appActive != oldValue { AppEvents.shared.add(appActive ? "app active" : "app inactive") }; if appActive && !oldValue { link.appBecameActive() } } }
     #if DEBUG
     /// Calls the -TetherAutoHangup debug option already scheduled to end.
     @PerceptionIgnored var autoHangupArmed = Set<String>()
@@ -226,20 +226,6 @@ final class AppModel {
     func simName(_ sub: Int?) -> String? {
         guard sims.count > 1, let sub, let sim = sims.first(where: { $0.sub == sub }) else { return nil }
         return sim.name.isEmpty ? String(localized: "SIM \(sim.slot + 1)") : sim.name
-    }
-
-    /// "Mark all as read": every conversation at once. Live messages behave — their read marks
-    /// arrive from the Android phone — but a backlog built up while the mirror was behind never
-    /// corrected itself (the historical rows' flags live on the Android phone and nothing rewrites
-    /// history). This clears it here and tells the Android phone too, one thread at a time, exactly
-    /// like opening each conversation would.
-    func markAllRead() {
-        let threads = conversations.filter { $0.unread > 0 }.map(\.thread)
-        guard !threads.isEmpty else { return }
-        for thread in threads {
-            markRead(thread: thread)
-            Notifications.shared.clearSms(thread: thread)
-        }
     }
 
     func markRead(thread: Int64) {
@@ -400,8 +386,8 @@ final class AppModel {
         guard linkState.isConnected else { return }
         syncing = true
         incrementalSync = !full && !data.sms.isEmpty
-        // From the last page received (pages arrive oldest first, so that point is complete): a text
-        // that came in live during an interrupted sync does not move it, so the rest is never skipped.
+        // From the last *completed* sync: a text that came in live during an interrupted sync must not make us
+        // skip the rest of it.
         let lastSms = full ? 0 : (data.smsSyncedUpTo ?? (data.sms.map(\.id).max() ?? 0))
         let lastCall = full ? 0 : (data.recents.map(\.id).max() ?? 0)
         link.send(MsgType.sync, SyncBodyV1(sms: lastSms, calls: lastCall, contacts: full ? "" : data.contactsVersion,
@@ -410,11 +396,6 @@ final class AppModel {
                                            caps: extensions.caps.isEmpty ? nil : extensions.caps))
         // Conversations read while out of reach.
         for (thread, upTo) in pendingRead { link.send(MsgType.smsRead, SmsRead(thread: thread, upTo: upTo)) }
-        // Every read mark is re-announced with each sync: a mark sent while the Android phone could
-        // not write it (its store grant missing after a fresh install) was otherwise never repeated —
-        // the readUpTo gate believes the phone was already told — so the Android kept those messages
-        // unread for good. The Android applies marks idempotently and retries refused ones itself.
-        for (thread, upTo) in data.readUpTo where upTo > 0 { link.send(MsgType.smsRead, SmsRead(thread: thread, upTo: upTo)) }
         pendingRead.removeAll()
         // Once: everything read on this device before read state was shared with the Android phone.
         if !UserDefaults.standard.bool(forKey: "readStateBackfilled") {
@@ -603,6 +584,7 @@ final class AppModel {
     func linkChanged(_ s: TetherLink.State) {
         let wasConnected = linkState.isConnected
         linkState = s
+        AppEvents.shared.add("link state: \(s.reportName)")
         if case .connected(let t) = s { extensionPort.transport = t }
         if s.isConnected && !wasConnected {
             // Before the sync: it carries what the extensions speak.
@@ -631,6 +613,7 @@ final class AppModel {
     }
 
     func linkFailed(_ reason: String) {
+        AppEvents.shared.add("link failed: \(reason)")
         lastError = reason
     }
 
@@ -645,14 +628,6 @@ final class AppModel {
                 let b = try Control.body(SmsBatch.self, from: payload)
                 let recent = Int64(Date().addingTimeInterval(-6 * 3600).timeIntervalSince1970 * 1000)
                 merge(sms: b.items, notify: incrementalSync && b.items.contains { $0.incoming && !$0.read && $0.date > recent })
-                // Pages arrive oldest first over one ordered stream, so everything up to this page's
-                // newest id is already here: move the resume point with every page, not only at the
-                // end. A link that drops mid-sync then continues from here on the next connect
-                // instead of downloading everything again.
-                if let m = b.items.map(\.id).filter({ $0 > 0 }).max(), m > (data.smsSyncedUpTo ?? 0) {
-                    data.smsSyncedUpTo = m
-                    persist()
-                }
                 if !b.more {
                     syncing = false; lastSync = Date()
                     data.smsSyncedUpTo = data.sms.map(\.id).filter { $0 > 0 }.max()

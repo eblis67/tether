@@ -28,11 +28,9 @@ class LocalMutesTest {
         assertTrue(samsung.vendorMic); assertFalse("never also Android's mute", samsung.telecomMic)
         val mediatek = plan(Silence.MEDIATEK, true, null)
         assertTrue(mediatek.vendorMic); assertFalse("Android's mute kills MediaTek's whole uplink", mediatek.telecomMic)
-        for (s in listOf(Silence.QUALCOMM, Silence.OTHER)) {
-            val p = plan(s, true, null)
-            assertFalse("$s has no key of its own", p.vendorMic); assertTrue(p.telecomMic)
-        }
-        for (s in Silence.entries) {
+        val other = plan(Silence.OTHER, true, null)
+        assertFalse("no key of its own", other.vendorMic); assertTrue(other.telecomMic)
+        for (s in Silence.entries.filter { LocalMutes.canMute(it) }) {
             assertTrue("$s: the uplink is checked", plan(s, true, null).check)
             assertEquals("full", LocalMutes.silent(plan(s, true, null), ok = true))
         }
@@ -42,8 +40,40 @@ class LocalMutesTest {
         for (s in Silence.entries) assertEquals(LocalMutes.Plan.NONE, plan(s, setting = true, memory = Memory.BREAKS_UPLINK))
     }
 
+    @Test fun qualcommIsNeverMutedThroughAndroid() {
+        // Redmi Note 8 (trinket): VOICE_UPLINK heard the iPhone with Android's mic mute on, the far end heard nothing.
+        // Its HAL mutes the whole Tx path, injected voice included: no check result may switch that mute on.
+        assertFalse(LocalMutes.canMute(Silence.QUALCOMM))
+        for (m in listOf(null, Memory.OK, Memory.UNVERIFIED)) {
+            assertEquals("$m", LocalMutes.Plan.NONE, plan(Silence.QUALCOMM, setting = true, memory = m))
+            assertEquals("$m", LocalMutes.Plan.NONE, LocalMutes.manualPlan(Silence.QUALCOMM, m))
+        }
+        assertEquals("earpiece", LocalMutes.silent(LocalMutes.manualPlan(Silence.QUALCOMM, Memory.OK), ok = true))
+        // Samsung's Qualcomm models: no Samsung keys since 1.2.4 (#13), and the same Qualcomm Tx mute underneath.
+        assertFalse(LocalMutes.canMute(Silence.SAMSUNG_QUALCOMM))
+        assertEquals(LocalMutes.Plan.NONE, LocalMutes.manualPlan(Silence.SAMSUNG_QUALCOMM, null))
+        for (s in listOf(Silence.SAMSUNG, Silence.MEDIATEK, Silence.OTHER)) assertTrue("$s", LocalMutes.canMute(s))
+    }
+
+    @Test fun qualcommsInCallMusicKeepsTheInjectedVoiceUnderAndroidsMute() {
+        // Issue #13 / #25 (Galaxy A73 / A52s, SM7325): the far end heard itself through the open microphone. With the
+        // in-call music injection Qualcomm's HAL mutes only the mic device; the A73's self-test heard telephony_tx at the
+        // same level with the mute on. Only with the user's "Muted", and checked until it held once.
+        for (s in listOf(Silence.QUALCOMM, Silence.SAMSUNG_QUALCOMM)) {
+            assertTrue("$s", LocalMutes.canMute(s, "telephony_tx"))
+            assertFalse("$s: not with the interception track (Redmi Note 8)", LocalMutes.canMute(s, "intercept"))
+            assertFalse("$s", LocalMutes.canMute(s, "policy_mix"))
+            val p = LocalMutes.manualPlan(s, null, "telephony_tx")
+            assertTrue("$s: Android's mute", p.telecomMic); assertFalse(p.vendorMic); assertTrue("$s: checked", p.check)
+            assertFalse("$s: no check once it held", LocalMutes.manualPlan(s, Memory.OK, "telephony_tx").check)
+            assertEquals("$s: a remembered break wins", LocalMutes.Plan.NONE, LocalMutes.manualPlan(s, Memory.BREAKS_UPLINK, "telephony_tx"))
+            assertEquals("$s: never by default", LocalMutes.Plan.NONE, LocalMutes.autoPlan(s, null))
+        }
+        assertFalse("MediaTek: Android's mute is the whole uplink", LocalMutes.telecomKeepsInCallMusic(Silence.MEDIATEK, "telephony_tx"))
+    }
+
     @Test fun aRememberedSuccessSkipsTheCheck() {
-        val p = plan(Silence.QUALCOMM, setting = true, memory = Memory.OK)
+        val p = plan(Silence.OTHER, setting = true, memory = Memory.OK)
         assertTrue(p.telecomMic)
         assertFalse(p.check)
     }
@@ -59,13 +89,13 @@ class LocalMutesTest {
 
     @Test fun theAutomaticLayerUsesOnlyTheVendorsMicSourceKey() {
         // Default setting, no redirect mode: the vendor's key, checked while untested; never Android's mic mute.
-        for (s in listOf(Silence.SAMSUNG, Silence.SAMSUNG_QUALCOMM, Silence.MEDIATEK)) {
+        for (s in listOf(Silence.SAMSUNG, Silence.MEDIATEK)) {
             val p = LocalMutes.autoPlan(s, null)
             assertTrue("$s", p.vendorMic); assertFalse("$s", p.telecomMic); assertTrue("$s: checked", p.check)
             assertFalse("$s: seen working", LocalMutes.autoPlan(s, Memory.OK).check)
             assertEquals("$s: silenced the uplink before", LocalMutes.Plan.NONE, LocalMutes.autoPlan(s, Memory.BREAKS_UPLINK))
         }
-        for (s in listOf(Silence.QUALCOMM, Silence.OTHER)) assertEquals("$s: no key of its own, open", LocalMutes.Plan.NONE, LocalMutes.autoPlan(s, null))
+        for (s in listOf(Silence.SAMSUNG_QUALCOMM, Silence.QUALCOMM, Silence.OTHER)) assertEquals("$s: no key used, open", LocalMutes.Plan.NONE, LocalMutes.autoPlan(s, null))
     }
 
     @Test fun aBlindUplinkKeepsOnlyTheTrustedKey() {

@@ -85,12 +85,6 @@ struct MessagesView: View {
             .refreshable { model.requestSync() }
             .navigationTitle("Messages")
             .toolbar {
-                if model.unreadTotal > 0 {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button { model.markAllRead() } label: { Image(systemName: "checkmark.circle") }
-                            .accessibilityLabel(Text("Mark all as read"))
-                    }
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { hideKeyboard(); composing = true } label: { Image(systemName: "square.and.pencil") }
                         .disabled(!model.linkState.isConnected)

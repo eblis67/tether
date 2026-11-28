@@ -35,6 +35,10 @@ by Swift Package Manager when another package depends on it:
 | swift-asn1 (Apple), via swift-crypto | | Apache-2.0 | Dependency of swift-crypto |
 | swift-docc-plugin and swift-docc-symbolkit (Swift project) | 1.x | Apache-2.0 | Build time only: `swift package generate-documentation`; nothing of it is in a built product |
 
+The interactive Persian install guide (`docs/fa/install.html`) inlines 26 icons from Lucide (lucide.dev, version 0.460.0,
+ISC licence, Copyright (c) Lucide Contributors) and CSS generated with Tailwind CSS 3.4.17 (MIT); it loads nothing
+from other sites.
+
 LGPL note: spake2-android is used as an unmodified library. If you distribute an APK built from this project, the
 LGPL-3.0 applies to that component: provide its source (https://github.com/MuntashirAkon/spake2-java) and allow it
 to be replaced, for example by pointing to this repository's build instructions.

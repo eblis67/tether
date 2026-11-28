@@ -167,6 +167,8 @@ class LinkService : Service() {
                     app.hub.pushStatus()
                 }.start()
             }
+            // Clients learn at once that the helper now cannot start (status helper.why, issues #26, #29).
+            override fun onLost(network: Network) { Thread { Thread.sleep(1500); app.hub.pushStatus() }.start() }
         })
     }
 

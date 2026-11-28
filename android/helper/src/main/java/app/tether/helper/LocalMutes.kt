@@ -50,11 +50,33 @@ object LocalMutes {
     fun wantCheck(memory: Memory?): Boolean = memory != Memory.OK
 
     /**
-     * Helper side: one way to mute the mic per vendor (never both: each extra mute is one more way to silence the
-     * uplink): the vendor's keys where it has them, else Android's mic mute.
+     * Whether this phone has any mic mute that leaves the injected uplink alone: the vendor's key, or Android's mic mute
+     * where the vendor's HAL does not mute the injected voice with it ([CallAudio.Silence.telecomMuteKillsUplink]).
      */
-    fun plan(silence: CallAudio.Silence, micMute: Boolean, check: Boolean): Plan =
-        if (!micMute) Plan.NONE
+    fun canMute(silence: CallAudio.Silence, inject: String? = null): Boolean =
+        silence.vendorMicKeys || !silence.telecomMuteKillsUplink || telecomKeepsInCallMusic(silence, inject)
+
+    /**
+     * Qualcomm's HAL mutes only the microphone device (not the whole Tx stream) while the in-call music use case plays
+     * (hardware/qcom/audio voice.c: `voice_set_device_mute_flag` switches the mic mute to a Tx device mute for
+     * USECASE_INCALL_MUSIC_UPLINK), and `telephony_tx` is that use case. Seen on a Galaxy A73 (SM7325, issue #13): its
+     * self-test heard `telephony_tx` in VOICE_UPLINK at the same level with Android's mic mute on (tone/base 3953583 vs
+     * 3953995) and the interception track at 0, so its VOICE_UPLINK tells a dead route from a live one. Used only with
+     * the user's "Muted" setting and checked during the call until it held once (issue #13, #25: the far end heard an
+     * echo of itself through the open microphone). The interception track (AFE proxy) is not that use case: there the
+     * mute silenced the iPhone's voice (Redmi Note 8, PR #18).
+     */
+    fun telecomKeepsInCallMusic(silence: CallAudio.Silence, inject: String?): Boolean =
+        inject == "telephony_tx" && (silence == CallAudio.Silence.QUALCOMM || silence == CallAudio.Silence.SAMSUNG_QUALCOMM)
+
+    /**
+     * Helper side: one way to mute the mic per vendor (never both: each extra mute is one more way to silence the
+     * uplink): the vendor's keys where it has them, else Android's mic mute, but never where that mutes the injected
+     * voice too (Qualcomm: its HAL mutes the whole Tx path, and VOICE_UPLINK may still show the voice, so a check
+     * cannot be trusted): no mic mute at all then.
+     */
+    fun plan(silence: CallAudio.Silence, micMute: Boolean, check: Boolean, inject: String? = null): Plan =
+        if (!micMute || !canMute(silence, inject)) Plan.NONE
         else Plan(vendorMic = silence.vendorMicKeys, telecomMic = !silence.vendorMicKeys, check = check)
 
     /**
@@ -69,8 +91,9 @@ object LocalMutes {
     }
 
     /** The user's "mute" setting: as [plan], checked until this phone gave an answer that holds for this mute. */
-    fun manualPlan(silence: CallAudio.Silence, memory: Memory?): Plan {
-        val p = plan(silence, memory != Memory.BREAKS_UPLINK, check = true)
+    fun manualPlan(silence: CallAudio.Silence, memory: Memory?, inject: String? = null): Plan {
+        val p = plan(silence, memory != Memory.BREAKS_UPLINK, check = true, inject = inject)
+        if (!p.micMuted) return Plan.NONE
         return p.copy(check = memory == null || (memory == Memory.UNVERIFIED && !keepWhenBlind(p, silence)))
     }
 

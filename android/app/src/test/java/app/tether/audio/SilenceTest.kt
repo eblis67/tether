@@ -13,7 +13,10 @@ class SilenceTest {
         assertEquals(Silence.SAMSUNG, CallAudio.pickSilence("samsung", "Samsung", "s5e8835", "s5e8835"))
         assertEquals(Silence.SAMSUNG_QUALCOMM, CallAudio.pickSilence("samsung", "QTI", "kalama", "qcom"))
         assertEquals("Galaxy A71 / A73 (Snapdragon 730 / 778G)", Silence.SAMSUNG_QUALCOMM, CallAudio.pickSilence("samsung", null, "sm7150", "qcom"))
-        assertTrue(Silence.SAMSUNG_QUALCOMM.vendorMicKeys)
+        assertTrue(Silence.SAMSUNG.vendorMicKeys)
+        // Issue #13 (Galaxy A73, Android 16): the Text Call keys left the voice PCM held and the phone's own calls silent
+        // until a reboot; on Samsung's Qualcomm models they are never written.
+        assertFalse(Silence.SAMSUNG_QUALCOMM.vendorMicKeys)
     }
 
     @Test fun samsungOnQualcommAlsoMutesTheVoiceStream() {

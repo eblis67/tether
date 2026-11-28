@@ -246,12 +246,30 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     }
 
     /** Sends a 1-byte notification on the wake characteristic (wakes the iPhone app from suspension). */
-    fun wake(address: String) {
-        val s = server ?: return
-        val c = wakeChar ?: return
-        if (address !in wakeSubscribers) return
-        val d = devices[address] ?: return
-        runCatching { GattCompat.notify(s, d, c, byteArrayOf(1)) }
+    fun wake(address: String): String {
+        val s = server ?: return "no GATT server"
+        val c = wakeChar ?: return "no wake characteristic"
+        if (address !in wakeSubscribers) return "not subscribed in this run"
+        val d = devices[address] ?: return "no GATT connection"
+        return runCatching { GattCompat.notify(s, d, c, byteArrayOf(1)); "sent" }.getOrElse { "failed: ${it.javaClass.simpleName}" }
+    }
+
+    /**
+     * Wakes every device connected to our GATT server while no session is up (the paired iPhone, in practice). A
+     * suspended iOS app is not told when the L2CAP channel closes, and with Bluetooth tethering its connection to this
+     * phone stays up over classic, so no disconnect or new connect wakes it either: only a notification does (seen
+     * 2026-11-25: 21 minutes without a session until the app was opened). Sent also to a device that did not subscribe
+     * in this run of the app (after an update or restart the subscriptions are forgotten here, iOS still has them).
+     * Returns what was done, for the link log.
+     */
+    fun wakeUnlinked(): String {
+        val s = server ?: return "no GATT server"
+        val c = wakeChar ?: return "no wake characteristic"
+        if (devices.isEmpty()) return "no GATT connection to wake"
+        return devices.values.joinToString(", ") { d ->
+            val sub = if (d.address in wakeSubscribers) "subscribed" else "not subscribed in this run"
+            "${LinkLog.short(d.address)} " + runCatching { GattCompat.notify(s, d, c, byteArrayOf(1)); "woken ($sub)" }.getOrElse { "failed (${it.javaClass.simpleName})" }
+        }
     }
 
     /**
@@ -269,6 +287,8 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     private val keeperUp = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val held = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val wantedPriority = ConcurrentHashMap<String, Int>()
+    /** Per link: when a priority request may go out (PriorityPacer, issue #13: an unanswered one drops the link 40 s later). */
+    private val pacers = ConcurrentHashMap<String, app.tether.core.PriorityPacer>()
     private val pulseTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "le-pulse").apply { isDaemon = true } }
 
     private fun openLe(address: String, onUp: (BluetoothGatt) -> Unit) {
@@ -292,18 +312,19 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     fun holdLe(address: String) {
         held.add(address)
         if (address in keeperUp) {
-            keepers[address]?.let { runCatching { it.requestConnectionPriority(wantedPriority[address] ?: BluetoothGatt.CONNECTION_PRIORITY_BALANCED) } }
+            request(address)
             return
         }
-        openLe(address) { g ->
-            g.requestConnectionPriority(wantedPriority[address] ?: BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
+        openLe(address) { _ ->
+            pacers[address]?.reset()   // a new LE link: nothing asked on it yet
+            request(address)
             LinkLog.add("LE link held to ${LinkLog.short(address)}")
         }
     }
 
     /** The session ended: let the link go at once (a held link blocks the app's next connect). */
     fun releaseLe(address: String) {
-        held.remove(address); wantedPriority.remove(address)
+        held.remove(address); wantedPriority.remove(address); pacers.remove(address)
         keepers.remove(address)?.let { g -> keeperUp.remove(address); runCatching { g.disconnect(); g.close() } }
     }
 
@@ -340,9 +361,22 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     fun tune(address: String, high: Boolean) {
         val prio = if (high) BluetoothGatt.CONNECTION_PRIORITY_HIGH else BluetoothGatt.CONNECTION_PRIORITY_BALANCED
         wantedPriority[address] = prio
+        if (address in keeperUp && address in held) request(address)
+    }
+
+    /** Asks for the link's wanted priority, paced (PriorityPacer): never the same twice, "balanced" not within 35 s of the last. */
+    private fun request(address: String, due: Boolean = false) {
         val g = keepers[address]?.takeIf { address in keeperUp && address in held } ?: return
-        runCatching { g.requestConnectionPriority(prio) }
-        Log.i(TAG, "link priority ${if (high) "high" else "balanced"} requested")
+        val high = (wantedPriority[address] ?: BluetoothGatt.CONNECTION_PRIORITY_BALANCED) == BluetoothGatt.CONNECTION_PRIORITY_HIGH
+        val pacer = pacers.getOrPut(address) { app.tether.core.PriorityPacer() }
+        val step = if (due) pacer.due(android.os.SystemClock.elapsedRealtime()) else pacer.want(high, android.os.SystemClock.elapsedRealtime())
+        if (step.send) {
+            runCatching { g.requestConnectionPriority(if (high) BluetoothGatt.CONNECTION_PRIORITY_HIGH else BluetoothGatt.CONNECTION_PRIORITY_BALANCED) }
+            Log.i(TAG, "link priority ${if (high) "high" else "balanced"} requested")
+        } else if (step.retryInMs >= 0) {
+            Log.i(TAG, "link priority balanced in ${step.retryInMs / 1000} s (not right after the last request)")
+            pulseTimer.schedule({ request(address, due = true) }, step.retryInMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
     }
 
     fun untune(address: String) = tune(address, high = false)

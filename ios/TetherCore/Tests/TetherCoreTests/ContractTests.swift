@@ -123,6 +123,11 @@ final class ContractTests: XCTestCase {
         XCTAssertNil(o.defaultSub)
         XCTAssertEqual(s.caps?.first, "x.tether.echo/1"); XCTAssertEqual(s.ext?["x.com.example.battery"]?["at"]?.number, 15)
         XCTAssertNil(o.caps, "an Android phone from before extensions"); XCTAssertNil(o.ext)
+        // Issues #26, #29: the helper needs Wi-Fi to start, and without USB debugging stops with it.
+        XCTAssertTrue(s.helper.stopsWithoutWifi); XCTAssertFalse(s.helper.stoppedWithoutWifi)
+        XCTAssertFalse(o.helper.stopsWithoutWifi); XCTAssertFalse(o.helper.stoppedWithoutWifi, "an older Android build: says nothing")
+        let w = try body("status", "nowifi", as: StatusBody.self)
+        XCTAssertTrue(w.helper.stoppedWithoutWifi); XCTAssertFalse(w.helper.stopsWithoutWifi)
         // An A54 newer than this iPhone may add fields: they are ignored, not fatal.
         XCTAssertEqual(try body("status", "unknown", as: StatusBody.self), s)
     }

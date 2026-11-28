@@ -2,12 +2,180 @@
 
 ## Unreleased
 
+## 1.2.6 — 2026-11-28
+
+### Call audio and the link (#13, #14, #25, #26, #29)
+
+- Android phone, call audio: when the interception API's uplink does not open in a call (or opens routed somewhere
+  other than the call), Tether now tries every other way into the call before giving up: `telephony_tx` (in-call
+  music, also as a low-latency track where the normal one is sent elsewhere or gets no route) and, when neither opens,
+  `policy_mix`, each checked for where Android routes it. A `telephony_tx` track for which the phone reports no route
+  at all is used only when nothing else is routed to the call, as 1.1.0 used it; the capture's wait for the interception API no longer uses up the injection's; the
+  self-test's saved method comes first but no longer alone. On a Redmi Note 10 5G (MediaTek) 1.2.5 opened no injection
+  at all ("method -", 1076 of 1126 uplink frames dropped) where 1.1.0 had worked. A track the phone stops taking
+  during the call is replaced by the next method. The `call audio path:` line, and the call figures the iPhone keeps
+  (`inject …`), say which method was used, what was tried before it and why (#14).
+- Android phone, call audio: the link log says when the phone takes the injected voice clearly slower than real time
+  (`taken at about 14768 Hz instead of 16000 Hz`, as on a Poco X3 Pro whose far end heard nothing): the phone is then
+  probably not sending it into the call. Problem reports now also carry the audio system's own log lines about the
+  call's paths (mixer paths, use cases, voice PCM devices, vendor keys and mutes) and the voice-call volume (#14).
+- Android phone: the call volume is put back to its lowest step whenever it rises during a bridged call (a phone may
+  set it anew once the call has its audio). It matters most on Samsung phones with a Qualcomm chip (Galaxy A73, A52s),
+  where One UI 8 ignores the voice-call mute: the far end hears less of itself through the phone's open microphone.
+  The `call audio path:` line shows the volume, and the link log says when it had risen (#13, #25).
+- Android phone, Qualcomm phones (Xiaomi, Redmi, Poco, OnePlus, Samsung with a Qualcomm chip): **Muted** mutes the
+  phone's microphone through Android again when the call's voice goes in through the in-call music route
+  (`telephony_tx`): Qualcomm's audio system then mutes only the microphone, and the Galaxy A73's self-test heard the
+  iPhone's voice at full level with the mute on. Each call checks it until it held once and turns it off if your
+  voice stops reaching the call. With the other routes the microphone stays on as in 1.2.5. Try it if the other side
+  hears an echo of itself (#13, #25).
+- Link: the Android phone no longer asks the iPhone for a slower Bluetooth connection within 35 s of its previous
+  request, and never sends the same request twice in a row. On a Galaxy A73 every "balanced" request sent 9–15 s
+  after a call's start went unanswered, and the phone dropped the link 40 s later (Bluetooth status 34): in the middle
+  of the next call when it came soon, which looked like "audio stops when the screen locks" (#13).
+- Android phone: a bridged call now waits up to 10 s for its iPhone or Android client when the link drops mid-call
+  (it came back in about 6 s each time on the Galaxy A73) instead of handing the call to the phone's loud earpiece
+  for those seconds; the link log says so (#13).
+- Android phone, call audio without Wi-Fi (#26, #29): Android turns Wireless debugging off when the phone leaves
+  Wi-Fi and, with USB debugging off too, stops adb and the audio helper with it (a process started over adb cannot
+  leave adb's process group), so calls had no audio until Wi-Fi was back. The Call audio card now says when the helper
+  would stop with Wi-Fi and offers **Turn on USB debugging** (with it on, the helper keeps running without Wi-Fi;
+  checked on an Android 13 emulator), and says plainly when the helper cannot start because the phone is not on
+  Wi-Fi, pointing to TCP debugging. The iPhone (Link › Audio helper) and the Android client show the same notes
+  (status `helper.why` / `helper.needsWifi`); without Wi-Fi the app no longer retries the adb launch.
+
+### Calls (#13)
+
+- iPhone and Android client: a short vibration when the other side answers a call you placed (as the system Phone app
+  does). It comes once per call, only for calls dialed on that device, and follows the device's own haptics / ringer
+  settings (#13).
+- Android phone: in the **Call audio** card, **Show this phone's call screen while a call is on the iPhone** can be
+  turned off to hide the call pop-up while the iPhone or another client has the call. It is on by default; calls you
+  answer or dial on the phone itself, and phones whose calls are not bridged, still show their screen, and the call
+  notification stays (#13).
+
+### Android client (#27, thanks @hffygg; #29)
+
+- Android client: **calls in the Phone app**. Link › Calls › **Use the Phone app for calls** (on by default) makes the
+  Android phone's SIMs calling accounts of this phone, one per SIM ("Tether · Work"): calls ring in the Phone app with
+  its call screen and ringtone, can be dialed from its keypad, contacts and call history, and are logged there.
+  Android asks you to turn the accounts on once (**Open calling accounts**); until then, or with the switch off, calls
+  use Tether Client's own call screen as before. The call screen can move a call to the Phone app, **Move here** puts a
+  call straight into its call screen (handed over as an outgoing call, so the Phone app's history may list it so), a
+  missed call that rang there is not notified twice, and the link log says where each incoming call went. Dialing
+  through the Phone app from Tether's keypad and opening its call screen need the Phone permission. The protocol and
+  the SIM phone's app do not change (#27, thanks @hffygg).
+- Android client: a call on another device stays in the notification bar ("Call on another device", **Move here**),
+  quiet, until it ends or comes here; Link › Calls says when Android 14+ does not let an incoming call in Tether's own
+  screen wake the screen, with a button to the setting (#27, thanks @hffygg).
+- Android client: **Recents grouped by day** (a card per day, a direction icon, SIM, duration and time per line, calls
+  in a row from one number as one line with a count, a date bubble while scrolling). A long press selects calls (a
+  day's heading selects the day) to delete them together; ⋮ on the bar opens the one-call menu (#27, thanks @hffygg).
+- Android client: **Messages list** with a thin line between conversations, the date and a round unread count on the
+  right, unread conversations in bold and a person icon for numbers that are not contacts. A long press selects
+  conversations to mark read, mute, block, delete or call together; the old long-press menu's actions are all there
+  (#27, thanks @hffygg).
+- Android client: **conversations** with a heading per day (pinned while scrolling), an "Unread messages" line where
+  the conversation opens, the time beside each bubble and each line in its own direction (Persian right to left,
+  English left to right). A long press selects texts to copy, star or delete together; with one selected, **Select
+  text** copies part of it and **Send again** resends one that was not delivered (#27, thanks @hffygg).
+- Android client: **Starred messages**: a star beside the Messages search field opens the chats with starred texts and
+  each chat's starred texts (searchable); a tap opens the text in its conversation. Stars are kept on this phone only
+  (#27, thanks @hffygg).
+- Android client: **USSD codes** (Keypad › USSD codes, or a code such as *123# on a call button or dialed in the Phone
+  app with Tether's account): choose the SIM, see the carrier's answer, answer a menu with a new code that carries the
+  choice (*123# then 2 sends *123*2#), send recent codes again. Uses the existing `ussd.send` / `ussd.result` (#27,
+  thanks @hffygg).
+- Android client: **low-battery alert** for the SIM phone (Link › Low battery alert, off or 10–50 %, 20 % by default):
+  a notification at that level and at every 5 % below it while it is not charging, in its own notification category.
+  Texts are now conversation notifications (a shortcut per conversation) (#27, thanks @hffygg).
+- Android client: new buttons throughout (ripples, 48dp touch targets, text that wraps, TalkBack labels), tabs with
+  icons and a red count badge, round call-screen actions with labels, a round Send button, and icon buttons beside
+  the search fields (#27, thanks @hffygg).
+- Android client: the keypad is centred on wide phones and its digits sit in the middle of their keys (Galaxy S26
+  Ultra); the call screen's keypad too (#29, #27).
+- The iPhone app does not have the Recents, Messages, Starred and low-battery changes above yet; the Phone-app calling
+  accounts are Android only (CallKit already rings in the iPhone's own call screen). USSD is on the iPhone under
+  Link › Phone tools.
+
+### Texts, docs and switches
+
+- Android phone: a multipart SMS is marked sent only after every part reports success, even if callbacks arrive
+  out of order. If a part fails, both clients receive that part's error.
+- Docs: an interactive Persian installation guide (`docs/fa/install.html`: pick your phones, step checklists with saved progress, an error finder), thanks @sajjadmrx (#28). It is one self-contained dark page that loads nothing from other sites.
+- Android phone, mobile data switch (#14): the state is read from the phone service for the data SIM, then that SIM's
+  own setting (`mobile_data<sub>`), then the global one. Some dual-SIM phones on custom ROMs (Poco X3 Pro) never
+  update the global setting, so data turned on from the iPhone kept showing off. After a switch the reply waits up to
+  3 s for the new state.
+
+- Coming from 1.1.0: uninstall the 1.1.0 Android app first (1.2 APKs are signed with the project's release key), then
+  pair again.
+
+## 1.2.5 — 2026-11-25
+
+- iPhone: Tether sets its CallKit provider up again when iOS restarted its call service under the running app. Until
+  now every call then failed until the app was force-quit: calls dialed on the iPhone ended at once ("unknown call
+  provider") and incoming calls rang but CallKit never activated their audio (no microphone, no sound). Tether checks
+  this whenever it comes to the front, after an audio-system reset and on a refused request, then tries once more;
+  the link log says `CallKit: … provider set up again`. The Android client uses Android's Telecom and is not
+  affected (#18, thanks @arashfarahani).
+- Android phone, Qualcomm phones whose audio configuration wires `incall_music_uplink` without an `afe-proxy-playback`
+  mixer path (seen on a Redmi Note 8 with a custom Android 16): the iPhone's voice is now sent into the call through
+  the in-call music route (`telephony_tx`). The interception API's uplink went nowhere there (the HAL logged "unable
+  to find path 'afe-proxy-playback afe-proxy'"), so the other side heard only what the Android phone's own microphone
+  picked up, and only when it lay close. The self-test and the in-call check read the same proxy and reported the
+  voice as reaching the call. Tether reads the vendor's mixer configuration once, never injects through the
+  interception API there (not even when an earlier self-test chose it), and says why in the link log (#18, thanks
+  @arashfarahani).
+- Android phone, Qualcomm without a maker's microphone switch (Xiaomi, Redmi, Poco, OnePlus, Samsung with a Qualcomm
+  chip and others): **Muted** no longer uses Android's microphone mute. Its audio system mutes the whole uplink with
+  it, the iPhone's voice included, while the in-call check still heard that voice and remembered the mute as safe: the
+  other side heard nothing (Redmi Note 8; perhaps also #14 on a Poco X3 Pro). The phone's microphone stays on there,
+  the Android app says so in orange under **Muted**, the link log and problem report give the reason, and the
+  self-test no longer tests that mute. The iPhone's Link tab already shows **In this call: Microphone on** (#18,
+  thanks @arashfarahani).
+- Android phone: switching between **Off during calls**, **Muted** and **On** keeps what this phone showed of the
+  redirect modes. Before, every switch forgot it, so the next calls tried a mode known to fail again, each with a few
+  seconds of silence and a late uplink for the rest of that call. Choosing **Off during calls** again while it is
+  chosen, or the self-test, still tries them anew (#18, thanks @arashfarahani).
+
+## 1.2.4 — 2026-11-25
+
+- Coming from 1.1.0: uninstall the 1.1.0 Android app first (1.2 APKs are signed with the project's release key), then
+  pair again.
+- Link: an iPhone app suspended in the background now finds its way back when the Android phone closed the session or
+  Tether restarted there (an update): it answers every wake at once and sets a new session up when the phone's
+  service changed or a wake finds none, and the Android phone wakes a paired iPhone every 3 minutes while there is
+  no session. Before, with Bluetooth tethering on, the app could stay unlinked until it was opened (21 minutes seen).
+  Every wake is now in the link log, with why one could not be sent.
+- Android phone, Samsung with a Qualcomm chip (Galaxy A73 and others): Tether no longer writes Samsung's call keys or
+  switches calls into a redirect mode there. On a Galaxy A73 (Android 16) they left the phone's voice channel busy,
+  so call audio and even calls on the phone itself stayed silent until a reboot (#13). Redirect modes are no longer
+  tried automatically on any Samsung; vendor keys are written back at helper start only if Tether set them; a phone
+  remembered as giving no call audio is tried again after a Tether update; the notice says to restart the phone once
+  if its own calls have no sound.
+- Android phone: real calls and texts always reach the iPhone and other clients, even while a debug test filter is on,
+  and that filter switches itself off after 30 minutes (a forgotten one let a call dialed from the iPhone run silent).
+- Android phone: **Help › Send a problem report** shares one `.txt` file (or copies it) with what is needed to find
+  any problem: device and Android / One UI version, setup steps, link, Bluetooth and tethering state, the SIMs' network
+  and signal, call-audio settings and self-test, the link log and the app's log. Phone numbers, names, message text,
+  e-mail, addresses and keys are removed. It also holds call-audio diagnostics from the helper (audio mode, the
+  interception API, each active recording with Android's `isClientSilenced`, routes, selected `dumpsys audio` /
+  `media.audio_policy` lines), taken now and automatically when a call's path looks dead and at the end of every
+  bridged call (the last three are kept), to tell a silenced recording from a phone that gives no call audio (#13).
+- Tether Client: **Link › Send a problem report** with the same format (device, setup, link, the phone's status
+  without numbers or names, playout and microphone state, link log, app log).
+- Issue forms and docs ask for the problem reports instead of pasted logs.
+
 - Design rules for both apps (dark first, the teal accent, palette colours only, English and Persian) in CONTRIBUTING.md,
   checked by `tools/check-guardrails.py` in CI: raw or off-palette colours fail the build, and a pull request may not
   change the palette, icons, app names, ids, signing, workflows or the checks. The new pairing screens use the app's
   own teal and dark cards.
 - iPhone: a redesigned first-run Link screen (connect card, numbered steps), a scanner that explains a missing or
   refused camera, and a clearer manual code entry (#17, thanks @ashkan0033).
+- iPhone: Link › **Send a problem report** builds one text (device, setup and permissions, link, call audio, the Android
+  phone's last status, the link log, the app's events) and shares it as a .txt file or copies it. Phone numbers, e-mail,
+  names, Bluetooth and IP addresses, IDs and keys are removed before it leaves the app.
 - Contributing: pull request rules (one topic, keep the project's name and ids, never break installed apps, CI changes
   on their own); `main` now requires all CI jobs to pass and a maintainer's approval before a pull request is merged.
 

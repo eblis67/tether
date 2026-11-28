@@ -56,5 +56,5 @@ body:
   - type: textarea
     id: notes
     attributes:
-      label: Notes and logs
-      description: Anything odd; redacted link log excerpts.
+      label: Notes and problem reports
+      description: "Anything odd. Attach the problem report (Tether › Help › Send a problem report on the Android phone, and Link › Send a problem report on the iPhone), made right after a test call: drag the .txt files here."

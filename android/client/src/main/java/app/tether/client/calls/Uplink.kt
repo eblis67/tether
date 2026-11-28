@@ -23,6 +23,10 @@ class UplinkGate(private val log: (String) -> Unit) {
     /** Main thread: the rule's current answer. */
     fun set(on: Boolean) { wanted = on }
 
+    /** For a problem report: whether the call wants the uplink, and whether it flows. */
+    val isWanted get() = wanted
+    val isOpen get() = open
+
     /** Recorder thread, once per captured 20 ms frame. */
     fun admit(): Admit {
         val w = wanted

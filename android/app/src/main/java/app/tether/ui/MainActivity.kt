@@ -1,5 +1,6 @@
 package app.tether.ui
 
+import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.role.RoleManager
@@ -33,8 +34,11 @@ import app.tether.core.PairingCode
 import app.tether.helper.CallAudio
 import app.tether.helper.LocalMutes
 import app.tether.helper.MicPath
+import app.tether.link.Hub
 import app.tether.link.LinkLog
 import app.tether.link.LinkService
+import app.tether.report.PhoneReport
+import app.tether.report.ReportUi
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -46,12 +50,17 @@ class MainActivity : Activity() {
     private var qrUntil = 0L
     private var qrBitmap: Bitmap? = null
     private var qrLegacy = false
-    private var wizardOpen = false
     private val listener: () -> Unit = { main.post { render() } }
 
-    /** Runtime permissions this Android version knows — the list lives in [SetupWizard] so the setup
-     *  guide checks exactly what is requested here. */
-    private val perms = SetupWizard.requiredPermissions(android.os.Build.VERSION.SDK_INT)
+    /** Runtime permissions this Android version knows: Bluetooth ones from 12, notifications from 13. */
+    private val perms = (
+        (if (android.os.Build.VERSION.SDK_INT >= 31) listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE) else emptyList()) +
+        (if (android.os.Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()) + listOf(
+        Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS, Manifest.permission.SEND_SMS,
+        Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS, Manifest.permission.READ_CALL_LOG,
+        Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS, Manifest.permission.CALL_PHONE,
+        Manifest.permission.ANSWER_PHONE_CALLS,
+    )).toTypedArray()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,12 +68,6 @@ class MainActivity : Activity() {
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(24), dp(16), dp(24)) }
         setContentView(ScrollView(this).apply { addView(root); setBackgroundColor(color(R.color.background)) })
         if (missingPerms().isEmpty()) LinkService.start(this) else requestPermissions(missingPerms(), 1)
-        // First launch with setup still missing: open the per-brand setup guide once (docs/SETUP-WIZARD.md).
-        // It stays re-openable from the Setup card, whose status row keeps count until everything passes.
-        if (!app.prefs.getBoolean(PREF_WIZARD_OFFERED, false) && SetupWizard.remaining(this, app) > 0) {
-            wizardOpen = true
-            app.prefs.edit().putBoolean(PREF_WIZARD_OFFERED, true).apply()
-        }
     }
 
     override fun onResume() {
@@ -97,8 +100,6 @@ class MainActivity : Activity() {
             text = getString(R.string.app_name); textSize = 28f; setTypeface(typeface, Typeface.BOLD); setTextColor(color(R.color.text))
             setPadding(dp(4), 0, 0, dp(16))
         })
-
-        if (wizardOpen) { renderWizard(); return }
 
         // Link
         val link = card(getString(R.string.section_link))
@@ -153,24 +154,28 @@ class MainActivity : Activity() {
         // Setup
         val setup = card(getString(R.string.section_setup))
         setup.addView(label(getString(R.string.setup_intro), R.color.muted, 13f))
-        val wizLeft = SetupWizard.remaining(this, app)
-        setup.addView(label(
-            if (wizLeft > 0) getString(R.string.setup_status_left, wizLeft) else getString(R.string.setup_status_done),
-            if (wizLeft > 0) R.color.warn else R.color.ok, 14f))
-        setup.addView(button(getString(R.string.wizard_reopen), secondary = true) { wizardOpen = true; render() })
         setup.addView(step(getString(R.string.step_n, 1, getString(R.string.step_permissions)), missingPerms().isEmpty(), getString(R.string.action_grant),
             help = getString(R.string.help_permissions)) {
             requestPermissions(missingPerms(), 1)
         })
         setup.addView(step(getString(R.string.step_n, 2, getString(R.string.step_dialer)), app.sims.isDialer(), getString(R.string.action_set),
-            help = getString(R.string.help_dialer)) { askDialerRole() })
+            help = getString(R.string.help_dialer)) {
+            startActivityForResult(if (android.os.Build.VERSION.SDK_INT >= 29) getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER)
+                else Intent(android.telecom.TelecomManager.ACTION_CHANGE_DEFAULT_DIALER)
+                    .putExtra(android.telecom.TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, packageName), 2)
+        })
         val pm = getSystemService(PowerManager::class.java)
         setup.addView(step(getString(R.string.step_n, 3, getString(R.string.step_battery)), pm.isIgnoringBatteryOptimizations(packageName), getString(R.string.action_set),
-            help = getString(R.string.help_battery)) { askBatteryExemption() })
+            help = getString(R.string.help_battery)) {
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+        })
         val adbDone = Adb.hasSecureSettings(this) && app.prefs.getBoolean("adb_paired", false)
         // Wireless debugging exists from Android 11; before that only TCP adb (below) can start the helper.
         if (android.os.Build.VERSION.SDK_INT >= 30) setup.addView(step(getString(R.string.step_n, 4, getString(R.string.step_adb)), adbDone, getString(R.string.action_pair),
-            help = getString(R.string.help_adb)) { startAdbPairing() })
+            help = getString(R.string.help_adb)) {
+            Adb.showPairingNotification(this)
+            runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
+        })
 
         // Legacy TCP adb: opt-in, for Android 10 (no Wireless debugging) or a phone without a trusted Wi-Fi network.
         val tcpOn = app.prefs.getBoolean(Adb.PREF_LEGACY, false)
@@ -197,6 +202,16 @@ class MainActivity : Activity() {
                 (h.optString("capture").takeIf { it.isNotEmpty() }?.let { " · " + getString(R.string.helper_capture, it) } ?: "") else getString(R.string.helper_stopped)) {
             Thread { app.hub.helper.ensureRunning(); app.hub.refresh() }.start()
         })
+        // Without Wi-Fi Android turns Wireless debugging off, and adbd stops with the helper in it (issues #26, #29).
+        if (h.optString("why") == "wifi") audio.addView(label(getString(R.string.helper_why_wifi), R.color.warn, 13f))
+        if (h.optBoolean("needsWifi")) {
+            audio.addView(label(getString(R.string.helper_needs_wifi), R.color.warn, 13f))
+            audio.addView(button(getString(R.string.action_usb_debugging), secondary = true) {
+                if (!Adb.enableUsbDebugging(this)) runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
+                Thread { app.hub.pushStatus() }.start()
+                render()
+            })
+        }
         // The phone's own microphone during bridged calls (issue #2): by default a redirect audio mode takes it out of the
         // call where the phone allows it (MicPath); muting it is opt-in, since on some phones that also mutes the iPhone.
         if (app.hub.helper.audioLevel() != "unavailable") {
@@ -208,7 +223,7 @@ class MainActivity : Activity() {
                 group.addView(RadioButton(this).apply {
                     id = View.generateViewId(); this.text = getString(text); textSize = 15f; setTextColor(color(R.color.text))
                     isChecked = choice == mic
-                    // A click (also on the chosen one) sets it anew, which forgets what this phone remembered.
+                    // A click sets it; on the one already chosen it also forgets what the redirect modes did here, so they are tried anew.
                     setOnClickListener { Thread { app.hub.audio.setMic(choice); app.hub.pushStatus() }.start() }
                 })
             }
@@ -217,16 +232,22 @@ class MainActivity : Activity() {
                 app.hub.audio.redirectMemory().let { m -> m[MicPath.Redirect.CALL_REDIRECT]?.usable == false &&
                     (m[MicPath.Redirect.CALL_SCREENING]?.usable ?: false) == false })
             val blocked = mic == MicPath.Setting.MUTE && app.hub.audio.memory() == LocalMutes.Memory.BREAKS_UPLINK
+            // No mic mute on this phone keeps the iPhone's voice in the call (Qualcomm: Android's mute is the whole Tx path).
+            val unsupported = mic == MicPath.Setting.MUTE && !LocalMutes.canMute(CallAudio.silence)
+            // Qualcomm: Android's mute keeps the iPhone's voice with the in-call music injection only (LocalMutes).
+            val inCallMusic = unsupported && LocalMutes.canMute(CallAudio.silence, "telephony_tx")
             // Without a redirect mode the default setting's next step: the maker's own mic switch, where this phone has one that holds.
             val vendor = autoFailed && LocalMutes.autoPlan(CallAudio.silence, app.hub.audio.memory()).vendorMic
             audio.addView(label(getString(when {
                 vendor -> R.string.mic_auto_vendor
                 autoFailed -> R.string.mic_auto_unavailable
                 mic == MicPath.Setting.AUTO -> R.string.mic_auto_note
+                inCallMusic -> R.string.mic_mute_incall_music
+                unsupported -> R.string.mic_mute_unsupported
                 blocked -> R.string.mic_mute_blocked
                 mic == MicPath.Setting.MUTE -> R.string.mic_mute_on
                 else -> R.string.mic_open_note
-            }), if (blocked || (autoFailed && !vendor)) R.color.warn else R.color.muted, 13f))
+            }), if (blocked || (unsupported && !inCallMusic) || (autoFailed && !vendor)) R.color.warn else R.color.muted, 13f))
             h.optString("micPath").takeIf { it.isNotEmpty() }?.let { p ->
                 audio.addView(label(when (p) {
                     "off" -> getString(R.string.mic_now_off, app.hub.helper.lastMic?.optString("mode") ?: "")
@@ -244,6 +265,13 @@ class MainActivity : Activity() {
                 }), if (u == "muted-locally-fixed") R.color.warn else R.color.muted, 13f))
             }
         }
+        // The phone's own call screen while a client has the call (issue #13): shown unless the owner turns it off.
+        audio.addView(android.widget.CheckBox(this).apply {
+            text = getString(R.string.call_screen_bridged); textSize = 15f; setTextColor(color(R.color.text))
+            isChecked = app.prefs.getBoolean(Hub.PREF_CALL_SCREEN, true)
+            setOnCheckedChangeListener { _, on -> app.prefs.edit().putBoolean(Hub.PREF_CALL_SCREEN, on).apply() }
+        })
+        audio.addView(label(getString(R.string.call_screen_bridged_note), R.color.muted, 13f))
         app.hub.lastSelftest?.let { st ->
             val methods = st.optJSONArray("methods")
             val txt = (0 until (methods?.length() ?: 0)).joinToString("\n") {
@@ -255,83 +283,11 @@ class MainActivity : Activity() {
             Thread { app.hub.selftest() }.start()
         })
         audio.addView(button(getString(R.string.link_log), secondary = true) { showLinkLog() })
-    }
 
-    /** Asks for the dialer role (the Setup card and the setup guide share this). */
-    private fun askDialerRole() {
-        startActivityForResult(if (android.os.Build.VERSION.SDK_INT >= 29) getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER)
-            else Intent(android.telecom.TelecomManager.ACTION_CHANGE_DEFAULT_DIALER)
-                .putExtra(android.telecom.TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, packageName), 2)
-    }
-
-    /** Asks for the battery-optimisation exemption (the Setup card and the setup guide share this). */
-    private fun askBatteryExemption() {
-        startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
-    }
-
-    /** Starts Wireless debugging pairing: the code-entry notification, then Developer options to type it in. */
-    private fun startAdbPairing() {
-        Adb.showPairingNotification(this)
-        runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
-    }
-
-    /**
-     * The per-brand setup guide (docs/SETUP-WIZARD.md): the Setup card's steps plus the maker steps
-     * (auto-start, the maker's battery setting, Samsung's sleeping apps, the Recents lock) for this phone's
-     * brand. It replaces the whole screen while open; verified steps re-check themselves on every render,
-     * so returning from a settings screen updates them, and maker steps are confirmed with "I did it".
-     */
-    private fun renderWizard() {
-        val brand = SetupWizard.detectBrand()
-        val defs = SetupWizard.steps(brand, android.os.Build.VERSION.SDK_INT)
-        val wiz = card(getString(R.string.wizard_title))
-        wiz.addView(label(getString(R.string.wizard_phone, getString(SetupWizard.brandNameRes(brand))), R.color.text, 16f))
-        wiz.addView(label(getString(R.string.wizard_intro), R.color.muted, 13f))
-        defs.forEachIndexed { i, def -> wiz.addView(wizardStepRow(i + 1, def)) }
-        if (defs.all { SetupWizard.isDone(it, this, app) }) {
-            wiz.addView(label(getString(R.string.wizard_all_done), R.color.ok, 14f))
-            wiz.addView(button(getString(R.string.wizard_finish)) {
-                app.prefs.edit().putBoolean(PREF_WIZARD_DONE, true).apply()
-                wizardOpen = false; render()
-            })
-        } else {
-            wiz.addView(button(getString(R.string.wizard_close), secondary = true) { wizardOpen = false; render() })
-        }
-    }
-
-    private fun wizardStepRow(n: Int, def: SetupWizard.StepDef): View {
-        val done = SetupWizard.isDone(def, this, app)
-        val row = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(6), 0, dp(6)) }
-        row.addView(label(getString(R.string.step_n, n, getString(def.titleRes)), R.color.text, 16f))
-        row.addView(label(getString(if (done) R.string.done else R.string.missing), if (done) R.color.ok else R.color.warn, 13f))
-        if (!done) {
-            row.addView(label(getString(def.helpRes), R.color.muted, 13f))
-            val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            if (def.actionRes != 0) buttons.addView(button(getString(def.actionRes)) { wizardAction(def) })
-            if (def.confirm) buttons.addView(button(getString(R.string.wizard_i_did_it), secondary = true) {
-                SetupWizard.setConfirmed(app, def.id, true); render()
-            })
-            row.addView(buttons)
-        }
-        return row
-    }
-
-    /** What a wizard step's action button does: the verified steps reuse the Setup card's own flows; the
-     *  maker steps open their settings screen, falling back to Tether's app details when the maker's
-     *  screen is not there (renamed or removed on that build). */
-    private fun wizardAction(def: SetupWizard.StepDef) {
-        when (def.id) {
-            SetupWizard.ID_PERMISSIONS -> requestPermissions(missingPerms(), 1)
-            SetupWizard.ID_DIALER -> askDialerRole()
-            SetupWizard.ID_BATTERY -> askBatteryExemption()
-            SetupWizard.ID_ADB -> startAdbPairing()
-            SetupWizard.ID_HELPER -> Thread { app.hub.helper.ensureRunning(); app.hub.refresh() }.start()
-            else -> {
-                val intent = SetupWizard.settingsIntent(def.id, SetupWizard.detectBrand(), packageName)
-                if (intent != null && runCatching { startActivity(intent) }.isFailure)
-                    runCatching { startActivity(SetupWizard.appDetailsIntent(packageName)) }
-            }
-        }
+        // Help: one file with what is needed to find any problem (docs/TROUBLESHOOTING.md, "What to include in a report").
+        val help = card(getString(R.string.section_help))
+        help.addView(label(getString(R.string.report_hint), R.color.muted, 13f))
+        help.addView(button(getString(R.string.report_title)) { ReportUi.send(this) { PhoneReport.build(app) } })
     }
 
     /**
@@ -409,11 +365,6 @@ class MainActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun color(id: Int) = getColor(id)
-
-    companion object {
-        private const val PREF_WIZARD_OFFERED = "wizard_offered"
-        private const val PREF_WIZARD_DONE = "wizard_done"
-    }
 
     private fun card(title: String): LinearLayout {
         val c = LinearLayout(this).apply {
