@@ -41,11 +41,52 @@ class AudioOwnerTest {
         assertNull("not while it is away", AudioOwner.pick(listOf(second), { it.key }, claimedKey = "aa"))
     }
 
-    @Test fun theClaimLastsWhileACallIsLeft() {
-        assertTrue(AudioOwner.keepClaim(listOf("active")))
-        assertTrue(AudioOwner.keepClaim(listOf("ended", "holding")))
-        assertFalse(AudioOwner.keepClaim(listOf("ended")))
-        assertFalse(AudioOwner.keepClaim(emptyList()))
+    @Test fun aClaimForOneCallSaysNothingAboutAnother() {
+        // Call waiting: the iPhone answered call A; call B is answered on the Android phone itself. With the
+        // old single claim the iPhone was told B was its call too (not "elsewhere"), performed an answer for
+        // it and took its audio — a call nobody had given it.
+        var now = 0L
+        val claims = CallClaims { now }
+        claims.claim("aa", "call-a")
+        assertEquals("aa", claims.keyFor("call-a", outgoing = false))
+        assertNull("answered on the phone itself: no claim, no owner", claims.keyFor("call-b", outgoing = false))
+        claims.claim("bb", "call-b")
+        assertEquals("bb", claims.keyFor("call-b", outgoing = false))
+        assertEquals("the first call keeps its own claim", "aa", claims.keyFor("call-a", outgoing = false))
+        claims.prune(setOf("call-b"))
+        assertNull("a claim is forgotten with its call", claims.keyFor("call-a", outgoing = false))
+        assertEquals("bb", claims.keyFor("call-b", outgoing = false))
+    }
+
+    @Test fun aDialClaimBindsToTheOutgoingCallThatShowsUp() {
+        var now = 1_000L
+        val claims = CallClaims { now }
+        claims.claim("aa", cid = null)   // dialed: no call id yet
+        assertEquals("aa", claims.keyFor("call-9", outgoing = true))
+        assertEquals("bound now, not just remembered", "aa", claims.keyFor("call-9", outgoing = true))
+        assertNull("an incoming call never takes a dial claim", claims.keyFor("call-10", outgoing = false))
+        claims.claim("aa", cid = null)
+        now += CallClaims.DIAL_CLAIM_MS + 1
+        assertNull("a dial nothing came of expires", claims.keyFor("call-11", outgoing = true))
+    }
+
+    @Test fun elsewhereFromEachClientsView() {
+        assertFalse("the owner itself", AudioOwner.elsewhere("active", iphone, iphone, blocked = false))
+        assertTrue("another client", AudioOwner.elsewhere("active", iphone, second, blocked = false))
+        assertEquals("iPhone", AudioOwner.where(iphone.name, "A73"))
+        for (s in listOf("ringing", "ended")) assertFalse("every client rings; an ended call is nowhere", AudioOwner.elsewhere(s, null, iphone, blocked = false))
+        assertTrue("dialed on the phone itself", AudioOwner.elsewhere("dialing", null, iphone, blocked = false))
+    }
+
+    @Test fun aPhoneThatGivesNoCallAudioKeepsEveryCall() {
+        assertTrue("even for the client that answered", AudioOwner.elsewhere("active", iphone, iphone, blocked = true))
+        assertFalse(AudioOwner.elsewhere("ringing", iphone, iphone, blocked = true))
+    }
+
+    @Test fun blockedIsRememberedPerFirmware() {
+        assertTrue(AudioOwner.blocked("samsung/a73xq/a73xq:16/X/1:user/release-keys", "samsung/a73xq/a73xq:16/X/1:user/release-keys"))
+        assertFalse("a system update clears it", AudioOwner.blocked("samsung/a73xq/a73xq:16/X/1:user/release-keys", "samsung/a73xq/a73xq:16/Y/2:user/release-keys"))
+        assertFalse(AudioOwner.blocked(null, "x"))
     }
 
     @Test fun elsewhereFromEachClientsView() {

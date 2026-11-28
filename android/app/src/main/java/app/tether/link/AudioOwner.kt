@@ -14,12 +14,9 @@ package app.tether.link
  * changes, or a self-test finds call audio again. Clients are told `helper.audio` "blocked".
  */
 object AudioOwner {
-    /** The owner when nobody holds the audio now: the live client whose key claimed during the current calls. */
+    /** The owner when nobody holds the audio now: the live client whose key claimed the call. */
     fun <C> pick(live: List<C>, key: (C) -> String, claimedKey: String?): C? =
         claimedKey?.let { k -> live.firstOrNull { key(it) == k } }
-
-    /** The claim is forgotten once no call is left (ended calls do not count). */
-    fun keepClaim(callStates: List<String>): Boolean = callStates.any { it != "ended" }
 
     /**
      * Whether [client] sees a call in [state] as being elsewhere: answered, dialing or held, with its audio on another
@@ -56,4 +53,45 @@ object AudioOwner {
 
     /** Whether the remembered "no call audio" still holds ([remembered] and [current]: "fingerprint|versionCode"). */
     fun blocked(remembered: String?, fingerprint: String): Boolean = remembered != null && remembered == fingerprint
+}
+
+/**
+ * Which client claimed which call (protocol §5.1: a call's owner is the client that answered, dialed or took
+ * THAT call — a claim for one call says nothing about another). Claims are by client key, so a client that
+ * reconnects keeps its calls. A dial has no call id yet: its claim waits here and binds to the outgoing call
+ * that shows up next, briefly. Claims for calls that are gone are pruned by the hub.
+ *
+ * Before, one claim covered every call: with a call held on the iPhone and a second call answered on the
+ * Android phone itself, the phone still reported the second call as the iPhone's (not `elsewhere`), so the
+ * iPhone performed an answer for a call nobody had given it and the call's audio left the phone.
+ */
+class CallClaims(private val now: () -> Long) {
+    private val byCall = HashMap<String, String>()
+    private var dialKey: String? = null
+    private var dialAt = 0L
+
+    /** [cid] null: a dial in flight — the claim binds when its outgoing call appears. */
+    @Synchronized fun claim(key: String, cid: String?) {
+        if (cid != null) byCall[cid] = key
+        else { dialKey = key; dialAt = now() }
+    }
+
+    /** The key that claimed [cid]; an outgoing call with no claim of its own takes a fresh dial claim (bound to it). */
+    @Synchronized fun keyFor(cid: String, outgoing: Boolean): String? {
+        byCall[cid]?.let { return it }
+        if (!outgoing) return null
+        val k = dialKey ?: return null
+        if (now() - dialAt > DIAL_CLAIM_MS) { dialKey = null; return null }
+        byCall[cid] = k
+        dialKey = null
+        return k
+    }
+
+    /** Forgets the claims of calls that are gone, and a dial claim nothing came of. */
+    @Synchronized fun prune(liveCids: Set<String>) {
+        byCall.keys.retainAll(liveCids)
+        if (dialKey != null && now() - dialAt > DIAL_CLAIM_MS) dialKey = null
+    }
+
+    companion object { const val DIAL_CLAIM_MS = 30_000L }
 }

@@ -378,9 +378,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 Log.i(TAG, "contact.star $id=$on -> $n")
                 c.send(Message(T.CONTACT_RESULT, JSONObject().put("ok", n >= 0).put("id", id).apply { if (n < 0) put("err", "Android refused the change") }, re = m.id))
             }
-            T.CALL_ANSWER -> { audio.claim(c); CallRegistry.answer(m.b.optString("cid")) }
+            T.CALL_ANSWER -> { audio.claim(c, m.b.optString("cid")); CallRegistry.answer(m.b.optString("cid")) }
             // "Move the call here": call audio switches to this client.
-            T.CALL_TAKE -> audio.claim(c)
+            T.CALL_TAKE -> audio.claim(c, m.b.optString("cid"))
             // An end / reject is always answered with the current call list: if it worked, the call is
             // gone from the list and the client stops asking; if it silently failed (unknown id), the
             // client sees the call still live and its hang-up guard asks again. Without the answer, a
@@ -817,7 +817,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
      */
     fun callJson(info: CallInfo, c: Connection): JSONObject {
         val o = info.json()
-        val t = audio.owner
+        val t = audio.ownerOf(info)
         if (AudioOwner.elsewhere(info.state, t, c, helper.audioBlocked()))
             o.put("elsewhere", true).put("where", AudioOwner.where(t?.takeIf { it !== c }?.name, app.keys.deviceName()))
         return o
@@ -1190,16 +1190,29 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         /** Audio control lock (a ReentrantLock so the ring path can give up waiting for it). */
         private val lock = java.util.concurrent.locks.ReentrantLock()
 
-        /** A client answered, dialed or asked to move the call to itself. */
-        fun claim(c: Connection) {
+        /** A client answered or took a call ([cid] given), or dialed one (no call id yet: the claim binds to the
+         *  outgoing call when it appears). A claim covers that one call only (protocol §5.1). */
+        fun claim(c: Connection, cid: String? = null) {
             c.lastAction = SystemClock.elapsedRealtime()
-            lock.lock(); try { owner = c; claimedKey = keyOf(c); claimedAt = c.lastAction } finally { lock.unlock() }
+            lock.lock(); try { claims.claim(keyOf(c), cid) } finally { lock.unlock() }
             audioCtl.execute { reconcile() }
         }
 
+        /** The client that owns [info]'s audio (answered / dialed / took this call), or null: it stays on the phone. */
+        fun ownerOf(info: CallInfo): Connection? =
+            AudioOwner.pick(targets(), ::keyOf, claims.keyFor(info.cid, info.dir == "out"))
+
+        /** Whether a call in this state wants its audio bridged (mirrors CallRegistry.wantsAudio on CallInfo). */
+        private fun wantsAudio(info: CallInfo): Boolean = when (info.state) {
+            "active", "holding" -> true
+            "dialing", "connecting" -> info.dir == "out"
+            else -> false
+        }
+
         /**
-         * Keeps [owner] valid: dropped when the call or the client is gone; picked when a call needs audio
-         * but no client claimed it (answered on the Android phone itself): the client used last, else the iPhone.
+         * Keeps [owner] valid: it is the owner of the one bridged call (the first that wants audio), resolved
+         * per call from [claims] — a call nobody claimed (answered or dialed on the Android phone itself)
+         * has no owner and stays on the phone (AudioOwner).
          */
         /** [updateOwnerLocked] for callers outside audio control; false when the lock stayed busy for [waitMs]. */
         fun updateOwner(waitMs: Long): Boolean {
@@ -1210,24 +1223,18 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         private fun updateOwnerLocked(): Boolean {
             val before = owner
             val live = targets(real = CallRegistry.list().any { it.state != "ended" && !CallRegistry.isTestCall(app, it.cid) })
-            if (owner?.let { it !in live } == true) owner = null
             val calls = CallRegistry.list()
-            val now = SystemClock.elapsedRealtime()
-            if (!CallRegistry.wantsAudio() && !calls.any { it.state == "dialing" || it.state == "connecting" }) {
-                // Keep a claim made a moment ago (dial in flight, answer not yet active).
-                if (owner != null && now - owner!!.lastAction > 5000) owner = null
-                if (owner == null && !AudioOwner.keepClaim(calls.map { it.state }) && now - claimedAt > 5000) claimedKey = null
-            } else if (owner == null) {
-                // Back to the client that answered, dialed or took a call during these calls (it reconnected); a call
-                // nobody claimed (answered or dialed on the Android phone itself) stays on the phone (AudioOwner).
-                owner = AudioOwner.pick(live, ::keyOf, claimedKey)
-            }
+            claims.prune(calls.filter { it.state != "ended" }.map { it.cid }.toSet())
+            // The bridged call is the first that wants audio (an active one before a held or dialing one), and its
+            // owner is the client that claimed THAT call. A call nobody claimed (answered or dialed on the Android
+            // phone itself) has no owner: nothing is bridged for it, even while another call is a client's.
+            val bridged = calls.filter { wantsAudio(it) }.minByOrNull { if (it.state == "active") 0 else 1 }
+            owner = bridged?.let { AudioOwner.pick(live, ::keyOf, claims.keyFor(it.cid, it.dir == "out")) }
             return owner !== before
         }
 
-        /** The client that answered, dialed or took a call during the current calls (its key), and when. */
-        @Volatile private var claimedKey: String? = null
-        @Volatile private var claimedAt = 0L
+        /** Which client claimed which call, by client key (a reconnect keeps its claims). */
+        private val claims = CallClaims { SystemClock.elapsedRealtime() }
         private fun keyOf(c: Connection): String = c.peerKey?.joinToString("") { "%02x".format(it) } ?: "link@${System.identityHashCode(c)}"
 
         /** Called every second and on every call/link change, on the audio-ctl thread. */
