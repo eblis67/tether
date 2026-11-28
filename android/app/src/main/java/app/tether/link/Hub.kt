@@ -182,7 +182,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                     // app is next opened. No LE pulse here on purpose: the regular reconnect rhythm brings
                     // the iPhone back, and extra pulses fought the link (connect/disconnect flapping).
                     pendingSms.add(s)
-                } else ts.forEach { it.send(Message(T.SMS_NEW, JSONObject().put("item", s.json()))); if (!app.lists.isMuted(s.thread)) wake(it) }
+                } else ts.forEach { if (!app.lists.isMuted(s.thread)) wake(it); it.send(Message(T.SMS_NEW, JSONObject().put("item", s.json()))) }
             }
         }
         // Start from the newest row now, so the first call logged after a restart is pushed live too.
@@ -833,9 +833,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         val to = callTargets(info.cid)
         Log.i(TAG, "call ${info.cid} ${info.state} → ${to.size} client(s)")
         for (c in to) {
-            c.sendUrgent(Message(T.CALL_STATE, callJson(info, c)))
-            // Every call change wakes a suspended iPhone app (answered on the Android phone or elsewhere: stop ringing now).
+            // Wake first, then the record (protocol §1): a suspended iPhone app must be running before the
+            // record is written, or the ring waits in a channel nothing drains until the app next wakes.
             wake(c)
+            c.sendUrgent(Message(T.CALL_STATE, callJson(info, c)))
         }
         // Fast link from the first ring / dial, not from audio start: the switch to a 15 ms interval takes ~1.7 s, and
         // starting the call on the idle interval (45 ms, latency 5) made its first seconds bursty (gaps up to 77 ms
