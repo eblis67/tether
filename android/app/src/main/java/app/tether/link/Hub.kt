@@ -74,6 +74,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     private val audioCtl = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "audio-ctl") }
     private class SmsRequest(val connection: Connection, val replyTo: Int, val parts: SmsParts = SmsParts())
     private val smsRequests = ConcurrentHashMap<Int, SmsRequest>()
+    /** Texts that arrived while no client was connected: held for the next connect, never dropped. */
+    private val pendingSms = PendingSms()
     private val smsRequestIds = java.util.concurrent.atomic.AtomicInteger(System.nanoTime().toInt() ushr 1)
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     val audio = AudioSession()
@@ -157,7 +159,18 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         if (app.prefs.getBoolean("airplane_by_tether", false)) bg { airplaneFailSafe(true) }
         // Call events go out from the Telecom callback itself, ahead of anything queued (ring latency).
         CallRegistry.addListener { info -> onCall(info) }
-        app.sms.observe { s -> if (forwardable(s)) targets(real = !TestGuards.isTestNumber(s.addr)).forEach { it.send(Message(T.SMS_NEW, JSONObject().put("item", s.json()))); if (!app.lists.isMuted(s.thread)) wake(it) } }
+        app.sms.observe { s ->
+            if (forwardable(s)) {
+                val ts = targets(real = !TestGuards.isTestNumber(s.addr))
+                if (ts.isEmpty()) {
+                    // No client is connected to take it now and the live send is one-shot: hold the text
+                    // (pushed on the next connect, in onEstablished) instead of the text waiting until the
+                    // app is next opened. No LE pulse here on purpose: the regular reconnect rhythm brings
+                    // the iPhone back, and extra pulses fought the link (connect/disconnect flapping).
+                    pendingSms.add(s)
+                } else ts.forEach { it.send(Message(T.SMS_NEW, JSONObject().put("item", s.json()))); if (!app.lists.isMuted(s.thread)) wake(it) }
+            }
+        }
         // Start from the newest row now, so the first call logged after a restart is pushed live too.
         bg { if (lastCallId < 0) lastCallId = app.callLog.since(0, 1).lastOrNull()?.id ?: 0 }
         app.callLog.observe { bg { pushRecentCalls() } }
@@ -243,6 +256,12 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         LinkLog.add("link up (${c.name}, ${c.transport.label}) from ${LinkLog.short(c.transport.address)}")
         refresh()
         c.send(Message(T.CALL_LIST, JSONObject().put("calls", JSONArray(CallRegistry.list().map { callJson(it, c) }))))
+        // Texts that arrived while this client was away were held, not dropped: hand them over now,
+        // ahead of the sync the client is about to ask for (its batch copy then just dedupes by id).
+        // They arrive as sms.new, so on the iPhone they also post the local notification
+        // (AppModel.merge with notify → Notifications.showSms) — a text that came in while the
+        // iPhone was locked must surface as a notification, not wait silently for an unlock.
+        for (s in pendingSms.drain()) c.send(Message(T.SMS_NEW, JSONObject().put("item", s.json())))
         // A client paired just now has no kind yet (iPhone or Android phone): it says so in its first sync.
         if (newlyPaired) kindPending.add(c) else holdLeFor(c)
         ext(c)
@@ -497,7 +516,14 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         broadcast(Message(T.CALLS_BATCH, JSONObject().put("items", JSONArray(news.map { it.json() })).put("more", false)))
     }
 
-    fun pollSms() = app.sms.poll { s -> if (forwardable(s)) broadcast(Message(T.SMS_NEW, JSONObject().put("item", s.json()))) }
+    fun pollSms() = app.sms.poll { s ->
+        if (forwardable(s)) {
+            // The poll path holds too: a text found while no client is connected must not be
+            // broadcast into the void (the old audit found this path bypassing the holding queue).
+            if (targets().isEmpty()) pendingSms.add(s)
+            else broadcast(Message(T.SMS_NEW, JSONObject().put("item", s.json())))
+        }
+    }
 
     /** A text from a blocked sender is not forwarded live (nor notified); it stays in the Android phone's history. */
     private fun forwardable(s: app.tether.core.Sms) = s.box != 1 || !app.lists.isBlocked(s.addr)
