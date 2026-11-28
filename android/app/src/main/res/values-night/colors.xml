@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Dark first: these are the colors in both day and night mode. -->
+<!-- Dark palette for night mode; values/colors.xml holds the light palette.
+     The system picks between them, so the app follows the phone's day/night setting. -->
 <resources>
     <color name="accent">#2FD3BE</color>
     <color name="background">#0B0F10</color>

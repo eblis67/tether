@@ -39,7 +39,6 @@ struct InCallView: View {
                 .padding(.horizontal, 32)
             }
             .foregroundStyle(.white)
-            .preferredColorScheme(.dark)
             .animation(.easeInOut(duration: 0.2), value: keypad)
             .onChangeCompat(of: call.uuid) { _ in keypad = false; typed = "" }
         }
