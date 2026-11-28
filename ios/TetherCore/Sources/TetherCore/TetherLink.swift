@@ -66,6 +66,10 @@ public final class TetherLink: NSObject {
     private var audioBacklog = 0
     /// Round trip of the last keep-alive ping over the link, in ms (nil until one came back).
     public private(set) var lastRoundTripMs: Int?
+    /// The Android phone's clock minus ours, in ms, sampled from its pings (nil until one arrived). The
+    /// one-way trip is inside the figure (tens of ms over Bluetooth): close enough to place the peer's
+    /// call times (`Call.since`) on our clock, which is what call timers need (CallClock).
+    public private(set) var peerClockOffsetMs: Int64?
     /// Measures the round trip now (call start), without waiting for the 25 s keep-alive.
     public func measureRoundTrip() { queue.async { if self.session != nil { self.sendNow(MsgType.ping, PingBody(ts: Int64(Date().timeIntervalSince1970 * 1000))) } } }
 
@@ -472,7 +476,10 @@ public final class TetherLink: NSObject {
         case Proto.channelControl:
             let h = try Control.header(payload)
             if h.t == MsgType.ping {
-                if let b = try? Control.body(PingBody.self, from: payload) { sendNow(MsgType.pong, b, re: h.id) }
+                if let b = try? Control.body(PingBody.self, from: payload) {
+                    peerClockOffsetMs = b.ts - Int64(Date().timeIntervalSince1970 * 1000)
+                    sendNow(MsgType.pong, b, re: h.id)
+                }
             } else if h.t == MsgType.pong, let b = try? Control.body(PingBody.self, from: payload) {
                 // Our own keep-alive ping came back: the link's control round trip (call statistics).
                 let now = Int64(Date().timeIntervalSince1970 * 1000)

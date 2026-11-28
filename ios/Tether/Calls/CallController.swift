@@ -420,8 +420,13 @@ final class CallController: NSObject {
             provider.reportOutgoingCall(with: uuid, startedConnectingAt: Date())
         }
         if c.state == "active" || c.state == "holding", reportedConnected.insert(uuid).inserted {
-            provider.reportOutgoingCall(with: uuid, connectedAt: c.since.map { Date(millis: $0) } ?? Date())
+            provider.reportOutgoingCall(with: uuid, connectedAt: connectedDate(c))
         }
+    }
+
+    /// When the call connected, on our clock: the Android phone's `since` is its own wall clock (CallClock).
+    private func connectedDate(_ c: CallInfo) -> Date {
+        CallClock.connectedAt(sinceMs: c.since, peerOffsetMs: model.link.peerClockOffsetMs) ?? Date()
     }
 
     private func mirrorAnswer(_ uuid: UUID) {
@@ -467,7 +472,7 @@ final class CallController: NSObject {
         var s = CallScreen(uuid: uuid, number: c.num, name: model.name(for: c.num) ?? c.name, state: c.state,
                            incoming: c.isIncoming, sub: c.sub)
         s.held = c.state == "holding"
-        if c.state == "active" { s.connectedAt = c.since.map { Date(millis: $0) } ?? Date() }
+        if c.state == "active" { s.connectedAt = connectedDate(c) }
         return s
     }
 
@@ -481,7 +486,7 @@ final class CallController: NSObject {
         s.state = c.state
         s.sub = c.sub
         s.held = c.state == "holding"
-        if c.state == "active", s.connectedAt == nil { s.connectedAt = c.since.map { Date(millis: $0) } ?? Date() }
+        if c.state == "active", s.connectedAt == nil { s.connectedAt = connectedDate(c) }
         // Only take over the screen for the current call, or when nothing is shown.
         if force || model.callScreen == nil || model.callScreen?.uuid == uuid || model.callScreen?.state == "ended" {
             let fresh = model.callScreen?.uuid != uuid
