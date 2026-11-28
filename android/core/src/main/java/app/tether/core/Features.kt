@@ -51,15 +51,17 @@ class FeatureSettings(val values: Map<String, Boolean> = emptyMap(), val rev: Lo
     fun with(id: String, on: Boolean) = FeatureSettings(values + (id to on), rev + 1)
 
     /**
-     * Adopt a state received from the other side. A newer revision wins whole. The same or an older revision
-     * loses — except the one switch the sender says it just flipped ([changedId]): two phones flipping two
-     * different switches at the same time must not lose either flip, so that single value is taken and the
-     * revision moves past both. Returns the state to keep (this, when nothing was adopted).
+     * Adopt a state received from the other side. A newer revision wins whole. An older revision loses
+     * entirely (the holder of the newer one re-sends it, §5.4, so an offline flip still lands through that
+     * path). At the same revision, the one switch the sender says it just flipped ([changedId]) is still
+     * taken: two phones flipping two different switches at the same time must not lose either flip, so that
+     * single value is taken and the revision moves past both. Returns the state to keep (this, when
+     * nothing was adopted).
      */
     fun adopt(incoming: FeatureSettings, changedId: String? = null): FeatureSettings {
         if (incoming.rev > rev) return incoming
-        if (changedId != null && incoming.isOn(changedId) != isOn(changedId))
-            return FeatureSettings(values + (changedId to incoming.isOn(changedId)), maxOf(rev, incoming.rev) + 1)
+        if (incoming.rev == rev && changedId != null && incoming.isOn(changedId) != isOn(changedId))
+            return FeatureSettings(values + (changedId to incoming.isOn(changedId)), rev + 1)
         return this
     }
 

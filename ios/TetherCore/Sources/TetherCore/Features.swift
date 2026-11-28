@@ -44,15 +44,16 @@ public struct FeatureSettings: Codable, Equatable, Sendable {
         return FeatureSettings(values: v, rev: rev + 1)
     }
 
-    /// Adopt a state received from the other side. A newer revision wins whole. The same or an older
-    /// revision loses — except the one switch the sender says it just flipped (`changedId`): two phones
-    /// flipping two different switches at the same time must not lose either flip, so that single value is
-    /// taken and the revision moves past both.
+    /// Adopt a state received from the other side. A newer revision wins whole. An older revision loses
+    /// entirely (the holder of the newer one re-sends it, §5.4, so an offline flip still lands through
+    /// that path). At the same revision, the one switch the sender says it just flipped (`changedId`) is
+    /// still taken: two phones flipping two different switches at the same time must not lose either flip,
+    /// so that single value is taken and the revision moves past both.
     public func adopt(_ incoming: FeatureSettings, changedId: String? = nil) -> FeatureSettings {
         if incoming.rev > rev { return incoming }
-        if let id = changedId, incoming.isOn(id) != isOn(id) {
+        if incoming.rev == rev, let id = changedId, incoming.isOn(id) != isOn(id) {
             var v = values; v[id] = incoming.isOn(id)
-            return FeatureSettings(values: v, rev: max(rev, incoming.rev) + 1)
+            return FeatureSettings(values: v, rev: rev + 1)
         }
         return self
     }
