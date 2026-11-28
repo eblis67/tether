@@ -84,12 +84,26 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     private val radioPushPending = java.util.concurrent.atomic.AtomicBoolean(false)
     private val endedSent = ConcurrentHashMap<String, Long>()
     private val unreadPushPending = java.util.concurrent.atomic.AtomicBoolean(false)
-    @Volatile private var lastUnread = ""
+    /** The unread key last actually delivered to a client; null means never sent (an empty list's key is
+     *  "", which must not look "already sent" - that was the stuck-at-412-unread bug). */
+    @Volatile private var lastUnread: String? = null
     /** Slow helper work (network switches up to ~50 s, self-test up to 40 s) runs here, not on the hub thread
      *  that SMS sends, reads, deletes and sync share. */
     private val slow = Executors.newSingleThreadExecutor { r -> Thread(r, "hub-slow") }
     /** sms.unread: the Android phone's unread incoming ids; `all` false when capped (then only newer ones are known). */
     private fun unreadMessage(ids: List<Long>) = Message(T.SMS_UNREAD, JSONObject().put("ids", JSONArray(ids)).put("all", ids.size < 3000))
+
+    /** Push the unread mirror, but only mark it sent when a client is actually listening: a broadcast
+     *  nobody heard is retried on the next change, on the next connect and every minute, so the mirror
+     *  cannot get stuck stale (the lost-broadcast bug behind the stuck unread count). */
+    private fun pushUnread() {
+        val ids = app.sms.unreadIds() ?: return
+        val key = ids.joinToString(",")
+        if (key == lastUnread) return
+        if (targets().isEmpty()) return
+        broadcast(unreadMessage(ids))
+        lastUnread = key
+    }
 
     private fun slowBg(block: () -> Unit) = slow.execute { try { block() } catch (t: Throwable) { Log.e(TAG, "hub task failed", t) } }
     @Volatile var lastSelftest: JSONObject? = null; private set
@@ -151,14 +165,13 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         app.sms.changeListener = {
             if (unreadPushPending.compareAndSet(false, true)) work.schedule({
                 unreadPushPending.set(false)
-                val ids = app.sms.unreadIds() ?: return@schedule
-                val key = ids.joinToString(",")
-                if (key != lastUnread) { lastUnread = key; broadcast(unreadMessage(ids)) }
+                pushUnread()
             }, 2, TimeUnit.SECONDS)
         }
         // Signal / network type changes reach the iPhone within ~2 s (several changes at once send one status).
         app.sims.watch { if (radioPushPending.compareAndSet(false, true)) work.schedule({ radioPushPending.set(false); runCatching { pushStatus() } }, 2, TimeUnit.SECONDS) }
         work.scheduleWithFixedDelay({ runCatching { pushStatus(); watchdog() }.onFailure { Log.e(TAG, "watchdog", it) } }, 60, 60, TimeUnit.SECONDS)
+        work.scheduleWithFixedDelay({ runCatching { pushUnread() } }, 60, 60, TimeUnit.SECONDS)
         work.scheduleWithFixedDelay({ runCatching { stallCheck() } }, 5, 5, TimeUnit.SECONDS)
         work.scheduleWithFixedDelay({ runCatching { lePulse() } }, LinkPolicy.PULSE_EVERY_S, LinkPolicy.PULSE_EVERY_S, TimeUnit.SECONDS)
         pulseBurst()   // a restart drops the iPhone's session like an app close does
@@ -236,6 +249,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         LinkService.running?.peripheral?.tune(c.transport.address, high = audio.target === c || audio.owner === c)
         audioCtl.execute { audio.reconcile() }
         bg { pushStatus() }
+        bg { pushUnread() }
     }
 
     /** Connections paired in this session whose kind is not known until their first sync. */

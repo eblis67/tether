@@ -13,12 +13,12 @@ final class AppModelReceivedTests: XCTestCase {
 
     // MARK: SMS
 
-    /// A sync page builds conversations, newest first, with unread counts; the last page records the sync point.
+    /// A sync page builds conversations, newest first, with unread counts; the sync point advances per page.
     func testSmsBatchBuildsConversations() {
         feed(m, wire(MsgType.smsBatch, SmsBatchW(items: [sms(1, thread: 1, read: true, date: 1000),
                                                        sms(2, thread: 1, date: 3000),
                                                        sms(3, thread: 2, incoming: false, read: true, date: 2000)], more: true)))
-        XCTAssertNil(m.data.smsSyncedUpTo, "a page with more to come is not a completed sync")
+        XCTAssertEqual(m.data.smsSyncedUpTo, 3, "the resume point advances with every page, so a dropped link does not restart the sync")
         feed(m, wire(MsgType.smsBatch, SmsBatchW(items: [sms(4, thread: 2, date: 4000)], more: false)))
         XCTAssertEqual(m.conversations.map(\.thread), [2, 1])
         XCTAssertEqual(m.conversations.map(\.unread), [1, 1])

@@ -403,12 +403,14 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
                 val items = b.optJSONArray("items").mapObjects(::smsOf)
                 val recent = fx.now() - 6 * 3600_000L
                 merge(items, notify = incrementalSync && items.any { it.incoming && !it.read && it.date > recent })
+                // The resume point advances with every page (pages arrive oldest-first over one ordered
+                // stream): a link dropping mid-sync used to discard all progress and restart from zero.
+                smsSyncedUpTo = sms.filter { it.id > 0 }.maxOfOrNull { it.id } ?: smsSyncedUpTo
                 if (!b.optBoolean("more")) {
                     syncing = false; lastSync = fx.now()
-                    smsSyncedUpTo = sms.filter { it.id > 0 }.maxOfOrNull { it.id }
                     failStalePlaceholders()
-                    persist()
                 }
+                persist()
             }
             T.SMS_NEW -> b.optJSONObject("item")?.let { val m = smsOf(it); merge(listOf(m), notify = m.incoming) }
             T.SMS_READ -> {

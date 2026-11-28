@@ -628,12 +628,14 @@ final class AppModel {
                 let b = try Control.body(SmsBatch.self, from: payload)
                 let recent = Int64(Date().addingTimeInterval(-6 * 3600).timeIntervalSince1970 * 1000)
                 merge(sms: b.items, notify: incrementalSync && b.items.contains { $0.incoming && !$0.read && $0.date > recent })
+                // The resume point advances with every page (pages arrive oldest-first over one ordered
+                // stream): a link dropping mid-sync used to discard all progress and restart from zero.
+                data.smsSyncedUpTo = data.sms.map(\.id).filter { $0 > 0 }.max() ?? data.smsSyncedUpTo
                 if !b.more {
                     syncing = false; lastSync = Date()
-                    data.smsSyncedUpTo = data.sms.map(\.id).filter { $0 > 0 }.max()
                     failStalePlaceholders()
-                    persist()
                 }
+                persist()
             case MsgType.smsRead:
                 // Read on the other device (or re-announced): clear the unread marks here too.
                 let r = try Control.body(SmsRead.self, from: payload)
